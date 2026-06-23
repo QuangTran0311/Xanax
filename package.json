@@ -8,8 +8,10 @@
   },
   "scripts": {
     "dev": "nodemon",
+    "mcp": "ts-node src/mcp/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:mcp": "node dist/mcp/index.js",
     "db:up": "docker compose -f docker/docker-compose.yml up -d",
     "db:down": "docker compose -f docker/docker-compose.yml down",
     "db:migrate": "prisma migrate dev",
@@ -22,6 +24,7 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.6",
     "dayjs": "^1.11.21",
