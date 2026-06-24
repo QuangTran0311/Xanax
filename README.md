@@ -30,15 +30,13 @@ Client / MCP host
        +--> MCP server (mcp_server/)
 ```
 
-Ứng dụng Python/FastAPI là runtime chính. Thư mục `src/` chứa một bản triển khai TypeScript và các công cụ hỗ trợ được giữ song song với dịch vụ Python.
+Ứng dụng Python/FastAPI là runtime chính của Xanax.
 
 ### Yêu cầu
 
 - Python 3.11 trở lên
 - Docker và Docker Compose
 - Anthropic API key
-
-Node.js 20.19 trở lên chỉ cần thiết khi dùng tooling TypeScript trong `src/`.
 
 ### Khởi chạy nhanh
 
@@ -126,34 +124,13 @@ python -m mcp_server.server
 
 MCP server cung cấp các tool tạo/kết thúc session, quản lý SOUL, truy cập episodic memory, ghi nhận mức sử dụng model, xem điểm model và quản lý phòng họp.
 
-### Tooling TypeScript
-
-Repository cũng có bản triển khai TypeScript và Prisma schema.
-
-```powershell
-npm install
-npm run build
-npm run dev
-```
-
-Các lệnh database hữu ích cho stack TypeScript:
-
-```powershell
-npm run db:up
-npm run db:generate
-npm run db:migrate
-npm run db:seed
-```
-
 ### Cấu trúc dự án
 
 ```text
 app/            Ứng dụng FastAPI, lõi agent, service, route và model cơ sở dữ liệu
 mcp_server/     Model Context Protocol server
 migrations/     Alembic migration
-prisma/         Prisma schema và migration cho TypeScript stack
 soul/           Đặc tả danh tính và hành vi agent
-src/            Bản triển khai TypeScript và tooling
 docker/          Môi trường PostgreSQL/pgvector cục bộ
 ```
 
@@ -197,15 +174,13 @@ Client / MCP host
        +--> MCP server (mcp_server/)
 ```
 
-The Python/FastAPI application is the primary runtime. The `src/` directory contains a TypeScript implementation and supporting tooling retained alongside the Python service.
+The Python/FastAPI application is Xanax's primary runtime.
 
 ## Requirements
 
 - Python 3.11 or newer
 - Docker and Docker Compose
 - An Anthropic API key
-
-Node.js 20.19 or newer is only required for the TypeScript tooling in `src/`.
 
 ## Quick Start
 
@@ -293,34 +268,13 @@ python -m mcp_server.server
 
 The MCP server exposes tools to create and end sessions, manage SOUL knowledge, access episodic memory, record model usage, inspect model scores, and manage meeting rooms.
 
-## TypeScript Tooling
-
-The repository also includes a TypeScript implementation and Prisma schema.
-
-```powershell
-npm install
-npm run build
-npm run dev
-```
-
-Useful database commands for that stack:
-
-```powershell
-npm run db:up
-npm run db:generate
-npm run db:migrate
-npm run db:seed
-```
-
 ## Project Layout
 
 ```text
 app/            FastAPI application, agent core, services, routes, and database models
 mcp_server/     Model Context Protocol server
 migrations/     Alembic database migrations
-prisma/         Prisma schema and migrations for the TypeScript stack
 soul/           Agent identity and behavior specification
-src/            TypeScript implementation and tooling
 docker/          Local PostgreSQL/pgvector environment
 ```
 
