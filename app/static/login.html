@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xanax</title>
+  <link rel="icon" type="image/png" href="/static/images/xanax.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { margin: 0; overflow: hidden; font-family: 'Space Grotesk', sans-serif; }
+    input { outline: none; }
+    input::placeholder { color: rgba(148,163,184,0.3); font-family: 'Space Grotesk', sans-serif; }
+    input:focus {
+      border-color: rgba(0,217,245,0.5) !important;
+      box-shadow: 0 0 0 3px rgba(0,217,245,0.1), 0 0 12px rgba(0,217,245,0.15) !important;
+    }
+    a:hover { color: #00d9f5 !important; }
+
+    /* ── Keyframes ── */
+    @keyframes neon-pulse {
+      0%, 100% { box-shadow: 0 0 18px rgba(0,217,245,0.35), 0 0 40px rgba(0,217,245,0.15), inset 0 0 20px rgba(0,217,245,0.05); }
+      50%       { box-shadow: 0 0 28px rgba(0,217,245,0.55), 0 0 60px rgba(0,217,245,0.25), inset 0 0 30px rgba(0,217,245,0.08); }
+    }
+    @keyframes float-a {
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-7px); }
+    }
+    @keyframes float-b {
+      0%, 100% { transform: translateY(-5px); }
+      50%       { transform: translateY(5px); }
+    }
+    @keyframes edge-glow {
+      0%, 100% { opacity: 0.5; }
+      50%       { opacity: 1; }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div style="display:flex; width:100vw; height:100vh; background:#06080f; font-family:'Space Grotesk',sans-serif; position:relative; overflow:hidden;">
+
+  <!-- ── Top edge neon line ── -->
+  <div style="position:absolute; top:0; left:0; right:0; height:1px;
+    background:linear-gradient(90deg, transparent 5%, #00d9f5 35%, #9366ff 65%, transparent 95%);
+    z-index:20; animation:edge-glow 3s ease-in-out infinite;"></div>
+
+  <!-- ── Bottom edge neon line ── -->
+  <div style="position:absolute; bottom:0; left:0; right:0; height:1px;
+    background:linear-gradient(90deg, transparent 5%, #9366ff 35%, #00d9f5 65%, transparent 95%);
+    z-index:20; opacity:0.4; animation:edge-glow 3s ease-in-out infinite 1.5s;"></div>
+
+
+  <!-- ═══════════════════════════════
+       LEFT PANEL  (flex:2)
+  ═══════════════════════════════ -->
+  <div style="flex:2; position:relative; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:52px; overflow:hidden;">
+
+    <!-- Dot grid -->
+    <div style="position:absolute; inset:0;
+      background-image:radial-gradient(circle, rgba(0,217,245,0.13) 1px, transparent 1px);
+      background-size:30px 30px;"></div>
+
+    <!-- Radial vignette -->
+    <div style="position:absolute; inset:0;
+      background:radial-gradient(ellipse 70% 70% at 50% 50%, transparent 20%, #06080f 85%);"></div>
+
+    <!-- Corner glows -->
+    <div style="position:absolute; top:-120px; left:-120px; width:400px; height:400px;
+      background:radial-gradient(circle, rgba(0,217,245,0.06) 0%, transparent 70%); pointer-events:none;"></div>
+    <div style="position:absolute; bottom:-120px; right:-120px; width:400px; height:400px;
+      background:radial-gradient(circle, rgba(147,102,255,0.07) 0%, transparent 70%); pointer-events:none;"></div>
+
+    <!-- Wordmark (top-left) -->
+    <div style="position:absolute; top:40px; left:48px; display:flex; align-items:center; gap:10px; z-index:2;">
+      <div style="width:34px; height:34px; border-radius:8px;
+        background:rgba(0,217,245,0.06); border:1px solid rgba(0,217,245,0.28);
+        display:flex; align-items:center; justify-content:center;
+        box-shadow:0 0 14px rgba(0,217,245,0.25), inset 0 0 10px rgba(0,217,245,0.04);">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <defs>
+            <linearGradient id="xg" x1="1" y1="1" x2="15" y2="15" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00d9f5"/>
+              <stop offset="100%" stop-color="#9366ff"/>
+            </linearGradient>
+          </defs>
+          <path d="M2 2L14 14" stroke="url(#xg)" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M14 2L2 14" stroke="url(#xg)" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span style="color:#e2e8f4; font-size:17px; font-weight:600; letter-spacing:0.04em;">Xanax</span>
+    </div>
+
+    <!-- Hero area -->
+    <div style="position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:44px;">
+
+      <!-- Eyebrow -->
+      <div style="text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <div style="font-size:11px; font-weight:600; letter-spacing:0.22em; color:rgba(0,217,245,0.65); text-transform:uppercase;">Xây dựng trên</div>
+        <div style="font-size:13px; color:rgba(148,163,184,0.4); letter-spacing:0.04em;">Hạ tầng hiệu năng cao, điều phối bởi AI</div>
+      </div>
+
+      <!-- Cards row -->
+      <div style="display:flex; gap:28px; align-items:center;">
+
+        <!-- Antigravity card -->
+        <div style="width:210px; padding:32px 20px 28px;
+          background:rgba(0,217,245,0.03); border:1px solid rgba(0,217,245,0.13);
+          border-radius:18px; display:flex; flex-direction:column; align-items:center; gap:18px;
+          animation:float-a 4.5s ease-in-out infinite;
+          box-shadow:0 0 40px rgba(0,217,245,0.07), inset 0 1px 0 rgba(0,217,245,0.08);">
+          <div style="width:92px; height:92px; display:flex; align-items:center; justify-content:center;">
+            <img src="/static/images/antigravity.png"
+              style="width:92px; height:92px; object-fit:contain;
+                filter:drop-shadow(0 0 14px rgba(0,217,245,0.45));"
+              alt="Antigravity" />
+          </div>
+          <div style="text-align:center; display:flex; flex-direction:column; gap:5px;">
+            <div style="font-size:15px; font-weight:700; color:#e2e8f4; letter-spacing:0.01em;">Antigravity</div>
+            <div style="font-size:12px; color:rgba(148,163,184,0.5); line-height:1.5;">Runtime platform</div>
+          </div>
+          <div style="padding:4px 14px;
+            background:rgba(0,217,245,0.08); border:1px solid rgba(0,217,245,0.22);
+            border-radius:20px; font-size:10px; font-weight:700;
+            color:#00d9f5; letter-spacing:0.12em; text-transform:uppercase;">Core Engine</div>
+        </div>
+
+        <!-- Connector -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:0;">
+          <div style="width:1px; height:28px; background:linear-gradient(to bottom, transparent, rgba(100,120,160,0.25));"></div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <div style="width:22px; height:1px; background:linear-gradient(90deg, rgba(0,217,245,0.4), rgba(147,102,255,0.4));"></div>
+            <div style="width:6px; height:6px; background:linear-gradient(135deg,#00d9f5,#9366ff); border-radius:50%; box-shadow:0 0 8px rgba(0,217,245,0.5);"></div>
+            <div style="width:22px; height:1px; background:linear-gradient(90deg, rgba(147,102,255,0.4), rgba(0,217,245,0.4));"></div>
+          </div>
+          <div style="width:1px; height:28px; background:linear-gradient(to top, transparent, rgba(100,120,160,0.25));"></div>
+        </div>
+
+        <!-- Hermes Agent card -->
+        <div style="width:210px; padding:32px 20px 28px;
+          background:rgba(147,102,255,0.03); border:1px solid rgba(147,102,255,0.13);
+          border-radius:18px; display:flex; flex-direction:column; align-items:center; gap:18px;
+          animation:float-b 4.5s ease-in-out infinite;
+          box-shadow:0 0 40px rgba(147,102,255,0.07), inset 0 1px 0 rgba(147,102,255,0.08);">
+          <div style="width:84px; height:84px; border-radius:12px; overflow:hidden;
+            display:flex; align-items:center; justify-content:center;">
+            <img src="/static/images/hermes.png"
+              style="width:84px; height:84px; object-fit:cover;
+                filter:drop-shadow(0 0 10px rgba(147,102,255,0.5));"
+              alt="Hermes Agent" />
+          </div>
+          <div style="text-align:center; display:flex; flex-direction:column; gap:5px;">
+            <div style="font-size:15px; font-weight:700; color:#e2e8f4; letter-spacing:0.01em;">Hermes Agent</div>
+            <div style="font-size:12px; color:rgba(148,163,184,0.5); line-height:1.5;">AI agent framework</div>
+          </div>
+          <div style="padding:4px 14px;
+            background:rgba(147,102,255,0.08); border:1px solid rgba(147,102,255,0.22);
+            border-radius:20px; font-size:10px; font-weight:700;
+            color:#9366ff; letter-spacing:0.12em; text-transform:uppercase;">AI Engine</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════
+       NEON DIVIDER
+  ═══════════════════════════════ -->
+  <div style="flex:none; width:1px;
+    background:linear-gradient(to bottom, transparent 4%, rgba(0,217,245,0.45) 28%, rgba(147,102,255,0.45) 72%, transparent 96%);
+    box-shadow:0 0 12px rgba(0,217,245,0.25), 0 0 24px rgba(0,217,245,0.1);"></div>
+
+
+  <!-- ═══════════════════════════════
+       RIGHT PANEL  (flex:1)
+  ═══════════════════════════════ -->
+  <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:56px 44px; position:relative; background:rgba(10,14,24,0.85);">
+
+    <!-- Ambient glows -->
+    <div style="position:absolute; top:0; right:0; width:200px; height:200px;
+      background:radial-gradient(circle, rgba(147,102,255,0.05) 0%, transparent 70%); pointer-events:none;"></div>
+    <div style="position:absolute; bottom:0; left:0; width:160px; height:160px;
+      background:radial-gradient(circle, rgba(0,217,245,0.04) 0%, transparent 70%); pointer-events:none;"></div>
+
+    <div style="width:100%; max-width:320px; display:flex; flex-direction:column; gap:36px; position:relative; z-index:2;">
+
+      <!-- Header -->
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="font-size:10px; font-weight:700; letter-spacing:0.22em; color:rgba(0,217,245,0.6); text-transform:uppercase;">Xanax</div>
+        <h1 style="margin:0; font-size:26px; font-weight:700; color:#e2e8f4; letter-spacing:-0.02em; line-height:1.2;">Đăng nhập</h1>
+        <p style="margin:0; font-size:13px; color:rgba(148,163,184,0.45); line-height:1.5;">Truy cập hệ thống quản lý</p>
+      </div>
+
+      <!-- Fields -->
+      <div style="display:flex; flex-direction:column; gap:20px;">
+
+        <!-- Username -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label style="font-size:12px; font-weight:600; color:rgba(148,163,184,0.75); letter-spacing:0.06em; text-transform:uppercase;">Tài khoản</label>
+          <div style="position:relative;">
+            <svg style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:rgba(148,163,184,0.35); pointer-events:none;"
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <input id="username" type="text" placeholder="Nhập tài khoản..."
+              style="width:100%; padding:13px 16px 13px 42px;
+                background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07);
+                border-radius:10px; color:#e2e8f4; font-size:14px;
+                font-family:'Space Grotesk',sans-serif;
+                transition:border-color 0.2s, box-shadow 0.2s;" />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label style="font-size:12px; font-weight:600; color:rgba(148,163,184,0.75); letter-spacing:0.06em; text-transform:uppercase;">Mật khẩu</label>
+          <div style="position:relative;">
+            <svg style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:rgba(148,163,184,0.35); pointer-events:none;"
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input id="password" type="password" placeholder="Nhập mật khẩu..."
+              style="width:100%; padding:13px 44px 13px 42px;
+                background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07);
+                border-radius:10px; color:#e2e8f4; font-size:14px;
+                font-family:'Space Grotesk',sans-serif;
+                transition:border-color 0.2s, box-shadow 0.2s;" />
+            <button id="togglePwd" type="button"
+              style="position:absolute; right:12px; top:50%; transform:translateY(-50%);
+                background:none; border:none; cursor:pointer; color:rgba(148,163,184,0.4);
+                padding:4px; display:flex; align-items:center;">
+              <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Forgot -->
+        <div style="text-align:right; margin-top:-8px;">
+          <a href="#" style="font-size:12px; color:rgba(0,217,245,0.5); text-decoration:none; transition:color 0.2s;">Quên mật khẩu?</a>
+        </div>
+
+        <!-- Submit -->
+        <button id="loginBtn" type="button"
+          style="width:100%; padding:14px;
+            background:linear-gradient(135deg, rgba(0,217,245,0.1), rgba(147,102,255,0.1));
+            border:1px solid rgba(0,217,245,0.38); border-radius:10px;
+            color:#00d9f5; font-size:14px; font-weight:600;
+            font-family:'Space Grotesk',sans-serif; cursor:pointer; letter-spacing:0.06em;
+            animation:neon-pulse 3s ease-in-out infinite;
+            display:flex; align-items:center; justify-content:center; gap:8px;
+            transition:opacity 0.2s;">
+          <span id="btnText">Đăng nhập</span>
+          <svg id="btnArrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+
+        <!-- Error -->
+        <div id="errorMsg" style="display:none; padding:10px 14px;
+          background:rgba(255,80,80,0.08); border:1px solid rgba(255,80,80,0.2);
+          border-radius:8px; font-size:13px; color:#ff8a80;"></div>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="position:absolute; bottom:28px; font-size:11px;
+      color:rgba(148,163,184,0.2); text-align:center; letter-spacing:0.04em;">
+      v1.0 · Antigravity × Hermes Agent
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const usernameEl = document.getElementById('username');
+  const passwordEl = document.getElementById('password');
+  const loginBtn   = document.getElementById('loginBtn');
+  const btnText    = document.getElementById('btnText');
+  const btnArrow   = document.getElementById('btnArrow');
+  const errorMsg   = document.getElementById('errorMsg');
+  const togglePwd  = document.getElementById('togglePwd');
+  const API_BASE = (() => {
+    if (window.location.origin && window.location.origin.startsWith('http')) {
+      return window.location.origin;
+    }
+    return 'http://localhost:3000';
+  })();
+
+  // Toggle password visibility
+  let showPwd = false;
+  togglePwd.addEventListener('click', () => {
+    showPwd = !showPwd;
+    passwordEl.type = showPwd ? 'text' : 'password';
+    togglePwd.style.color = showPwd ? 'rgba(0,217,245,0.6)' : 'rgba(148,163,184,0.4)';
+  });
+
+  // Enter key submit
+  [usernameEl, passwordEl].forEach(el =>
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); })
+  );
+  loginBtn.addEventListener('click', doLogin);
+
+  function setLoading(on) {
+    loginBtn.disabled = on;
+    loginBtn.style.opacity = on ? '0.65' : '1';
+    loginBtn.style.cursor  = on ? 'not-allowed' : 'pointer';
+    if (on) {
+      btnText.textContent = 'Đang xác thực...';
+      btnArrow.style.display = 'none';
+    } else {
+      btnText.textContent = 'Đăng nhập';
+      btnArrow.style.display = '';
+    }
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.style.display = 'block';
+  }
+
+  async function doLogin() {
+    errorMsg.style.display = 'none';
+    const username = usernameEl.value.trim();
+    const password = passwordEl.value;
+    if (!username || !password) { showError('Vui lòng nhập đầy đủ thông tin'); return; }
+
+    setLoading(true);
+    try {
+      const res  = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.detail || 'Đăng nhập thất bại'); return; }
+
+      localStorage.setItem('access_token',  data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      window.location.href = `${API_BASE}${data.redirect_to || '/workspace'}`;
+    } catch {
+      showError('Không kết nối được tới server');
+    } finally {
+      setLoading(false);
+    }
+  }
+</script>
+
+</body>
+</html>

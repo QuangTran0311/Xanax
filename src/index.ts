@@ -5,6 +5,7 @@ import morgan from 'morgan'
 import dotenv from 'dotenv'
 import { errorHandler } from './api/middleware/errorHandler'
 import { logger } from './utils/logger'
+import authRouter from './api/routes/auth'
 import sessionsRouter from './api/routes/sessions'
 import messagesRouter from './api/routes/messages'
 import meetingsRouter from './api/routes/meetings'
@@ -25,6 +26,7 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', agent: 'hermes', version: '1.0.0' })
 })
 
+app.use('/api/auth', authRouter)
 app.use('/api/sessions', sessionsRouter)
 app.use('/api/messages', messagesRouter)
 app.use('/api/meetings', meetingsRouter)
