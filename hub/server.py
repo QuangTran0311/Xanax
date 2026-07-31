@@ -127,9 +127,19 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────
+    # THỨ TỰ QUAN TRỌNG: add_middleware chèn vào đầu chuỗi, nên cái thêm SAU chạy
+    # NGOÀI CÙNG. CORS phải nằm ngoài lớp gác xác thực — request preflight OPTIONS
+    # của trình duyệt không bao giờ mang cookie, nếu để AuthGuard chộp trước thì
+    # preflight nhận 401 và mọi lời gọi cross-origin đều hỏng.
+    from api.auth_guard import AuthGuardMiddleware
+    app.add_middleware(AuthGuardMiddleware)
+
+    # settings.cors_origins trả [] khi debug=False. Trước đây thuộc tính này tồn
+    # tại nhưng KHÔNG nơi nào dùng — CORS bị hardcode ["*"] kèm allow_credentials,
+    # nghĩa là bất kỳ trang web nào cũng gọi API kèm cookie của người dùng được.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
