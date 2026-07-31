@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xanax — Training Workspace</title>
+<link rel="icon" type="image/png" href="/static/images/xanax.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; vertical-align: -4px; }
+
+:root {
+  /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
+  --bg-card:#2C2721; --ink:#F0EAE0; --ink-muted:#A99E8E;
+  --accent:#5B8F7F; --accent-soft:rgba(95,143,127,0.18);
+  --gold:#E0B265; --gold-soft:rgba(224,178,101,0.16);
+  --lavender-ink:#B29FE8; --peach-ink:#E0935A; --mint-ink:#5FC996; --sky-ink:#6FA8D6;
+  --lavender:rgba(228,219,247,0.14); --peach:rgba(251,227,206,0.14); --mint:rgba(216,238,224,0.14); --sky:rgba(220,234,245,0.14);
+  --status-on:#6FBF8F; --status-idle:#7A7266;
+  --shadow:0 6px 24px rgba(0,0,0,0.35); --shadow-hover:0 10px 30px rgba(0,0,0,0.45);
+  --radius:14px; --radius-sm:10px;
+
+  --bg:       #221E1A;
+  --bg2:      var(--bg-card);
+  --bg3:      #332D26;
+  --border:   #3A342C;
+  --cyan:     var(--accent);
+  --purple:   var(--lavender-ink);
+  --text:     var(--ink);
+  --muted:    var(--ink-muted);
+  --pass:     var(--status-on);
+  --fail:     #D9695C;
+  --pending:  var(--gold);
+  --cyan-rgb:   91,143,127;
+  --purple-rgb: 178,159,232;
+  --green-rgb:  111,191,143;
+  --red-rgb:    217,105,92;
+  --amber-rgb:  224,178,101;
+  --sidebar:  240px;
+  --info:     300px;
+}
+/* ── Token gốc — bản Sáng (mặc định, đúng brief) ── */
+body.light {
+  --bg-card:#FFFFFF; --ink:#2B2620; --ink-muted:#948A7C;
+  --accent:#4F7C6F; --accent-soft:#E4EEEA;
+  --gold:#D9A552; --gold-soft:#FBF0DE;
+  --lavender-ink:#7C6BAE; --peach-ink:#C97A3A; --mint-ink:#3F8A63; --sky-ink:#4A7FA6;
+  --lavender:#E4DBF7; --peach:#FBE3CE; --mint:#D8EEE0; --sky:#DCEAF5;
+  --status-on:#5FA57A; --status-idle:#C7BFAF;
+  --shadow:0 6px 24px rgba(43,38,32,0.07); --shadow-hover:0 10px 30px rgba(43,38,32,0.11);
+
+  --bg:      #FBF7F1;
+  --bg2:     var(--bg-card);
+  --bg3:     #F5F0E8;
+  --border:  #EDE6D9;
+  --cyan:    var(--accent);
+  --purple:  var(--lavender-ink);
+  --pass:    var(--status-on);
+  --fail:    #C1443A;
+  --pending: var(--gold);
+  --cyan-rgb:   79,124,111;
+  --purple-rgb: 124,107,174;
+  --green-rgb:  95,165,122;
+  --red-rgb:    193,68,58;
+  --amber-rgb:  217,165,82;
+  --text:    var(--ink);
+  --muted:   var(--ink-muted);
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Top bar ── */
+.topbar {
+  height: 52px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.topbar-logo {
+  font-family: 'Quicksand', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-logo .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+.topbar-badge {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+.topbar-user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.btn-logout {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-logout:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── Three-panel layout ── */
+.workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--sidebar) 1fr var(--info);
+  overflow: hidden;
+}
+
+/* ── Left: Session list ── */
+.sessions-panel {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.sessions-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sessions-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-new {
+  background: var(--cyan);
+  border: none;
+  color: #fff;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+.btn-new:hover { opacity: 0.8; }
+
+.sessions-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+.sessions-list::-webkit-scrollbar { width: 4px; }
+.sessions-list::-webkit-scrollbar-track { background: transparent; }
+.sessions-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.session-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 2px;
+  border-left: 2px solid transparent;
+}
+.session-item:hover { background: var(--bg3); }
+.session-item.active { background: var(--bg3); border-left-color: var(--cyan); }
+.session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.dot-in_progress { background: var(--pending); }
+.dot-pass        { background: var(--pass); }
+.dot-fail        { background: var(--fail); }
+.session-info { flex: 1; min-width: 0; }
+.session-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ── Center: Chat ── */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--muted);
+}
+.chat-empty-icon { font-size: 48px; opacity: 0.3; }
+.chat-empty h3 { font-size: 16px; font-weight: 600; }
+.chat-empty p  { font-size: 13px; text-align: center; max-width: 260px; line-height: 1.6; }
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-track { background: transparent; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.msg {
+  display: flex;
+  gap: 12px;
+  max-width: 100%;
+}
+.msg-user { flex-direction: row-reverse; }
+.msg-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.msg-avatar svg { width: 17px; height: 17px; }
+.sdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.sdot.on { background: var(--status-on); }
+.sdot.idle { background: var(--status-idle); }
+.msg-user .msg-avatar {
+  background: var(--accent);
+  color: #fff;
+}
+.msg-assistant .msg-avatar {
+  background: var(--mint);
+  color: var(--mint-ink);
+}
+.msg-bubble {
+  max-width: calc(100% - 60px);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.msg-user .msg-bubble {
+  background: var(--accent-soft);
+  border-top-right-radius: 4px;
+}
+.msg-assistant .msg-bubble {
+  background: var(--bg2);
+  box-shadow: var(--shadow);
+  border-top-left-radius: 4px;
+}
+.msg-bubble p { margin-bottom: 8px; }
+.msg-bubble p:last-child { margin-bottom: 0; }
+.msg-bubble code {
+  background: rgba(0,0,0,0.4);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Consolas', monospace;
+}
+.msg-bubble pre {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.msg-bubble pre code { background: none; padding: 0; }
+.msg-bubble ul, .msg-bubble ol { padding-left: 20px; }
+.msg-bubble li { margin-bottom: 4px; }
+.msg-bubble strong { color: #fff; }
+
+.msg-tool .msg-avatar { background: rgba(139,92,246,.2); color: #a78bfa; font-size: 14px; }
+.tool-results { border: 1px solid rgba(139,92,246,.25); background: rgba(139,92,246,.07); padding: 10px 14px; }
+.tool-result-item { padding: 3px 0; font-size: 13px; line-height: 1.5; }
+.tool-result-item.ok { color: #4ade80; }
+.tool-result-item.err { color: #f87171; }
+.tool-result-item strong { color: inherit; }
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+}
+.typing-indicator span {
+  width: 6px; height: 6px;
+  background: var(--cyan);
+  border-radius: 50%;
+  animation: typing 1.2s ease-in-out infinite;
+  opacity: 0.4;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.2); }
+}
+
+.hermes-banner {
+  background: rgba(var(--red-rgb),0.1);
+  border-bottom: 1px solid rgba(var(--red-rgb),0.3);
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #f87171;
+  display: none;
+}
+.hermes-banner.visible { display: block; }
+
+.chat-input-area {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+}
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.chat-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  resize: none;
+  min-height: 42px;
+  max-height: 140px;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.5;
+}
+.chat-input:focus { border-color: var(--cyan); }
+.chat-input::placeholder { color: var(--muted); }
+.btn-send {
+  width: 42px; height: 42px;
+  background: var(--cyan);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.btn-send:hover:not(:disabled) { opacity: 0.85; }
+.btn-send:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-send svg { width: 18px; height: 18px; }
+
+/* ── Right: Session info ── */
+.info-panel {
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.info-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+.info-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+.info-content.visible { display: flex; }
+.info-content::-webkit-scrollbar { width: 4px; }
+.info-content::-webkit-scrollbar-track { background: transparent; }
+.info-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.info-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.info-title-edit {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.info-title-edit:focus { border-color: var(--cyan); }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.status-in_progress { background: rgba(var(--amber-rgb),0.15); color: var(--pending); border: 1px solid rgba(var(--amber-rgb),0.3); }
+.status-pass        { background: rgba(var(--green-rgb),0.15);  color: var(--pass);    border: 1px solid rgba(var(--green-rgb),0.3); }
+.status-fail        { background: rgba(var(--red-rgb),0.15);  color: var(--fail);    border: 1px solid rgba(var(--red-rgb),0.3); }
+
+.status-buttons { display: flex; gap: 8px; margin-top: 8px; }
+.btn-status {
+  flex: 1;
+  padding: 7px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.15s;
+}
+.btn-pass { background: rgba(var(--green-rgb),0.1); border-color: rgba(var(--green-rgb),0.3); color: var(--pass); }
+.btn-pass:hover { background: rgba(var(--green-rgb),0.2); }
+.btn-fail { background: rgba(var(--red-rgb),0.1); border-color: rgba(var(--red-rgb),0.3); color: var(--fail); }
+.btn-fail:hover { background: rgba(var(--red-rgb),0.2); }
+.btn-status:disabled, .btn-feedback:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+
+.info-date { font-size: 13px; color: var(--muted); }
+.info-task-edit, .notes-edit {
+  width: 100%;
+  min-height: 80px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.5;
+}
+.info-task-edit:focus { border-color: var(--cyan); }
+.notes-edit[readonly] {
+  color: var(--muted);
+  cursor: default;
+  resize: none;
+}
+.notes-edit[readonly].has-content { color: var(--text); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.btn-feedback {
+  width: 100%;
+  padding: 9px;
+  background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.07), rgba(var(--purple-rgb),0.07));
+  border: 1px solid rgba(var(--purple-rgb),0.3);
+  border-radius: 8px;
+  color: var(--purple);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: none;
+  text-align: center;
+}
+.btn-feedback.visible { display: block; }
+.btn-feedback:hover { background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.14), rgba(var(--purple-rgb),0.14)); border-color: rgba(var(--purple-rgb),0.5); }
+
+/* ── Feedback popup ── */
+.fp-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+}
+.fp-overlay.visible { display: flex; }
+.fp-box {
+  background: var(--bg2);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 560px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-hover);
+}
+.fp-title {
+  font-family: 'Quicksand', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fp-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.fp-hint strong { color: var(--text); }
+.fp-textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+  line-height: 1.6;
+}
+.fp-textarea:focus { border-color: var(--cyan); }
+.fp-textarea::placeholder { color: var(--muted); }
+.fp-footer { display: flex; gap: 8px; justify-content: flex-end; }
+.fp-btn-cancel {
+  padding: 8px 18px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fp-btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
+.fp-btn-submit {
+  padding: 8px 20px;
+  background: var(--cyan);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.fp-btn-submit:hover { opacity: 0.85; }
+
+/* ── Confirm popup ── */
+.cp-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1600;
+}
+.cp-overlay.visible { display: flex; }
+.cp-box {
+  background: var(--bg2);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 340px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-hover);
+}
+.cp-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ef4444;
+}
+.cp-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.cp-footer { display: flex; gap: 8px; justify-content: flex-end; }
+.cp-btn-cancel {
+  padding: 8px 18px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cp-btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
+.cp-btn-confirm {
+  padding: 8px 20px;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.cp-btn-confirm:hover { opacity: 0.85; }
+
+.page-footer {
+  text-align: center; padding: 8px 20px;
+  font-size: 11px; color: var(--muted); opacity: 0.4;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+
+.btn-action {
+  width: 100%;
+  padding: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 6px;
+}
+.btn-action:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn-append-soul {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px;
+  background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.1), rgba(var(--purple-rgb),0.1));
+  border: 1px solid rgba(var(--cyan-rgb),0.3);
+  border-radius: 8px;
+  color: var(--cyan);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-append-soul:hover { background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.2), rgba(var(--purple-rgb),0.2)); }
+.btn-delete-session {
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: 1px solid rgba(var(--red-rgb),0.2);
+  border-radius: 8px;
+  color: #ef4444;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0.6;
+}
+.btn-delete-session:hover { opacity: 1; background: rgba(var(--red-rgb),0.05); }
+.info-divider { height: 1px; background: var(--border); }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.modal-overlay.visible { display: flex; }
+.modal {
+  background: var(--bg2);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: var(--shadow-hover);
+}
+.modal h3 {
+  font-family: 'Quicksand', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal input, .modal textarea {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 12px;
+  transition: border-color 0.15s;
+}
+.modal input:focus, .modal textarea:focus { border-color: var(--cyan); }
+.modal textarea { resize: vertical; min-height: 80px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.btn-cancel {
+  padding: 8px 18px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn-create {
+  padding: 8px 18px;
+  background: var(--cyan);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-create:hover { opacity: 0.85; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--text);
+  z-index: 2000;
+  transition: transform 0.3s ease;
+  pointer-events: none;
+}
+.toast.show    { transform: translateX(-50%) translateY(0); }
+.toast.success { border-color: rgba(var(--green-rgb),0.5);  color: var(--pass); }
+.toast.error   { border-color: rgba(var(--red-rgb),0.5);  color: var(--fail); }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <span class="topbar-logo"><span class="dot"></span>Xanax</span>
+  <nav style="display:flex;gap:4px;">
+    <a href="/workspace"   style="padding:4px 12px;border-radius:6px;font-size:13px;text-decoration:none;color:var(--cyan);border:1px solid rgba(var(--cyan-rgb),0.3);background:rgba(var(--cyan-rgb),0.06);">Training</a>
+    <a href="/taskrunner"  style="padding:4px 12px;border-radius:6px;font-size:13px;text-decoration:none;color:var(--muted);border:1px solid transparent;transition:all 0.15s;" onmouseover="this.style.color='var(--text)';this.style.background='var(--bg3)'" onmouseout="this.style.color='var(--muted)';this.style.background=''">Quy trình</a>
+  </nav>
+  <div class="topbar-user">
+    <span id="username-display">—</span>
+    <button class="btn-logout" onclick="logout()">Đăng xuất</button>
+  </div>
+</div>
+
+<!-- Three-panel workspace -->
+<div class="workspace">
+
+  <!-- ── Left: Session list ── -->
+  <div class="sessions-panel">
+    <div class="sessions-header">
+      <h2>Phiên dạy học AI</h2>
+      <button class="btn-new" onclick="openNewSession()" title="Tạo phiên dạy học mới">+</button>
+    </div>
+    <div class="sessions-list" id="sessions-list">
+      <div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Đang tải...</div>
+    </div>
+  </div>
+
+  <!-- ── Center: Chat ── -->
+  <div class="chat-panel">
+    <div class="hermes-banner" id="hermes-banner"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:16px;height:16px;"><path d="M12 4l9 15.5H3L12 4z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg> Trợ lý offline — không thể kết nối gửi tin nhắn</div>
+
+    <div class="chat-empty" id="chat-empty">
+      <div class="chat-empty-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:40px;height:40px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <h3>Chưa chọn Phiên Dạy Học</h3>
+      <p>Chọn một phiên dạy học bên trái hoặc tạo mới để bắt đầu hướng dẫn trợ lý AI.</p>
+    </div>
+
+    <div class="chat-messages" id="chat-messages" style="display:none;"></div>
+
+    <div class="chat-input-area" id="chat-input-area" style="display:none;">
+      <div class="chat-input-row">
+        <textarea
+          class="chat-input"
+          id="chat-input"
+          placeholder="Nhắn tin hướng dẫn trợ lý AI..."
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+        <button class="btn-send" id="btn-send" onclick="sendMessage()" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right: Session info ── -->
+  <div class="info-panel">
+    <div class="info-empty" id="info-empty">Chọn phiên dạy học bên trái để xem thông tin</div>
+    <div class="info-content" id="info-content">
+
+      <div>
+        <div class="info-section-label">Tên phiên dạy học</div>
+        <input class="info-title-edit" id="info-title" type="text" placeholder="Tên phiên dạy học..."
+               onblur="saveField('title', this.value)">
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div>
+        <div class="info-section-label">Kết quả đánh giá</div>
+        <div id="status-badge"></div>
+        <div class="status-buttons">
+          <button class="btn-status btn-pass" onclick="setStatus('pass')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M4 12l5 5L20 6"/></svg> Hài lòng</button>
+          <button class="btn-status btn-fail" onclick="setStatus('fail')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Cần cải thiện</button>
+        </div>
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div>
+        <div class="info-section-label">Ngày tạo</div>
+        <div class="info-date" id="info-date">—</div>
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div>
+        <div class="info-section-label">Yêu cầu nhiệm vụ huấn luyện</div>
+        <textarea class="info-task-edit" id="info-task"
+                  placeholder="Mô tả chi tiết nhiệm vụ bạn muốn trợ lý AI học và thực hiện tốt..."
+                  onblur="saveField('task_description', this.value)"></textarea>
+      </div>
+
+      <div class="info-divider"></div>
+
+      <div>
+        <div class="info-section-label" style="display:flex;align-items:center;gap:6px;">
+          Bài học ghi nhớ (Đúc kết)
+          <span id="notes-spinner" style="display:none;width:10px;height:10px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.8s linear infinite;"></span>
+        </div>
+        <textarea class="notes-edit" id="info-notes" readonly style="min-height:220px;"
+                  placeholder="Khi bạn hài lòng và bấm 'Hài lòng', AI sẽ tự đúc kết kinh nghiệm làm việc để áp dụng cho những lần sau. Nếu bấm 'Cần cải thiện', hãy nhập góp ý cụ thể để trợ lý AI ghi nhớ và rút kinh nghiệm..."></textarea>
+      </div>
+
+      <button class="btn-feedback visible" id="btn-feedback" onclick="openFeedbackPopup()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8V4"/><rect x="8" y="14" width="8" height="6"/></svg> Lưu bài học kinh nghiệm</button>
+
+      <div class="info-divider"></div>
+
+      <button class="btn-delete-session" onclick="deleteCurrentSession()">Xoá phiên dạy học này</button>
+    </div>
+  </div>
+</div>
+
+<footer class="page-footer">© 2025 Xanax — Personal AI Agent</footer>
+
+<!-- Confirm delete popup -->
+<div class="cp-overlay" id="confirm-popup">
+  <div class="cp-box">
+    <div class="cp-title"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M12 4l9 15.5H3L12 4z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg> Xác nhận xoá</div>
+    <div class="cp-body" id="confirm-msg">Hành động này không thể hoàn tác.</div>
+    <div class="cp-footer">
+      <button class="cp-btn-cancel" onclick="closeConfirmPopup()">Huỷ</button>
+      <button class="cp-btn-confirm" id="confirm-ok-btn">Xoá</button>
+    </div>
+  </div>
+</div>
+
+<!-- Feedback popup -->
+<div class="fp-overlay" id="feedback-popup" onclick="closeFeedbackPopup(event)">
+  <div class="fp-box">
+    <div class="fp-title"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Góp ý để Trợ lý AI cải thiện</div>
+    <div class="fp-hint">
+      Nhập <strong>góp ý / hướng dẫn cụ thể</strong> để trợ lý AI ghi nhớ và sửa đổi cho lần làm việc tiếp theo.<br>
+      Để <strong>trống</strong> và nhấn Xác nhận để trợ lý tự ghi nhớ bài học từ cuộc đối thoại hiện tại.
+    </div>
+    <textarea class="fp-textarea" id="popup-feedback"
+              placeholder="Nhập góp ý, hướng dẫn của bạn cho trợ lý AI... (hoặc để trống để trợ lý tự đúc kết)"
+              onkeydown="if(event.key==='Enter'&&event.ctrlKey)submitFeedbackPopup()"></textarea>
+    <div class="fp-footer">
+      <button class="fp-btn-cancel" onclick="closeFeedbackPopup()">Huỷ</button>
+      <button class="fp-btn-submit" onclick="submitFeedbackPopup()">Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<!-- New session modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <h3><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Tạo Phiên Dạy Học Mới</h3>
+    <input type="text" id="new-title" placeholder="Tên phiên dạy học (vd: Dạy trợ lý viết email bán hàng)" maxlength="100">
+    <textarea id="new-task" placeholder="Mô tả yêu cầu nhiệm vụ huấn luyện (không bắt buộc)"></textarea>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeNewSession()">Huỷ</button>
+      <button class="btn-create" onclick="createSession()">Tạo phiên</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+marked.setOptions({ breaks: true, gfm: true });
+
+// ── Bộ icon SVG dùng chung (thay toàn bộ emoji chức năng) ──────────────────────
+const UI_ICONS = {
+  bot: '<rect x="5" y="7" width="14" height="12" rx="5" /><circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 16c.8.6 3.2.6 4 0" /><line x1="12" y1="7" x2="12" y2="4.5"/><circle cx="12" cy="4" r="1" fill="currentColor" stroke="none"/>',
+  warning: '<path d="M12 4l9 15.5H3L12 4z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/>',
+  check: '<path d="M4 12l5 5L20 6"/>',
+  close: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+  bolt: '<path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/>',
+  send: '<path d="M4 12l16-8-6 16-3-6-7-2z"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+};
+function icon(name, cls) {
+  const inner = UI_ICONS[name] || UI_ICONS.bot;
+  return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${inner}</svg>`;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let currentSessionId = null;
+let ws = null;
+let isStreaming = false;
+let currentBubble = null;
+let currentContent = '';
+let streamTimer = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async function init() {
+  const me = await fetch('/api/auth/me').then(r => r.ok ? r.json() : null);
+  if (!me) { window.top.location.href = '/login'; return; }
+  document.getElementById('username-display').textContent = me.username;
+  await loadSessions();
+})();
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+async function loadSessions() {
+  const res = await fetch('/api/training/sessions');
+  if (!res.ok) {
+    document.getElementById('sessions-list').innerHTML =
+      `<div style="padding:20px;text-align:center;color:var(--fail);font-size:12px;">Lỗi tải sessions (${res.status})</div>`;
+    return;
+  }
+  const { sessions } = await res.json();
+  renderSessionList(sessions);
+}
+
+function renderSessionList(sessions) {
+  const list = document.getElementById('sessions-list');
+  if (!sessions.length) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8;">
+      Chưa có session nào.<br>Nhấn <strong>+</strong> để tạo mới.
+    </div>`;
+    return;
+  }
+  list.innerHTML = sessions.map(s => `
+    <div class="session-item ${s.id === currentSessionId ? 'active' : ''}"
+         onclick="selectSession(${s.id})">
+      <div class="session-dot dot-${s.status}"></div>
+      <div class="session-info">
+        <div class="session-title">${esc(s.title)}</div>
+        <div class="session-meta">${fmtDate(s.created_at)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function selectSession(id) {
+  currentSessionId = id;
+
+  const res = await fetch(`/api/training/sessions/${id}`);
+  if (!res.ok) return;
+  const session = await res.json();
+
+  await loadSessions(); // refresh list to show active highlight
+
+  // Info panel
+  document.getElementById('info-empty').style.display  = 'none';
+  document.getElementById('info-content').classList.add('visible');
+  document.getElementById('info-title').value = session.title;
+  document.getElementById('info-date').textContent = fmtDateFull(session.created_at);
+  document.getElementById('info-task').value  = session.task_description;
+  const notesEl = document.getElementById('info-notes');
+  notesEl.value = session.result_notes;
+  notesEl.classList.toggle('has-content', !!session.result_notes);
+  renderBadge(session.status);
+  const isDone = session.status === 'pass' || session.status === 'fail';
+  document.querySelector('.btn-pass').disabled = isDone;
+  document.querySelector('.btn-fail').disabled = isDone;
+  document.getElementById('btn-feedback').disabled = isDone;
+
+  // Chat area
+  document.getElementById('chat-empty').style.display   = 'none';
+  document.getElementById('chat-messages').style.display = 'flex';
+  document.getElementById('chat-input-area').style.display = isDone ? 'none' : 'block';
+
+  const wrap = document.getElementById('chat-messages');
+  wrap.innerHTML = '';
+  (session.messages || []).forEach(m => appendMsg(m.role, m.content));
+  scrollBottom();
+
+  connectWS(id);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+let _reconnectTimer = null;
+let _reconnectCount = 0;
+const _MAX_RECONNECT = 5;
+
+function connectWS(sessionId) {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  updateSendBtn(false);
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/training`);
+
+  ws.onopen = () => {
+    _reconnectCount = 0;
+    updateSendBtn(true);
+    document.getElementById('hermes-banner').classList.remove('visible');
+    document.getElementById('hermes-banner').textContent = 'Hermes offline — không thể gửi tin nhắn';
+  };
+
+  ws.onmessage = ({ data }) => {
+    let msg;
+    try { msg = JSON.parse(data); } catch { return; }
+    if (msg.type === 'status')  { showTyping(); }
+    else if (msg.type === 'chunk') { appendChunk(msg.content); }
+    else if (msg.type === 'tool_executed') { applyToolResult(msg); }
+    else if (msg.type === 'done')  { finalizeStream(); }
+    else if (msg.type === 'status') {
+      if (['summarising', 'analysing', 'improving'].includes(msg.status)) showNotesSpinner(true);
+    }
+    else if (msg.type === 'notes_updated') { updateNotes(msg.content, 'pass'); }
+    else if (msg.type === 'failure_analysed') { updateNotes(msg.content, 'fail'); }
+    else if (msg.type === 'error') { finalizeStream(); showNotesSpinner(false); toast('Lỗi: ' + msg.message, 'error'); }
+  };
+
+  ws.onerror = () => {
+    updateSendBtn(false);
+  };
+
+  ws.onclose = async (ev) => {
+    updateSendBtn(false);
+    if (isStreaming) finalizeStream();
+
+    // Don't reconnect if we deliberately closed (no currentSessionId)
+    if (!currentSessionId) return;
+
+    // Check auth before attempting reconnect — server restart clears sessions
+    const authOk = await fetch('/api/health').then(r => r.status !== 401).catch(() => true);
+    if (!authOk) { window.top.location.href = '/login'; return; }
+
+    if (_reconnectCount < _MAX_RECONNECT) {
+      _reconnectCount++;
+      const delay = Math.min(1000 * _reconnectCount, 5000);
+      const banner = document.getElementById('hermes-banner');
+      banner.textContent = `Mất kết nối — thử lại sau ${delay/1000}s... (${_reconnectCount}/${_MAX_RECONNECT})`;
+      banner.classList.add('visible');
+      _reconnectTimer = setTimeout(() => connectWS(currentSessionId), delay);
+    } else {
+      const banner = document.getElementById('hermes-banner');
+      banner.textContent = 'Mất kết nối — tải lại trang để thử lại';
+      banner.classList.add('visible');
+    }
+  };
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+function sendMessage() {
+  if (!currentSessionId || !ws || ws.readyState !== WebSocket.OPEN || isStreaming) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  appendMsg('user', text);
+  scrollBottom();
+  input.value = '';
+  input.style.height = 'auto';
+  updateSendBtn(false);
+
+  ws.send(JSON.stringify({ training_session_id: currentSessionId, message: text }));
+
+  if (streamTimer) clearTimeout(streamTimer);
+  streamTimer = setTimeout(() => { if (isStreaming) finalizeStream(); }, 90_000);
+}
+
+function showTyping() {
+  isStreaming = true;
+  currentContent = '';
+  const wrap = document.getElementById('chat-messages');
+  const row = document.createElement('div');
+  row.className = 'msg msg-assistant';
+  row.id = 'streaming-msg';
+  row.innerHTML = `<div class="msg-avatar">${icon('bot')}</div>
+    <div class="msg-bubble">
+      <div class="typing-indicator"><span></span><span></span><span></span></div>
+    </div>`;
+  wrap.appendChild(row);
+  currentBubble = row.querySelector('.msg-bubble');
+  scrollBottom();
+}
+
+function appendChunk(chunk) {
+  if (!currentBubble) showTyping();
+  currentContent += chunk;
+  currentBubble.innerHTML = marked.parse(currentContent);
+  scrollBottom();
+}
+
+function finalizeStream() {
+  isStreaming = false;
+  if (streamTimer) { clearTimeout(streamTimer); streamTimer = null; }
+  const row = document.getElementById('streaming-msg');
+  if (row) row.removeAttribute('id');
+  currentBubble = null;
+  currentContent = '';
+  updateSendBtn(ws && ws.readyState === WebSocket.OPEN);
+  scrollBottom();
+}
+
+function applyToolResult(msg) {
+  // Replace streamed content (which may contain raw [[XANAX:...]] blocks) with clean text
+  if (currentBubble && msg.clean_text !== undefined) {
+    currentContent = msg.clean_text;
+    currentBubble.innerHTML = marked.parse(currentContent);
+  }
+  // Show tool execution results as a separate bubble
+  if (msg.results && msg.results.length) {
+    const wrap = document.getElementById('chat-messages');
+    const row = document.createElement('div');
+    row.className = 'msg msg-tool';
+    const items = msg.results.map(r =>
+      `<div class="tool-result-item ${r.ok ? 'ok' : 'err'}">
+        ${r.ok ? icon('check') : icon('close')} <strong>${esc(r.action)}</strong>: ${esc(r.message || r.error || '')}
+      </div>`
+    ).join('');
+    row.innerHTML = `<div class="msg-avatar">${icon('bolt')}</div><div class="msg-bubble tool-results">${items}</div>`;
+    wrap.appendChild(row);
+    scrollBottom();
+  }
+}
+
+function appendMsg(role, content) {
+  const wrap = document.getElementById('chat-messages');
+  const row = document.createElement('div');
+  row.className = `msg msg-${role}`;
+  const av = role === 'user' ? 'P' : icon('bot');
+  const html = role === 'assistant'
+    ? marked.parse(content)
+    : esc(content).replace(/\n/g, '<br>');
+  row.innerHTML = `<div class="msg-avatar">${av}</div><div class="msg-bubble">${html}</div>`;
+  wrap.appendChild(row);
+}
+
+function scrollBottom() {
+  const w = document.getElementById('chat-messages');
+  w.scrollTop = w.scrollHeight;
+}
+
+function updateSendBtn(enabled) {
+  document.getElementById('btn-send').disabled = !enabled;
+  document.getElementById('chat-input').disabled = !enabled;
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+// ── Session info ──────────────────────────────────────────────────────────────
+function renderBadge(status) {
+  const labels = { in_progress: '<span class="sdot on"></span>Đang thực hiện', pass: icon('check') + ' Đạt', fail: icon('close') + ' Không đạt' };
+  document.getElementById('status-badge').innerHTML =
+    `<span class="status-badge status-${status}">${labels[status] || status}</span>`;
+}
+
+async function saveField(field, value) {
+  if (!currentSessionId) return;
+  const body = {};
+  if (field === 'title')            body.title = value;
+  if (field === 'task_description') body.task_description = value;
+  if (field === 'result_notes')     body.result_notes = value;
+  const res = await fetch(`/api/training/sessions/${currentSessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) { await loadSessions(); toast('Đã lưu', 'success'); }
+  else toast('Lỗi khi lưu', 'error');
+}
+
+async function setStatus(status) {
+  if (!currentSessionId) return;
+  const res = await fetch(`/api/training/sessions/${currentSessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) return;
+
+  document.querySelector('.btn-pass').disabled = true;
+  document.querySelector('.btn-fail').disabled = true;
+  document.getElementById('btn-feedback').disabled = true;
+  document.getElementById('chat-input-area').style.display = 'none';
+
+  renderBadge(status);
+  await loadSessions();
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    showNotesSpinner(true);
+    const action = status === 'pass' ? 'summarise_pass' : 'summarise_fail';
+    ws.send(JSON.stringify({ action, session_id: currentSessionId }));
+    toast(status === 'pass' ? 'Đã ghi nhận — đang đúc kết bài học...' : 'Đã ghi nhận — đang phân tích để cải thiện...', status === 'pass' ? 'success' : 'error');
+  } else {
+    toast(status === 'pass' ? 'Đã đánh dấu Đạt' : 'Đã đánh dấu Không đạt', status === 'pass' ? 'success' : 'error');
+  }
+}
+
+function showNotesSpinner(visible) {
+  document.getElementById('notes-spinner').style.display = visible ? 'inline-block' : 'none';
+}
+
+function updateNotes(content, verdict) {
+  showNotesSpinner(false);
+  const el = document.getElementById('info-notes');
+  el.value = content;
+  el.classList.add('has-content');
+
+  if (verdict === 'pass') {
+    toast('Đã đúc kết xong — SOUL.md đã cập nhật', 'success');
+  } else if (verdict === 'fail') {
+    toast('Đã phân tích xong — bấm "Góp ý hoặc đúc kết ngay" để lưu vào SOUL.md', 'error');
+  } else {
+    toast('Đã đúc kết từ góp ý — SOUL.md đã cập nhật', 'success');
+  }
+}
+
+function openFeedbackPopup() {
+  document.getElementById('popup-feedback').value = '';
+  document.getElementById('feedback-popup').classList.add('visible');
+  setTimeout(() => document.getElementById('popup-feedback').focus(), 50);
+}
+
+function closeFeedbackPopup(e) {
+  if (e && e.target !== document.getElementById('feedback-popup')) return;
+  document.getElementById('feedback-popup').classList.remove('visible');
+}
+
+function submitFeedbackPopup() {
+  if (!currentSessionId) return;
+  const feedback = document.getElementById('popup-feedback').value.trim();
+  document.getElementById('feedback-popup').classList.remove('visible');
+  if (!ws || ws.readyState !== WebSocket.OPEN) { toast('Chưa kết nối WebSocket', 'error'); return; }
+  showNotesSpinner(true);
+  if (feedback) {
+    ws.send(JSON.stringify({ action: 'improve_from_fail', session_id: currentSessionId, feedback }));
+    toast('Đang đúc kết từ góp ý...', '');
+  } else {
+    ws.send(JSON.stringify({ action: 'summarise_pass', session_id: currentSessionId }));
+    toast('Đang đúc kết tự động...', '');
+  }
+}
+
+let _confirmCallback = null;
+function showConfirmPopup(msg, onConfirm) {
+  document.getElementById('confirm-msg').textContent = msg;
+  _confirmCallback = onConfirm;
+  const btn = document.getElementById('confirm-ok-btn');
+  btn.onclick = () => { const cb = _confirmCallback; closeConfirmPopup(); cb && cb(); };
+  document.getElementById('confirm-popup').classList.add('visible');
+}
+function closeConfirmPopup() {
+  document.getElementById('confirm-popup').classList.remove('visible');
+  _confirmCallback = null;
+}
+
+async function deleteCurrentSession() {
+  if (!currentSessionId) return;
+  showConfirmPopup('Xoá session này? Hành động không thể hoàn tác.', async () => {
+    const res = await fetch(`/api/training/sessions/${currentSessionId}`, { method: 'DELETE' });
+    if (res.ok) {
+      currentSessionId = null;
+      _reconnectCount = _MAX_RECONNECT;
+      if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+      document.getElementById('info-content').classList.remove('visible');
+      document.getElementById('info-empty').style.display = 'flex';
+      document.getElementById('chat-empty').style.display = 'flex';
+      document.getElementById('chat-messages').style.display = 'none';
+      document.getElementById('chat-input-area').style.display = 'none';
+      document.getElementById('hermes-banner').classList.remove('visible');
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+      await loadSessions();
+      toast('Đã xoá session', 'success');
+    }
+  });
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openNewSession() {
+  document.getElementById('new-title').value = '';
+  document.getElementById('new-task').value  = '';
+  document.getElementById('modal-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('new-title').focus(), 50);
+}
+
+function closeNewSession() {
+  document.getElementById('modal-overlay').classList.remove('visible');
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeNewSession();
+}
+
+async function createSession() {
+  const title = document.getElementById('new-title').value.trim();
+  if (!title) { document.getElementById('new-title').focus(); return; }
+  const task  = document.getElementById('new-task').value.trim();
+  const res = await fetch('/api/training/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, task_description: task }),
+  });
+  if (!res.ok) { toast('Không tạo được session', 'error'); return; }
+  const session = await res.json();
+  closeNewSession();
+  await loadSessions();
+  await selectSession(session.id);
+  toast('Đã tạo phiên dạy học mới', 'success');
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.top.location.href = '/login';
+}
+
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.status === 401) window.top.location.href = '/login';
+  } catch (_) {}
+}, 5000);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  return d.toLocaleDateString('vi-VN');
+}
+
+function fmtDateFull(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  return d.toLocaleString('vi-VN');
+}
+
+let toastTimer;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 2800);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeNewSession();
+    document.getElementById('feedback-popup').classList.remove('visible');
+    closeConfirmPopup();
+  }
+  if (e.key === 'Enter'
+      && document.getElementById('modal-overlay').classList.contains('visible')
+      && document.activeElement === document.getElementById('new-title')) {
+    createSession();
+  }
+});
+
+// ── Idle timeout (15 min, paused while streaming) ─────────────────────────────
+const IDLE_MS = 15 * 60 * 1000;
+let _idleTimer = null;
+
+function _resetIdle() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(async () => {
+    if (isStreaming) { _resetIdle(); return; }
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.top.location.href = '/login?reason=idle';
+  }, IDLE_MS);
+}
+
+['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(ev =>
+  document.addEventListener(ev, _resetIdle, { passive: true })
+);
+_resetIdle();
+
+// Hide chrome when embedded in hub
+if (new URLSearchParams(location.search).get('embed') === '1') {
+  document.head.insertAdjacentHTML('beforeend',
+    '<style>.topbar,.page-footer{display:none!important}#main{height:100vh!important}</style>'
+  );
+}
+
+// ── Theme sync với hub (light/dark) ───────────────────────────────────────
+function _applyTheme(theme) {
+  document.body.classList.toggle('light', theme === 'light');
+}
+_applyTheme(localStorage.getItem('hub_theme') || 'light');
+window.addEventListener('storage', e => {
+  if (e.key === 'hub_theme') _applyTheme(e.newValue || 'light');
+});
+</script>
+</body>
+</html>

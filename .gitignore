@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment
+.env
+
+# Database
+*.db
+*.db.bak_*
+*.sqlite
+*.sqlite3
+
+# Workflow run archives (generated per-project results, see core/project_storage.py)
+data/
+
+# Khoá mã hoá secret của skill (core/secret_crypto.py) — đã nằm trong data/ ở trên
+# nhưng ghi tường minh vì commit nhầm file này là lộ toàn bộ token đã mã hoá.
+data/.secret_key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Distribution
+*.tar.gz
+*.whl

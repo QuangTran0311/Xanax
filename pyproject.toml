@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "xanax"
+version = "0.1.0"
+description = "Xanax Hub Server – Multi-Agent Orchestration Platform powered by Hermes Agent"
+authors = [{ name = "Xanax Team" }]
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["agent", "ai", "hub", "fastapi", "orchestration"]
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "sqlalchemy[asyncio]>=2.0.29",
+    "aiosqlite>=0.20.0",
+    "apscheduler>=3.10.4",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.1",
+    "rich>=13.7.1",
+    "websockets>=12.0",
+    "python-multipart>=0.0.9",
+    "aiofiles>=23.2.1",
+    "openpyxl>=3.1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.7",
+    "httpx>=0.27.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+xanax = "main:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
