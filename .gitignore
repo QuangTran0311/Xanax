@@ -54,3 +54,6 @@ Thumbs.db
 # Distribution
 *.tar.gz
 *.whl
+
+# Trạng thái cục bộ của Claude Code — không phải cấu hình dùng chung
+.claude/scheduled_tasks.lock

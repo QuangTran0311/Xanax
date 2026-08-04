@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
@@ -152,6 +153,9 @@ def create_app() -> FastAPI:
         elapsed = (time.perf_counter() - start) * 1000
         response.headers["X-Process-Time"] = f"{elapsed:.2f}ms"
         return response
+
+    # Added last so compression wraps every HTTP response, including static assets.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # ── API Routes ────────────────────────────────────────────
     from api.routes.health        import router as health_router
