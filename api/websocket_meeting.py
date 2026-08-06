@@ -42,7 +42,7 @@ import re
 import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from core.agent_soul import read_soul, sync_agent_soul
+from core.agent_soul import soul_for_prompt, sync_agent_soul
 from core.hermes_bridge import hermes
 from hub.database import (
     add_meeting_message, get_agent_configs_by_ids,
@@ -172,7 +172,7 @@ async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict]) -> str
     # Hermes/Xanax nhưng thu hẹp về đúng 1 người: mô tả/tính cách + dữ liệu thực tế +
     # bài học ĐẠT/KHÔNG ĐẠT từ các lần làm việc trước, để nhân viên tự cải thiện.
     await sync_agent_soul(agent)
-    soul_content = read_soul(agent["id"])
+    soul_content = soul_for_prompt(agent["id"])
     # Lịch sử hội thoại format "[Tên]: nội dung" (xem conv_context) khiến model dễ bắt
     # chước tự thêm tiền tố "[TênMình]: " vào đầu câu trả lời của chính mình — thừa và
     # xấu vì UI đã hiển thị sẵn tên người nói ở avatar/header rồi.

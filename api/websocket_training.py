@@ -66,13 +66,13 @@ async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> st
     quyền của Xanax; đưa cho một học viên đang được dạy nghĩa là một câu dạy
     thử có thể tạo việc thật hoặc chạy quy trình thật.
     """
-    from core.agent_soul import read_soul, sync_agent_soul
+    from core.agent_soul import soul_for_prompt, sync_agent_soul
 
     persona = (agent.get("system_prompt") or "").strip() or (
         f"Bạn là {agent.get('name')}, {agent.get('role') or 'nhân viên AI'}."
     )
     await sync_agent_soul(agent)
-    soul_content = read_soul(agent["id"])
+    soul_content = soul_for_prompt(agent["id"])
 
     system_prompt = "\n\n".join(filter(None, [
         persona,

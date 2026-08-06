@@ -756,9 +756,12 @@ async def _run_agent_step(
     # cải thiện qua từng lần làm việc thay vì lặp lại lỗi cũ.
     soul_content = ""
     if agent_config:
-        from core.agent_soul import read_soul, sync_agent_soul
+        from core.agent_soul import soul_for_prompt, sync_agent_soul
         await sync_agent_soul(agent_config)
-        soul_content = read_soul(agent_config["id"])
+        # soul_for_prompt (không phải read_soul): gắn thêm dòng nêu bài học Papa
+        # dạy đè lên khuôn mẫu trong mô tả kỹ năng. Không có dòng đó thì công
+        # thức từng bước của kỹ năng luôn thắng nguyên tắc trong bài học.
+        soul_content = soul_for_prompt(agent_config["id"])
 
     system_prompt: str = "\n\n".join(filter(None, [base_prompt, skills_content.strip(), soul_content]))
 

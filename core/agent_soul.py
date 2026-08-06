@@ -144,6 +144,49 @@ async def sync_agent_soul(agent: dict) -> None:
         logger.exception("sync_agent_soul failed for agent %s", agent.get("id"))
 
 
+def has_lessons(agent_id: int) -> bool:
+    """Nhân viên này đã được Papa dạy buổi nào chưa."""
+    text = read_soul(agent_id)
+    if _LESSON_START not in text or _LESSON_END not in text:
+        return False
+    inner = text[text.index(_LESSON_START) + len(_LESSON_START):text.index(_LESSON_END)]
+    return bool(inner.strip())
+
+
+# Bài học Papa dạy và nội dung kỹ năng thường MÂU THUẪN nhau, và không có dòng
+# này thì model theo kỹ năng.
+#
+# Ca thật: Papa dạy Celexa "khi câu đã đủ duyên thì dừng, không thêm vế thúc đẩy
+# mua hàng ở cuối", trong khi kỹ năng write_post ghi cứng "CTA: câu kêu gọi hành
+# động rõ ràng (comment / tag bạn / nhắn tin)". Bài đăng sinh ra kết thúc bằng
+# đúng câu CTA đó. Kỹ năng là công thức từng bước rất dễ làm theo, còn bài học
+# là nguyên tắc — model chọn cái cụ thể hơn.
+#
+# Thứ tự ghép prompt không đủ để giải quyết: soul đã nằm cuối cùng rồi mà vẫn
+# thua. Phải nói thẳng cái nào thắng.
+_LESSON_PRECEDENCE = (
+    "THỨ TỰ ƯU TIÊN KHI CÓ MÂU THUẪN: phần 'Bài học từ buổi dạy' phía trên là do "
+    "Papa đích thân dạy bạn, và nó ĐÈ LÊN mọi khuôn mẫu, cấu trúc hay công thức "
+    "viết sẵn trong phần mô tả kỹ năng. Nếu kỹ năng bảo bạn luôn phải có một thành "
+    "phần nào đó (ví dụ câu kêu gọi hành động ở cuối, một cấu trúc cố định, một số "
+    "lượng hashtag) mà bài học của Papa nói ngược lại, hãy THEO BÀI HỌC CỦA PAPA và "
+    "bỏ phần khuôn mẫu đó đi."
+)
+
+
+def soul_for_prompt(agent_id: int) -> str:
+    """Soul để nhét vào system prompt, kèm dòng nêu thứ tự ưu tiên nếu có bài học.
+
+    Dùng thay cho `read_soul` ở mọi nơi dựng prompt cho nhân viên (quy trình,
+    phòng họp, phòng dạy). Chỉ gắn dòng ưu tiên khi thật sự có bài học — nhân
+    viên chưa được dạy buổi nào mà đọc câu đó thì chỉ tổ nhiễu.
+    """
+    text = read_soul(agent_id)
+    if not text or not has_lessons(agent_id):
+        return text
+    return f"{text}\n\n{_LESSON_PRECEDENCE}"
+
+
 def append_lessons(agent_id: int, agent_name: str, session_title: str,
                    lessons: list[str], taught_at: str = "") -> int:
     """Ghi các bài học đã được Papa DUYỆT từ một buổi dạy vào soul của nhân viên.
