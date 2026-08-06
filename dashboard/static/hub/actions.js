@@ -85,6 +85,12 @@ for (const type of EVENTS) {
     // khỏi nhảy lên đầu trang. Uỷ quyền không có cơ chế đó, nên chặn ở đây.
     if (type === 'click' && el.tagName === 'A') ev.preventDefault();
 
+    // Không cần stopPropagation cho nút nằm LỒNG trong thẻ cũng bấm được (nút
+    // xoá trong thẻ phòng họp, nút duyệt trong thẻ quy trình). Mã cũ phải viết
+    // event.stopPropagation() ngay trong onclick vì hai handler nội tuyến đều
+    // chạy khi sự kiện nổi bọt. Ở đây cả hai cùng uỷ quyền về document, và
+    // closest() luôn trả phần tử TRONG CÙNG — nên chỉ hành động của nút chạy.
+
     const args = resolveArgs(el, ev, el.dataset[`${type}Args`]);
     fn(...args);
   });

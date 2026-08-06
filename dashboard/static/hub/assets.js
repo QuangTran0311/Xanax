@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // ASSETS (Tài sản)
 // ════════════════════════════════════════
@@ -21,7 +21,7 @@ function renderAssetFilters() {
   const counts = { all: allAssets.length };
   for (const a of allAssets) counts[a.source] = (counts[a.source] || 0) + 1;
   el.innerHTML = Object.keys(ASSET_SOURCE_LABEL).map(key => `
-    <button class="assets-filter-btn${assetsFilter === key ? ' active' : ''}" onclick="setAssetsFilter('${key}')">
+    <button class="assets-filter-btn${assetsFilter === key ? ' active' : ''}" data-click="setAssetsFilter" data-click-args='${jattr(key)}'>
       ${ASSET_SOURCE_LABEL[key]} (${counts[key] || 0})
     </button>
   `).join('');
@@ -65,7 +65,7 @@ function renderAssets() {
           </a>
         `).join('')}
       </div>
-      ${a.deletable ? `<div class="asset-card-actions"><span class="danger" onclick="deleteAssetItem('${a.id}')">Xoá</span></div>` : ''}
+      ${a.deletable ? `<div class="asset-card-actions"><span class="danger" data-click="deleteAssetItem" data-click-args='${jattr(a.id)}'>Xoá</span></div>` : ''}
     </div>
   `;
   }).join('');

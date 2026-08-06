@@ -2,7 +2,7 @@ import { api, checkAuthOrRedirect } from './api.js';
 import { icon } from './icons.js';
 import { showToast } from './modals.js';
 import { t } from './ui.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // State của tab Benchmark — chỉ file này gán lại.
 let benchmarks = [];
@@ -25,7 +25,7 @@ function renderBenchmarkList() {
     return;
   }
   el.innerHTML = benchmarks.map(b => `
-    <div class="list-item${b.id===currentBenchmarkId?' selected':''}" onclick="openBenchmark(${b.id})">
+    <div class="list-item${b.id===currentBenchmarkId?' selected':''}" data-click="openBenchmark" data-click-args='${jattr(b.id)}'>
       <div style="flex:1;min-width:0;">
         <div class="list-item-name">${esc(b.name)}</div>
         <div class="list-item-sub" style="display:flex;gap:6px;margin-top:3px;">
@@ -53,6 +53,16 @@ function hideBenchmarkViews() {
   });
 }
 
+// Hai ô của mỗi test case ghi thẳng vào benchCases. Mã cũ nhét biểu thức gán
+// vào oninput ("benchCases[3].prompt=this.value") — chỉ chạy được khi benchCases
+// là biến toàn cục. Nay nó là state của module nên phải đi qua hàm.
+export function setBenchCasePrompt(idx, value) {
+  if (benchCases[idx]) benchCases[idx].prompt = value;
+}
+export function setBenchCaseCriteria(idx, value) {
+  if (benchCases[idx]) benchCases[idx].criteria = value;
+}
+
 // Enter trong ô nhập = thêm model. Trước đây là onkeydown="if(...)addBenchModel()".
 export function benchModelInputKeydown(ev) {
   if (ev.key === 'Enter') addBenchModel();
@@ -77,7 +87,7 @@ function renderBenchModels() {
   el.innerHTML = benchModels.map(m => `
     <div class="model-tag">
       ${esc(m)}
-      <button class="model-tag-remove" onclick="removeBenchModel('${m}')">×</button>
+      <button class="model-tag-remove" data-click="removeBenchModel" data-click-args='${jattr(m)}'>×</button>
     </div>`).join('');
 }
 
@@ -89,14 +99,14 @@ export async function addTestCase() {
   div.className = 'test-case-item';
   div.id = `case-${idx}`;
   div.innerHTML = `
-    <button class="test-case-remove" onclick="removeTestCase(${idx})">×</button>
+    <button class="test-case-remove" data-click="removeTestCase" data-click-args='${jattr(idx)}'>×</button>
     <div class="form-group" style="margin-bottom:8px;">
       <label class="form-label">${t('js.case_prompt')}</label>
-      <textarea class="form-textarea" id="case-prompt-${idx}" rows="2" placeholder="Ask the model to do something..." oninput="benchCases[${idx}].prompt=this.value"></textarea>
+      <textarea class="form-textarea" id="case-prompt-${idx}" rows="2" placeholder="Ask the model to do something..." data-input="setBenchCasePrompt" data-input-args='${jattr(idx, "$value")}'></textarea>
     </div>
     <div class="form-group" style="margin-bottom:0;">
       <label class="form-label">${t('js.case_expected')}</label>
-      <input class="form-input" id="case-criteria-${idx}" placeholder="What makes a good answer? (optional)" oninput="benchCases[${idx}].criteria=this.value">
+      <input class="form-input" id="case-criteria-${idx}" placeholder="What makes a good answer? (optional)" data-input="setBenchCaseCriteria" data-input-args='${jattr(idx, "$value")}'>
     </div>`;
   el.appendChild(div);
 }

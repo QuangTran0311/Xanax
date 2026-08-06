@@ -1,4 +1,5 @@
 import { icon } from './icons.js';
+import { jattr } from './utils.js';
 
 // Modals
 // ════════════════════════════════════════
@@ -25,6 +26,11 @@ export function _answerConfirm(result) {
 }
 
 // ── Toast (thay cho alert() mặc định) ───────────────────────────────────────
+// Nút × của toast: gỡ chính toast chứa nó. Trước đây là this.parentElement.remove().
+export function dismissToast(btn) {
+  btn.parentElement?.remove();
+}
+
 export function showToast(message, type) {
   type = type || 'info';
   const container = document.getElementById('toast-container');
@@ -32,7 +38,7 @@ export function showToast(message, type) {
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   const iconSvg = icon(type === 'error' ? 'warning' : type === 'success' ? 'check' : 'info');
-  el.innerHTML = `<span class="toast-icon">${iconSvg}</span><span class="toast-msg"></span><button class="toast-close" onclick="this.parentElement.remove()">${icon('close')}</button>`;
+  el.innerHTML = `<span class="toast-icon">${iconSvg}</span><span class="toast-msg"></span><button class="toast-close" data-click="dismissToast" data-click-args='${jattr("$el")}'>${icon('close')}</button>`;
   el.querySelector('.toast-msg').textContent = message;
   container.appendChild(el);
   setTimeout(() => el.remove(), 6000);

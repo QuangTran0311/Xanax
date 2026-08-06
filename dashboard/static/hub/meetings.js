@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { closeModal, showConfirm, showToast } from './modals.js';
 import { openProjectDetail, projects } from './projects.js';
 import { switchTab } from './tabs.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // State phòng họp. lastMessageAt dùng để chèn vạch phân tách thời gian
 // (giống Messenger) khi có khoảng lặng > SESSION_GAP_MS giữa 2 tin nhắn.
@@ -35,7 +35,7 @@ export function renderMeetingList() {
     finalized: { label: 'Đã chốt', badge: 'badge-amber' },
   };
   el.innerHTML = meetings.map(m => `
-    <div class="list-item${m.id===currentMeetingId?' selected':''}" onclick="openMeeting(${m.id})">
+    <div class="list-item${m.id===currentMeetingId?' selected':''}" data-click="openMeeting" data-click-args='${jattr(m.id)}'>
       <div style="flex:1;min-width:0;">
         <div class="list-item-name">${esc(m.title)}</div>
         ${m.project_id ? `<div class="list-item-sub meeting-list-project">${icon('folder')} <span>${esc(projects.find(p => p.id === m.project_id)?.name || 'Dự án liên kết')}</span></div>` : ''}
@@ -44,7 +44,7 @@ export function renderMeetingList() {
           <span>${m.participants.length} nhân viên</span>
         </div>
       </div>
-      <button class="btn btn-ghost btn-sm meeting-delete-btn" onclick="event.stopPropagation();deleteMeeting(${m.id})" title="Xoá cuộc họp">${icon('close')}</button>
+      <button class="btn btn-ghost btn-sm meeting-delete-btn" data-click="deleteMeeting" data-click-args='${jattr(m.id)}' title="Xoá cuộc họp">${icon('close')}</button>
     </div>`).join('');
 }
 
@@ -83,7 +83,7 @@ export async function openMeeting(id) {
   document.getElementById('meeting-topic-label').textContent = m.topic || '';
   const project = projects.find(p => p.id === m.project_id);
   document.getElementById('meeting-project-label').innerHTML = project
-    ? `<span class="meeting-project-link" onclick="openMeetingProject(${project.id})">${icon('folder')} <span>${esc(project.name)}</span></span>`
+    ? `<span class="meeting-project-link" data-click="openMeetingProject" data-click-args='${jattr(project.id)}'>${icon('folder')} <span>${esc(project.name)}</span></span>`
     : '';
   document.getElementById('meeting-end-btn').style.display = m.status === 'active' ? '' : 'none';
   document.getElementById('meeting-finalize-btn').style.display = m.status === 'ended' ? '' : 'none';
@@ -147,7 +147,7 @@ function renderMeetingRecord(m) {
             </div>
           </div>`).join('')}
         <div class="meeting-proposals-actions">
-          <button class="btn btn-primary btn-sm" onclick="approveMeetingItems()">Tạo công việc đã chọn</button>
+          <button class="btn btn-primary btn-sm" data-click="approveMeetingItems">Tạo công việc đã chọn</button>
         </div>
       </div>
     </details>` : ''}`;
@@ -457,10 +457,10 @@ function renderApprovalRequest(msg) {
       <label class="approval-label">Nội dung bài đăng — sửa trực tiếp trước khi duyệt</label>
       <textarea class="approval-content" rows="10">${esc(msg.content || '')}</textarea>
       <div class="approval-actions">
-        <button class="btn btn-sm" onclick="resolveMeetingApproval(${msg.output_id}, false)">
+        <button class="btn btn-sm" data-click="resolveMeetingApproval" data-click-args='${jattr(msg.output_id, false)}'>
           Không duyệt — làm lại bước trước
         </button>
-        <button class="btn btn-sm btn-primary" onclick="resolveMeetingApproval(${msg.output_id}, true)">
+        <button class="btn btn-sm btn-primary" data-click="resolveMeetingApproval" data-click-args='${jattr(msg.output_id, true)}'>
           Duyệt &amp; đăng
         </button>
       </div>

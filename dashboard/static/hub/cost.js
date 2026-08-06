@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { _fmtNum } from './model-pool.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // COST TAB
 // ════════════════════════════════════════
@@ -240,7 +240,7 @@ function renderCostDetailTableDaily(data) {
   sortedDays.forEach((agg, idx) => {
     const rowId = `cost-day-${idx}`;
     html += `
-      <tr id="${rowId}-parent" class="cost-model-row" onclick="toggleCostDayRow('${rowId}','${agg.bucket_from}')">
+      <tr id="${rowId}-parent" class="cost-model-row" data-click="toggleCostDayRow" data-click-args='${jattr(rowId, agg.bucket_from)}'>
         <td><span id="${rowId}-arrow">▸</span> ${esc(_fmtBucketVN(agg))}</td>
         <td>${agg.request_count} lượt</td>
         <td>${agg.request_count}</td>
@@ -318,7 +318,7 @@ function renderCostDetailTableGrouped(data) {
   sortedBuckets.forEach((agg, idx) => {
     const rowId = `cost-bucket-${idx}`;
     html += `
-      <tr class="cost-model-row" onclick="toggleCostModelRow('${rowId}')">
+      <tr class="cost-model-row" data-click="toggleCostModelRow" data-click-args='${jattr(rowId)}'>
         <td><span id="${rowId}-arrow">▸</span> ${esc(_fmtBucketVN(agg))}</td>
         <td>${agg.models.length} model</td>
         <td>${agg.request_count}</td>

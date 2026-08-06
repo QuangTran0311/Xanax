@@ -4,7 +4,7 @@ import { DEFAULT_AVATAR, avatarHtml } from './avatar.js';
 import { icon } from './icons.js';
 import { showToast } from './modals.js';
 import { currentProjectId, currentProjectSubTab, projects, switchProjectSubTab } from './projects.js';
-import { esc, renderOutputContent } from './utils.js';
+import { esc, jattr, renderOutputContent } from './utils.js';
 
 // AI COMPANY PROJECT OPERATIONS DASHBOARD
 // Một công ty có nhiều dự án; mỗi dự án có nhiều quy trình (workflow); mỗi quy trình
@@ -125,7 +125,7 @@ function renderOpsOverview(pid) {
       <div class="ops-card ops-card-wide" style="border-color:rgba(var(--amber-rgb),0.35);">
         <div class="ops-card-label">Việc bạn cần làm tiếp theo</div>
         <div style="font-size:13px;font-weight:600;margin-top:4px;">${esc(nextAction)}</div>
-        ${pendingApproval > 0 ? `<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="switchProjectSubTab('review')">Đến Hàng chờ duyệt →</button>` : ''}
+        ${pendingApproval > 0 ? `<button class="btn btn-primary btn-sm" style="margin-top:8px;" data-click="switchProjectSubTab" data-click-args='${jattr("review")}'>Đến Hàng chờ duyệt →</button>` : ''}
       </div>
       <div class="ops-card"><div class="ops-card-label">Quy trình</div><div class="ops-card-value">${workflows.length}</div></div>
       <div class="ops-card"><div class="ops-card-label">Đang thực hiện</div><div class="ops-card-value" style="color:var(--blue)">${active}</div></div>
@@ -170,7 +170,7 @@ function renderOpsRuns(pid) {
       <td style="font-size:11px;color:var(--muted);">${opsFmtTime(r.startedAt)}</td>
       <td style="font-size:11px;color:var(--muted);">${opsFmtTime(r.finishedAt)}</td>
       <td style="max-width:220px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.summary)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="openOpsDetails(${r.id})">Xem</button></td>
+      <td><button class="btn btn-ghost btn-sm" data-click="openOpsDetails" data-click-args='${jattr(r.id)}'>Xem</button></td>
     </tr>`;
   }).join('');
 }
@@ -197,11 +197,11 @@ function renderOpsReview(pid) {
       </div>
       <div class="ops-review-card-summary">${esc(r.summary)}</div>
       <div class="ops-review-card-actions">
-        <button class="btn btn-sm btn-pass" onclick="opsApprove(${r.id})">${icon('check')} Duyệt</button>
-        <button class="btn btn-sm btn-fail" onclick="opsOpenFeedback(${r.id},'failed')">${icon('close')} Không đạt</button>
-        <button class="btn btn-sm btn-ghost" onclick="opsOpenFeedback(${r.id},'needs_revision')">${icon('edit')} Yêu cầu sửa</button>
-        <button class="btn btn-sm ops-btn-test" onclick="opsApprove(${r.id}, true)" title="Chỉ thử luồng quy trình — không ghi lịch sử/bộ nhớ Xanax">${icon('flask')} Thử luồng</button>
-        <button class="btn btn-sm btn-ghost" onclick="openOpsDetails(${r.id})">Chi tiết</button>
+        <button class="btn btn-sm btn-pass" data-click="opsApprove" data-click-args='${jattr(r.id)}'>${icon('check')} Duyệt</button>
+        <button class="btn btn-sm btn-fail" data-click="opsOpenFeedback" data-click-args='${jattr(r.id, "failed")}'>${icon('close')} Không đạt</button>
+        <button class="btn btn-sm btn-ghost" data-click="opsOpenFeedback" data-click-args='${jattr(r.id, "needs_revision")}'>${icon('edit')} Yêu cầu sửa</button>
+        <button class="btn btn-sm ops-btn-test" data-click="opsApprove" data-click-args='${jattr(r.id, true)}' title="Chỉ thử luồng quy trình — không ghi lịch sử/bộ nhớ Xanax">${icon('flask')} Thử luồng</button>
+        <button class="btn btn-sm btn-ghost" data-click="openOpsDetails" data-click-args='${jattr(r.id)}'>Chi tiết</button>
       </div>
     </div>`).join('');
 }
@@ -315,14 +315,14 @@ function opsRenderKanbanCard(r) {
   const shortSummary = r.summary.length > 60 ? r.summary.slice(0, 60) + '…' : r.summary;
   const quick = r.status === 'waiting_review' ? `
       <div class="kanban-card-meta" style="margin-top:6px;">
-        <button class="btn btn-sm btn-pass" onclick="event.stopPropagation();opsApprove(${r.id})">${icon('check')} Duyệt</button>
-        <button class="btn btn-sm btn-fail" onclick="event.stopPropagation();opsOpenFeedback(${r.id},'failed')" title="Không đạt">${icon('close')}</button>
-        <button class="btn btn-sm ops-btn-test" onclick="event.stopPropagation();opsApprove(${r.id}, true)" title="Chỉ thử luồng quy trình — không ghi lịch sử/bộ nhớ Xanax">${icon('flask')} Thử luồng</button>
+        <button class="btn btn-sm btn-pass" data-click="opsApprove" data-click-args='${jattr(r.id)}'>${icon('check')} Duyệt</button>
+        <button class="btn btn-sm btn-fail" data-click="opsOpenFeedback" data-click-args='${jattr(r.id, "failed")}' title="Không đạt">${icon('close')}</button>
+        <button class="btn btn-sm ops-btn-test" data-click="opsApprove" data-click-args='${jattr(r.id, true)}' title="Chỉ thử luồng quy trình — không ghi lịch sử/bộ nhớ Xanax">${icon('flask')} Thử luồng</button>
       </div>` : '';
   const readyBadge = r.readyForNext
     ? `<span class="badge badge-green" title="Sẵn sàng chuyển sang quy trình/bước kế tiếp">${icon('arrowRight')} Sẵn sàng bước kế tiếp</span>` : '';
   return `
-    <div class="kanban-card" draggable="true" ondragstart="opsCardDragStart(event,${r.id})" onclick="openOpsDetails(${r.id})">
+    <div class="kanban-card" draggable="true" ondragstart="opsCardDragStart(event,${r.id})" data-click="openOpsDetails" data-click-args='${jattr(r.id)}'>
       <div class="kanban-card-title">${esc(r.workflowName)}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${OPS_OUTPUT_TYPES[r.outputType] || r.outputType} · ${esc(shortSummary)}</div>
       <div class="kanban-card-meta">

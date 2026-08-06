@@ -9,7 +9,7 @@ import { loadProjects } from './projects.js';
 import { loadSkills } from './skills.js';
 import { _syncRunnerIframe, _tabFromPath, switchTab } from './tabs.js';
 import { t } from './ui.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // Init
 // ════════════════════════════════════════
@@ -37,9 +37,9 @@ export function initAvatarPicker(selectedIconKey = 'bot', selectedColorKey = DEF
   const currentIcon = AVATAR_ICONS[selectedIconKey] ? selectedIconKey : 'bot';
   const currentColor = AVATAR_PALETTE.includes(selectedColorKey) ? selectedColorKey : DEFAULT_AVATAR;
   el.innerHTML = `<div class="avatar-picker-group"><div class="avatar-picker-label">Chọn hình đại diện</div><div class="avatar-shape-grid">` +
-    Object.keys(AVATAR_ICONS).map(key => `<div class="avatar-shape-opt${key===currentIcon?' selected':''}" data-avatar-icon="${key}" onclick="selectAvatarShape(this)" title="${AVATAR_ICON_LABEL[key]}">${avatarShape(key)}</div>`).join('') +
+    Object.keys(AVATAR_ICONS).map(key => `<div class="avatar-shape-opt${key===currentIcon?' selected':''}" data-avatar-icon="${key}" data-click="selectAvatarShape" data-click-args='${jattr("$el")}' title="${AVATAR_ICON_LABEL[key]}">${avatarShape(key)}</div>`).join('') +
     `</div></div><div class="avatar-picker-group"><div class="avatar-picker-label">Chọn màu nền</div><div class="avatar-picker-grid">` + AVATAR_PALETTE.map(key => `
-    <div class="avatar-opt${key===currentColor?' selected':''}" data-icon="${key}" onclick="selectAvatar(this)" title="${AVATAR_PALETTE_LABEL[key]}"
+    <div class="avatar-opt${key===currentColor?' selected':''}" data-icon="${key}" data-click="selectAvatar" data-click-args='${jattr("$el")}' title="${AVATAR_PALETTE_LABEL[key]}"
          style="background:${AVATAR_COLORS[key].bg};color:${AVATAR_COLORS[key].ink};">${avatarShape(currentIcon)}</div>
   `).join('') + `</div></div>`;
 }
@@ -76,13 +76,13 @@ export function renderAgentModelList() {
     el.innerHTML = agentModelIds.map((id, i) => {
       const m = modelPool.find(x => x.id === id);
       const label = m ? `${esc(m.name)} (${esc(m.model_id)})` : `Model #${id} (đã xoá khỏi pool)`;
-      const upBtn = i > 0 ? `<button class="btn btn-ghost btn-sm" onclick="moveAgentModel(${i},-1)" style="padding:2px 6px;" title="Ưu tiên hơn">↑</button>` : '';
-      const dnBtn = i < agentModelIds.length - 1 ? `<button class="btn btn-ghost btn-sm" onclick="moveAgentModel(${i},1)" style="padding:2px 6px;" title="Ưu tiên thấp hơn">↓</button>` : '';
+      const upBtn = i > 0 ? `<button class="btn btn-ghost btn-sm" data-click="moveAgentModel" data-click-args='${jattr(i, -1)}' style="padding:2px 6px;" title="Ưu tiên hơn">↑</button>` : '';
+      const dnBtn = i < agentModelIds.length - 1 ? `<button class="btn btn-ghost btn-sm" data-click="moveAgentModel" data-click-args='${jattr(i, 1)}' style="padding:2px 6px;" title="Ưu tiên thấp hơn">↓</button>` : '';
       return `<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg2);border-radius: 0;font-size:12px;">
         <span style="width:18px;height:18px;border-radius:50%;background:var(--cyan);color:#000;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
         ${upBtn}${dnBtn}
-        <button class="btn btn-ghost btn-sm" onclick="removeAgentModel(${i})" style="padding:2px 6px;color:var(--red);" title="Xoá khỏi danh sách">${icon('close')}</button>
+        <button class="btn btn-ghost btn-sm" data-click="removeAgentModel" data-click-args='${jattr(i)}' style="padding:2px 6px;color:var(--red);" title="Xoá khỏi danh sách">${icon('close')}</button>
       </div>`;
     }).join('');
   }

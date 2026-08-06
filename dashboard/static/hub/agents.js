@@ -7,7 +7,7 @@ import { showConfirm, showToast } from './modals.js';
 import { modelPool } from './model-pool.js';
 import { skills } from './skills.js';
 import { t } from './ui.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // State của tab Nhân viên. Các module khác đọc `agents` qua live binding
 // của ES module; chỉ file này được gán lại.
@@ -56,18 +56,19 @@ function renderDepartmentFilter() {
   const el = document.getElementById('agent-dept-filter');
   if (!el) return;
   if (!departments.length) { el.innerHTML = ''; return; }
-  const chip = (label, active, onclick, color) => `
-    <div onclick="${onclick}" class="badge ${active ? '' : 'badge-muted'}"
+  const chip = (label, active, deptId, color) => `
+    <div data-click="filterByDepartment" data-click-args='${jattr(deptId)}'
+         class="badge ${active ? '' : 'badge-muted'}"
          style="cursor:pointer;${active ? `background:${color}22;color:${color};` : ''}">${esc(label)}</div>`;
-  const all = chip(`Tất cả (${agents.length})`, selectedDeptFilter === null, 'filterByDepartment(null)', '#7C6BAE');
+  const all = chip(`Tất cả (${agents.length})`, selectedDeptFilter === null, null, '#7C6BAE');
   const rest = departments.map(d => {
     const count = agents.filter(a => a.department_id === d.id).length;
-    return chip(`${d.name} (${count})`, selectedDeptFilter === d.id, `filterByDepartment(${d.id})`, d.color);
+    return chip(`${d.name} (${count})`, selectedDeptFilter === d.id, d.id, d.color);
   }).join('');
   el.innerHTML = all + rest;
 }
 
-function filterByDepartment(deptId) {
+export function filterByDepartment(deptId) {
   selectedDeptFilter = deptId;
   renderDepartmentFilter();
   renderAgentList();
@@ -109,7 +110,7 @@ export function renderAgentList() {
     return;
   }
   el.innerHTML = list.map(a => `
-    <div class="agent-card" onclick="selectAgent(${a.id})">
+    <div class="agent-card" data-click="selectAgent" data-click-args='${jattr(a.id)}'>
       ${avatarHtml(a.avatar_color, a.name, 'avatar-lg', a.avatar_icon || 'bot')}
       <div class="agent-card-name">${esc(a.name)}</div>
       <div class="agent-card-role">${esc(a.role || 'Assistant')}</div>
@@ -153,8 +154,8 @@ function renderDepartmentModalList() {
         <div style="font-size:13px;font-weight:600;">${esc(d.name)}</div>
         <div style="font-size:11px;color:var(--muted);">${count} nhân viên${headTxt}${d.description ? ' · ' + esc(d.description) : ''}</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="editDepartment(${d.id})">Sửa</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteDepartmentConfirm(${d.id})">Xoá</button>
+      <button class="btn btn-ghost btn-sm" data-click="editDepartment" data-click-args='${jattr(d.id)}'>Sửa</button>
+      <button class="btn btn-danger btn-sm" data-click="deleteDepartmentConfirm" data-click-args='${jattr(d.id)}'>Xoá</button>
     </div>`;
   }).join('');
 }
@@ -295,7 +296,7 @@ export function renderAgentSkillsSelect(selectedIds) {
   if (!skills.length) { el.innerHTML = '<span style="font-size:12px;color:var(--muted);">No skills available</span>'; return; }
   const current = selectedIds !== undefined ? selectedIds : getSelectedAgentSkills();
   el.innerHTML = skills.map(s => `
-    <div onclick="toggleAgentSkill(${s.id}, this)" data-skill-id="${s.id}"
+    <div data-click="toggleAgentSkill" data-click-args='${jattr(s.id, "$el")}' data-skill-id="${s.id}"
          class="badge ${current.includes(s.id)?'badge-cyan':'badge-muted'}" style="cursor:pointer;">
       ${esc(s.name)}
     </div>`).join('');

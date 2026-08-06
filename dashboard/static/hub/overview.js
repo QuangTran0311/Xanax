@@ -7,7 +7,7 @@ import { meetings } from './meetings.js';
 import { projects } from './projects.js';
 import { skills } from './skills.js';
 import { switchTab } from './tabs.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // Overview / Home
 // ════════════════════════════════════════
@@ -53,7 +53,7 @@ function _renderHomeRuns(runs) {
   recentEl.innerHTML = runs.slice(0, 4).map(r => {
     const st = r.status || 'pending';
     const titleClass = st === 'completed' ? ' is-completed' : st === 'failed' ? ' is-failed' : '';
-    return `<div class="recent-run-row" onclick="switchTab('auto-runner')">
+    return `<div class="recent-run-row" data-click="switchTab" data-click-args='${jattr("auto-runner")}'>
       <span style="display:inline-flex;">${icon('sync')}</span>
       <span class="recent-run-name${titleClass}">${esc(r.task_name || 'Quy trình')}</span>
       <span class="recent-run-time">${_homeTime(r.started_at || r.created_at)}</span>

@@ -3,7 +3,7 @@ import { icon } from './icons.js';
 import { renderAgentModelList } from './init.js';
 import { closeModal, showConfirm, showToast } from './modals.js';
 import { t } from './ui.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // MODEL POOL
 // ════════════════════════════════════════
@@ -34,7 +34,7 @@ function renderModelList() {
     const tokPct = m.max_tokens_per_day   ? Math.min(100, ((u.tokens_input||0)+(u.tokens_output||0)) / m.max_tokens_per_day * 100) : 0;
     const barColor = reqPct >= 90 ? 'var(--red)' : reqPct >= 70 ? 'var(--amber)' : 'var(--cyan)';
     const isOff = !m.enabled;
-    return `<div class="mp-model-card${currentModelId===m.id?' selected':''}" onclick="selectModel(${m.id})">
+    return `<div class="mp-model-card${currentModelId===m.id?' selected':''}" data-click="selectModel" data-click-args='${jattr(m.id)}'>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
         <span class="cat-badge ${CAT_CLASS[m.category]||'cat-general'}">${CAT_LABEL[m.category]||m.category}</span>
         ${isOff ? '<span style="font-size:10px;color:var(--muted);">OFF</span>' : ''}

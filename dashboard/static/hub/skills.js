@@ -3,7 +3,7 @@ import { api } from './api.js';
 import { icon } from './icons.js';
 import { showConfirm, showToast } from './modals.js';
 import { t } from './ui.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // State của tab Kỹ năng — chỉ file này gán lại.
 export let skills = [];
@@ -90,7 +90,7 @@ export function renderSkillList() {
   const chip = (type, label) => {
     const active = selectedSkillTypeFilter === type;
     const count = type ? skills.filter(s => s.type === type).length : skills.length;
-    return `<span class="badge ${active ? (type ? `skill-type-${type}` : 'badge-green') : 'badge-muted'}" onclick="filterSkillsByType(${type ? `'${type}'` : 'null'})">${label} (${count})</span>`;
+    return `<span class="badge ${active ? (type ? `skill-type-${type}` : 'badge-green') : 'badge-muted'}" data-click="filterSkillsByType" data-click-args='${jattr(type ?? null)}'>${label} (${count})</span>`;
   };
   filter.innerHTML = chip(null, 'Tất cả') + Object.entries(SKILL_TYPE_LABELS).map(([type, label]) => chip(type, label)).join('');
   if (!list.length) {
@@ -107,7 +107,7 @@ function skillEnabledMeta(s) {
 
 function plainSkillCard(s) {
   return `
-    <div class="skill-card" onclick="selectSkill(${s.id})">
+    <div class="skill-card" data-click="selectSkill" data-click-args='${jattr(s.id)}'>
       <div class="skill-card-icon skill-type-${s.type}">${icon('bolt')}</div>
       <div class="skill-card-name">${esc(s.name)}</div>
       <div class="skill-card-description">${esc(s.description || 'Chưa có mô tả')}</div>
@@ -139,7 +139,7 @@ function mcpSkillCard(s) {
     ? (total && total !== tools.length ? `đang bật ${tools.length}/${total} tool` : `${tools.length} tool`)
     : 'Chưa kết nối';
   return `
-    <div class="skill-card skill-card-mcp" onclick="selectSkill(${s.id})">
+    <div class="skill-card skill-card-mcp" data-click="selectSkill" data-click-args='${jattr(s.id)}'>
       <div class="skill-mcp-head">
         <div class="skill-card-icon skill-type-mcp">${icon('bolt')}</div>
         <div class="skill-mcp-headings">
@@ -241,8 +241,8 @@ function renderConnOk(type, r) {
     mcpAvailableTools = tools.map(t => t.name);
     return head
       + `<div class="skill-conn-detail">Chọn những tool muốn giao cho nhân viên. Bỏ chọn bớt sẽ tiết kiệm token mỗi lượt gọi — mỗi tool được bật đều phải kèm schema vào request.
-           <a href="javascript:void(0)" onclick="toggleAllMcpTools(true)">Chọn tất cả</a> ·
-           <a href="javascript:void(0)" onclick="toggleAllMcpTools(false)">Bỏ chọn tất cả</a></div>`
+           <a href="javascript:void(0)" data-click="toggleAllMcpTools" data-click-args='${jattr(true)}'>Chọn tất cả</a> ·
+           <a href="javascript:void(0)" data-click="toggleAllMcpTools" data-click-args='${jattr(false)}'>Bỏ chọn tất cả</a></div>`
       + `<div class="skill-conn-tools" id="skill-mcp-tool-picker">${renderMcpToolPicker(tools)}</div>`;
   }
   const title = r.executed
@@ -262,7 +262,7 @@ function renderMcpToolPicker(tools) {
   return tools.map(t => `
     <label class="skill-conn-tool skill-conn-tool-pick${chosen.has(t.name) ? ' picked' : ''}">
       <input type="checkbox" ${chosen.has(t.name) ? 'checked' : ''}
-             onchange="toggleMcpTool(${JSON.stringify(t.name).replace(/"/g, '&quot;')}, this.checked)">
+             data-change="toggleMcpTool" data-change-args='${jattr(t.name, "$checked")}'>
       <span>
         <span class="skill-conn-tool-name">${esc(t.name)}</span>
         <span class="skill-conn-tool-desc">${esc((t.description || 'Không có mô tả').split('\n')[0])}</span>

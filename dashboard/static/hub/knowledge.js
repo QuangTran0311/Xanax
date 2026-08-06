@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { closeModal, showConfirm, showToast } from './modals.js';
 import { closeProjectDetail, currentProjectId, loadProjects, projects } from './projects.js';
 import { t } from './ui.js';
-import { esc, renderOutputContent } from './utils.js';
+import { esc, jattr, renderOutputContent } from './utils.js';
 
 // KNOWLEDGE DOCUMENTS (RAG "phòng tư liệu")
 // ════════════════════════════════════════
@@ -25,8 +25,8 @@ async function loadKnowledgeDocs(pid) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div style="font-weight:600;font-size:13px;">${esc(d.title)}</div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button class="btn btn-ghost btn-sm" onclick="openKnowledgeModal(${d.id})">Sửa</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteKnowledgeDoc(${d.id})">Xoá</button>
+          <button class="btn btn-ghost btn-sm" data-click="openKnowledgeModal" data-click-args='${jattr(d.id)}'>Sửa</button>
+          <button class="btn btn-danger btn-sm" data-click="deleteKnowledgeDoc" data-click-args='${jattr(d.id)}'>Xoá</button>
         </div>
       </div>
       ${d.tags ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${icon('tag')} ${esc(d.tags)}</div>` : ''}
@@ -122,12 +122,12 @@ function renderOutputItem(o) {
     </div>
     <div class="output-content" id="oc-${o.id}" contenteditable="false">${content}</div>
     <div class="output-actions">
-      <button class="btn btn-sm btn-pass${pf==='pass'?' selected':''}" ${pf?'disabled':''} ${pf&&pf!=='pass'?'style="display:none"':''} onclick="setOutputPF(${o.id},'pass',this)">${icon('check')} Đạt</button>
-      <button class="btn btn-sm btn-fail${pf==='fail'?' selected':''}" ${pf?'disabled':''} ${pf&&pf!=='fail'?'style="display:none"':''} onclick="setOutputPF(${o.id},'fail',this)">${icon('close')} Không đạt</button>
-      <button class="btn btn-sm btn-ghost" onclick="toggleOutputEdit(${o.id},this)">${icon('edit')} Sửa</button>
-      <button class="btn btn-sm btn-ghost" onclick="copyOutput(${o.id})" title="Sao chép">${icon('document')}</button>
+      <button class="btn btn-sm btn-pass${pf==='pass'?' selected':''}" ${pf?'disabled':''} ${pf&&pf!=='pass'?'style="display:none"':''} data-click="setOutputPF" data-click-args='${jattr(o.id, "pass", "$el")}'>${icon('check')} Đạt</button>
+      <button class="btn btn-sm btn-fail${pf==='fail'?' selected':''}" ${pf?'disabled':''} ${pf&&pf!=='fail'?'style="display:none"':''} data-click="setOutputPF" data-click-args='${jattr(o.id, "fail", "$el")}'>${icon('close')} Không đạt</button>
+      <button class="btn btn-sm btn-ghost" data-click="toggleOutputEdit" data-click-args='${jattr(o.id, "$el")}'>${icon('edit')} Sửa</button>
+      <button class="btn btn-sm btn-ghost" data-click="copyOutput" data-click-args='${jattr(o.id)}' title="Sao chép">${icon('document')}</button>
     </div>
-    <textarea class="output-notes" placeholder="Ghi chú / phản hồi..." onchange="saveOutputNotes(${o.id},this.value)">${esc(o.notes||'')}</textarea>
+    <textarea class="output-notes" placeholder="Ghi chú / phản hồi..." data-change="saveOutputNotes" data-change-args='${jattr(o.id, "$value")}'>${esc(o.notes||'')}</textarea>
   </div>`;
 }
 
@@ -210,7 +210,7 @@ function renderKanban(items) {
         <div class="kanban-cards" id="col-${col.key}">
           ${colItems.map(i => renderCard(i)).join('')}
         </div>
-        <button class="kanban-add-btn" onclick="openCardModal(null, '${col.key}')">${t('tasks.add_item')}</button>
+        <button class="kanban-add-btn" data-click="openCardModal" data-click-args='${jattr(null, col.key)}'>${t('tasks.add_item')}</button>
       </div>`;
   }).join('');
 }
@@ -226,7 +226,7 @@ function renderCard(item) {
     ? `<span class="badge badge-amber" title="${t('tasks.unassigned_tip')}">${icon('warning')} ${t('tasks.unassigned')}</span>`
     : '';
   return `
-    <div class="kanban-card${needsAssign ? ' kanban-card-unassigned' : ''}" onclick="openCardModal(${item.id})">
+    <div class="kanban-card${needsAssign ? ' kanban-card-unassigned' : ''}" data-click="openCardModal" data-click-args='${jattr(item.id)}'>
       <div class="kanban-card-title">${esc(item.title)}</div>
       <div class="kanban-card-meta">
         <span class="badge ${priClass}">${item.priority}</span>
@@ -379,7 +379,7 @@ function renderMatchSection(result) {
         <div class="match-score-bar"><div class="match-score-fill" style="width:${c.score}%;"></div></div>
         <div class="match-score-text">${Math.round(c.score)}</div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="assignFromSuggestion(${c.agent_id}, '${esc(c.agent_name)}')" title="${t('tasks.assign_now')}">
+      <button class="btn btn-primary btn-sm" data-click="assignFromSuggestion" data-click-args='${jattr(c.agent_id, c.agent_name)}' title="${t('tasks.assign_now')}">
         ${t('tasks.assign_now')}
       </button>
     </div>`).join('');

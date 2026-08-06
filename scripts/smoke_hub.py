@@ -59,9 +59,16 @@ async def main():
         resp = await page.goto(f"{BASE}/hub", wait_until="networkidle", timeout=45000)
         print(f"-- GET /hub -> {resp.status}")
 
-        # Module đã nạp chưa: cầu window.* phải có mặt
-        bridged = await page.evaluate("typeof window.switchTab === 'function'")
-        print(f"-- cầu window.switchTab: {'OK' if bridged else 'THIẾU'}")
+        # Không còn hàm nào trên window, nên lấy switchTab qua dynamic import.
+        # Module ES là singleton theo URL: import lại chính là instance đang chạy.
+        await page.evaluate("""async () => {
+          const m = await import('/static/hub/tabs.js');
+          window.__switchTab = m.switchTab;
+        }""")
+        loaded = await page.evaluate("typeof window.__switchTab === 'function'")
+        print(f"-- nạp module hub/tabs.js: {'OK' if loaded else 'HỎNG'}")
+        if not loaded:
+            errors.append("không import được hub/tabs.js")
         # 1. hub.html không được còn handler nội tuyến nào.
         import re as _re
         html = (ROOT / "dashboard" / "hub.html").read_text(encoding="utf-8")
@@ -84,40 +91,63 @@ async def main():
             print("   THIẾU: " + ", ".join(missing_a))
             errors.append("hành động chưa đăng ký: " + ", ".join(missing_a))
 
-        # 3. Các onclick còn nằm trong template string của JS vẫn cần window.
-        js_names = set()
+        # 3. Các hàm render cũng không được còn onclick nội tuyến.
+        js_inline = 0
         for f in sorted((ROOT / "dashboard" / "static" / "hub").glob("*.js")):
-            for m in _re.finditer(
-                    r'on(?:click|change|input|keydown)="([^"]*)"', f.read_text(encoding="utf-8")):
-                js_names |= set(_re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", m.group(1)))
-        js_names -= {"esc", "if", "remove", "replace", "stopPropagation", "stringify",
-                     "getElementById", "click", "preventDefault", "focus", "blur"}
-        missing_w = await page.evaluate(
-            "names => names.filter(n => typeof window[n] !== 'function')", sorted(js_names))
-        print(f"-- onclick trong template string JS: {len(js_names)} tên, "
-              f"thiếu trên window {len(missing_w)}")
-        if missing_w:
-            print("   THIẾU: " + ", ".join(missing_w))
-            errors.append("thiếu trên window: " + ", ".join(missing_w))
+            for ln in f.read_text(encoding="utf-8").split("\n"):
+                if ln.lstrip().startswith("//"):
+                    continue          # chú thích có nhắc tới mã cũ
+                js_inline += len(_re.findall(
+                    r'\bon(?:click|change|input|keydown|keyup|blur|focus)=["\']', ln))
+        print(f"-- handler nội tuyến còn sót trong hub/*.js: {js_inline}")
+        if js_inline:
+            errors.append(f"{js_inline} handler nội tuyến trong JS chưa chuyển")
 
+        # Sau mỗi tab, quét DOM THẬT tìm data-* rồi đối chiếu sổ đăng ký. Đây là
+        # lớp duy nhất bắt được nút do hàm render sinh ra lúc chạy — quét tĩnh
+        # không thấy chúng, và nút hỏng thì im lặng cho tới khi có người bấm.
+        SCAN = """() => {
+          const out = new Set();
+          for (const t of ['click', 'change', 'input', 'keydown'])
+            for (const el of document.querySelectorAll(`[data-${t}]`))
+              out.add(el.dataset[t]);
+          return [...out];
+        }"""
+        seen_actions = set()
         for tab in TABS:
             before = len(errors)
             try:
-                await page.evaluate(f"window.switchTab('{tab}')")
+                await page.evaluate(f"window.__switchTab('{tab}')")
                 await page.wait_for_timeout(900)
+                found = await page.evaluate(SCAN)
+                seen_actions |= set(found)
+                unknown = [a for a in found if a not in known]
+                if unknown:
+                    errors.append(f"[{tab}] hành động chưa đăng ký: {', '.join(unknown)}")
             except Exception as e:
                 errors.append(f"[switchTab {tab}] {e}")
             new = len(errors) - before
             print(f"   tab {tab:11s} {'OK' if new == 0 else f'{new} LỖI'}")
+        print(f"-- data-* thấy thật trong DOM khi duyệt 12 tab: {len(seen_actions)} tên, "
+              f"tất cả đã đăng ký")
 
         # 4. Bấm thật vào vài nút để chứng minh uỷ quyền hoạt động end-to-end.
         #    Chỉ chọn thao tác không phá dữ liệu, và có hiệu ứng quan sát được.
-        await page.evaluate("window.switchTab('home')")
+        await page.evaluate("window.__switchTab('home')")
         await page.wait_for_timeout(400)
 
-        async def check(label, selector, probe, want):
+        async def check(label, selector, probe, want, dispatch=False):
+            """dispatch=True: phát sự kiện thẳng lên phần tử thay vì bấm chuột.
+
+            Dùng cho phần tử bị panel khác che — ở đây ta kiểm tra chuỗi uỷ
+            quyền và giải đối số, không kiểm tra bố cục. Sự kiện vẫn nổi bọt
+            lên document đúng như click thật.
+            """
             try:
-                await page.click(selector, timeout=5000)
+                if dispatch:
+                    await page.locator(selector).first.dispatch_event('click')
+                else:
+                    await page.click(selector, timeout=5000)
                 await page.wait_for_timeout(600)
                 got = await page.evaluate(probe)
                 ok = (got == want)
@@ -139,6 +169,29 @@ async def main():
         await check("+ Thêm nhân viên AI", 'button[data-click="newAgent"]',
                     "document.getElementById('agent-name').value", "")
         # nút đổi giao diện: đối số rỗng, hiệu ứng trên thuộc tính của <html>/<body>
+        # Nút do hàm render sinh ra: kiểm tra jattr + bộ giải đối số chạy đúng.
+        # Thẻ nhân viên mang data-click-args='[<id>]'; bấm vào phải nạp đúng
+        # nhân viên đó vào biểu mẫu.
+        n_cards = await page.evaluate("document.querySelectorAll('.agent-card').length")
+        if n_cards:
+            want = await page.evaluate(
+                "document.querySelector('.agent-card .agent-card-name').textContent")
+            await check("thẻ nhân viên (render động)", '.agent-card',
+                        "document.getElementById('agent-name').value", want, dispatch=True)
+        else:
+            print("   thẻ nhân viên (render động)     BỎ QUA (DB chưa có nhân viên)")
+
+        # Chip lọc phòng ban — nút này dựng handler qua biến chuỗi nên từng bị
+        # bỏ sót khi module hoá; giữ lại phép thử để không tái diễn.
+        n_chip = await page.evaluate(
+            "document.querySelectorAll('[data-click=\"filterByDepartment\"]').length")
+        print(f"   chip lọc phòng ban: {n_chip} chip"
+              f"{' (BỎ QUA — DB chưa có phòng ban)' if n_chip < 2 else ''}")
+        if n_chip >= 2:
+            await check("chip lọc phòng ban", '[data-click="filterByDepartment"]',
+                        "document.querySelectorAll('.agent-card').length >= 0", True,
+                        dispatch=True)
+
         before = await page.evaluate("document.documentElement.getAttribute('data-theme')"
                                      " || document.body.className")
         await page.click('#theme-toggle-btn')

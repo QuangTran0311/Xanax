@@ -3,7 +3,7 @@ import { icon } from './icons.js';
 import { openProjectModal } from './knowledge.js';
 import { meetings, renderMeetingList } from './meetings.js';
 import { opsRenderSubTab } from './ops.js';
-import { esc } from './utils.js';
+import { esc, jattr } from './utils.js';
 
 // State của tab Dự án — chỉ file này gán lại.
 export let projects = [];
@@ -34,7 +34,7 @@ function renderProjectGrid() {
     return;
   }
   grid.innerHTML = list.map(p => `
-    <div class="proj-card" onclick="openProjectDetail(${p.id})">
+    <div class="proj-card" data-click="openProjectDetail" data-click-args='${jattr(p.id)}'>
       <div class="proj-card-name">${esc(p.name)}</div>
       <div class="proj-card-desc">${esc(p.description || '')}</div>
       <div class="proj-card-stats">
