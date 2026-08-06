@@ -1,4 +1,7 @@
-"""Smoke test trang /hub: nạp thật bằng Chromium, đi qua từng tab, thu lỗi.
+"""Smoke test frontend: nạp thật bằng Chromium, đi qua từng tab, thu lỗi.
+
+Phủ /hub (12 tab, sổ hành động, tương tác thật) và ba trang còn lại
+(/workspace, /taskrunner, /login).
 
 Vì sao cần
 ----------
@@ -204,6 +207,33 @@ async def main():
             errors.append("nút đổi giao diện không có hiệu lực")
         else:
             await page.click('#theme-toggle-btn')   # trả lại như cũ
+
+        # 5. Ba trang còn lại cũng vừa được tách CSS/JS ra file — nạp thử.
+        print("-- các trang khác:")
+        for path in ("/workspace", "/taskrunner"):
+            before = len(errors)
+            r = await page.goto(f"{BASE}{path}", wait_until="networkidle", timeout=45000)
+            await page.wait_for_timeout(800)
+            new = len(errors) - before
+            print(f"   {path:14s} {r.status}  {'OK' if new == 0 else f'{new} LỖI'}")
+
+        # /login phải xem bằng phiên CHƯA đăng nhập, nếu không server đá về /hub
+        anon = await browser.new_context()
+        apage = await anon.new_page()
+        anon_errors = []
+        apage.on("pageerror", lambda e: anon_errors.append(f"[pageerror] {e}"))
+        apage.on("console", lambda m: anon_errors.append(f"[console.error] {m.text}")
+                 if m.type == "error" else None)
+        r = await apage.goto(f"{BASE}/login", wait_until="networkidle", timeout=45000)
+        await apage.wait_for_timeout(600)
+        has_form = await apage.evaluate(
+            "!!document.querySelector('input[type=password]')")
+        print(f"   {'/login':14s} {r.status}  "
+              f"{'OK' if not anon_errors and has_form else 'LỖI'}")
+        errors.extend(anon_errors)
+        if not has_form:
+            errors.append("/login không dựng được form đăng nhập")
+        await anon.close()
 
         await browser.close()
 
