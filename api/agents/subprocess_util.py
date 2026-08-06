@@ -17,6 +17,7 @@ async def stream_proc(
     cmd: list[str],
     cwd: str | None = None,
     stdin_data: bytes | None = None,
+    env: dict[str, str] | None = None,
 ) -> AsyncIterator[tuple[str, str]]:
     """
     Run *cmd* in a thread and yield (tag, line) pairs:
@@ -27,6 +28,11 @@ async def stream_proc(
 
     stdin_data: if provided, written to process stdin then stdin is closed.
                 If None, stdin is DEVNULL.
+    env:        full environment for the child. If None, the child inherits
+                ours — which lets a stray ANTHROPIC_BASE_URL/OPENAI_BASE_URL in
+                the server's environment silently route the CLI through a
+                gateway. Callers that care pass a scrubbed env (see
+                core.cli_provider.build_clean_env).
     """
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
@@ -51,6 +57,7 @@ async def stream_proc(
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
                 cwd=cwd,
+                env=env,
             )
 
             if stdin_data is not None:

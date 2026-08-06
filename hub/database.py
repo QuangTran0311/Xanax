@@ -627,6 +627,7 @@ async def _run_migrations(db) -> None:
             model_id             TEXT    NOT NULL,
             base_url             TEXT    NOT NULL DEFAULT '',
             api_key              TEXT    NOT NULL DEFAULT '',
+            cli_config_dir       TEXT    NOT NULL DEFAULT '',
             category             TEXT    NOT NULL DEFAULT 'general',
             max_requests_per_day INTEGER NOT NULL DEFAULT 0,
             max_tokens_per_day   INTEGER NOT NULL DEFAULT 0,
@@ -762,6 +763,11 @@ async def _run_migrations(db) -> None:
         "ALTER TABLE workflow_runs ADD COLUMN last_action_test INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE ops_history ADD COLUMN run_id INTEGER",
         "ALTER TABLE model_pool ADD COLUMN api_style TEXT NOT NULL DEFAULT 'openai_compat'",
+        # Model chạy qua CLI (api_style claude_cli/codex_cli) không dùng base_url/api_key.
+        # Thay vào đó nó cần thư mục tài khoản của CLI — mỗi gói thuê bao một thư mục,
+        # đó là cách chạy nhiều tài khoản song song trên cùng một máy.
+        # Để trống = dùng tài khoản mặc định (~/.claude, ~/.codex).
+        "ALTER TABLE model_pool ADD COLUMN cli_config_dir TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE model_pool ADD COLUMN price_cache_per_1m REAL NOT NULL DEFAULT 0",
         "ALTER TABLE model_usage ADD COLUMN tokens_cache INTEGER NOT NULL DEFAULT 0",
         # Slug cố định để đặt tên folder lưu trữ kết quả quy trình theo dự án
@@ -1898,15 +1904,18 @@ async def create_model_pool_entry(
     price_cache_per_1m: float = 0,
     price_output_per_1m: float = 0,
     currency: str = "USD",
+    cli_config_dir: str = "",
 ) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "INSERT INTO model_pool (name,provider,api_style,model_id,base_url,api_key,category,"
-            "max_requests_per_day,max_tokens_per_day,price_input_per_1m,price_cache_per_1m,price_output_per_1m,currency) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "max_requests_per_day,max_tokens_per_day,price_input_per_1m,price_cache_per_1m,price_output_per_1m,currency,"
+            "cli_config_dir) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, provider, api_style, model_id, base_url, api_key, category,
              max_requests_per_day, max_tokens_per_day,
-             price_input_per_1m, price_cache_per_1m, price_output_per_1m, currency),
+             price_input_per_1m, price_cache_per_1m, price_output_per_1m, currency,
+             cli_config_dir),
         )
         await db.commit()
         return cur.lastrowid
@@ -1934,7 +1943,8 @@ async def get_model_pool_entry(entry_id: int) -> dict | None:
 async def update_model_pool_entry(entry_id: int, **kwargs) -> bool:
     allowed = {"name", "provider", "api_style", "model_id", "base_url", "api_key", "category",
                "max_requests_per_day", "max_tokens_per_day", "enabled",
-               "price_input_per_1m", "price_cache_per_1m", "price_output_per_1m", "currency"}
+               "price_input_per_1m", "price_cache_per_1m", "price_output_per_1m", "currency",
+               "cli_config_dir"}
     fields, values = [], []
     for k, v in kwargs.items():
         if k in allowed:

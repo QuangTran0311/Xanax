@@ -22,6 +22,30 @@ from hub.database import (
 
 logger = logging.getLogger("xanax.model_pool_bridge")
 
+# Các api_style chạy bằng tiến trình CLI (gói thuê bao) thay vì HTTP tới provider.
+# Entry kiểu này không dùng base_url/api_key — xác thực nằm trong thư mục tài
+# khoản của CLI (cột cli_config_dir), nên không có key nào để rò rỉ.
+CLI_API_STYLES = ("claude_cli", "codex_cli")
+
+# Chỉ hai kiểu này truyền được tools[] theo JSON Schema xuống model (xem
+# stream_from_pool). Kỹ năng loại 'api'/'mcp'/'builtin' của nhân viên đều thành
+# tool, nên nhân viên nào sống bằng kỹ năng đó thì BẮT BUỘC phải chạy trên một
+# trong hai kiểu này.
+TOOL_CAPABLE_API_STYLES = ("openai_compat", "openai_native")
+
+
+def _can_call_tools(entry: dict, skill_ids: list[int] | None) -> bool:
+    """Model này có thật sự gọi được công cụ của nhân viên không.
+
+    `claude_cli` gọi được nhờ cầu nối MCP (mcp_servers/xanax_skills.py), nhưng
+    chỉ khi biết nhân viên có kỹ năng nào — không có skill_ids thì không dựng
+    được cấu hình MCP. `codex_cli` chưa có cầu nối nên vẫn nằm ngoài.
+    """
+    api_style = entry.get("api_style") or "openai_compat"
+    if api_style in TOOL_CAPABLE_API_STYLES:
+        return True
+    return api_style == "claude_cli" and bool(skill_ids)
+
 
 class LimitExceededError(Exception):
     """Raised when a model's daily limit has been reached."""
@@ -72,6 +96,7 @@ async def stream_from_pool(
     model_pool_id: int,
     messages: list[dict],
     tools: list[dict] | None = None,
+    skill_ids: list[int] | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a completion from the model pool entry identified by model_pool_id.
@@ -99,6 +124,13 @@ async def stream_from_pool(
     try:
         if api_style in ("openai_compat", "openai_native"):
             agen = _stream_openai(base_url, api_key, model_id, messages, usage_state, tools)
+        elif api_style in CLI_API_STYLES:
+            if tools and not (api_style == "claude_cli" and skill_ids):
+                logger.warning(
+                    "Model %s chạy qua CLI; CLI có bộ công cụ riêng nên không nhận tools[] theo JSON Schema. Bỏ qua tools.",
+                    model_id,
+                )
+            agen = _stream_cli(api_style, model_id, messages, usage_state, entry, skill_ids)
         elif api_style == "anthropic_native":
             if tools:
                 logger.warning(
@@ -147,13 +179,21 @@ async def stream_from_agent_models(
     model_pool_ids: list[int],
     messages: list[dict],
     tools: list[dict] | None = None,
+    skill_ids: list[int] | None = None,
 ) -> AsyncIterator[str]:
     """Thử lần lượt các model theo đúng thứ tự ưu tiên đã cấu hình cho nhân viên
     (tab Nhân sự). Nếu 1 model lỗi trước khi có nội dung đầu tiên (hết quota,
     lỗi kết nối, bị vô hiệu hoá...) thì tự động chuyển sang model kế tiếp trong
     danh sách. Đã bắt đầu nhận nội dung thì không đổi model giữa chừng.
+
+    Khi có `tools`, model không gọi được công cụ sẽ bị BỎ QUA chứ không phải
+    dùng-rồi-lặng-lẽ-bỏ-tools. Sự cố thật: nhân viên đăng Facebook (kỹ năng loại
+    'api') được gán toàn model CLI; tool bị bỏ nên không có request nào tới
+    Facebook, nhưng nhân viên vẫn sinh ra chữ và bước quy trình báo "Đã chạy
+    xong". Người dùng chỉ phát hiện khi mở fanpage ra xem.
     """
     last_err: Exception | None = None
+    skipped_no_tools: list[str] = []
     for raw_id in model_pool_ids or []:
         try:
             entry = await anext(iter_usable_pool_entries([raw_id]), None)
@@ -168,8 +208,16 @@ async def stream_from_agent_models(
         if entry is None:
             continue
 
+        if tools and not _can_call_tools(entry, skill_ids):
+            skipped_no_tools.append(f"{entry['name']} ({entry.get('api_style')})")
+            logger.info(
+                "Bỏ qua model %s vì nhân viên cần gọi công cụ mà kiểu kết nối này không hỗ trợ",
+                entry["name"],
+            )
+            continue
+
         pid = entry["id"]
-        gen = stream_from_pool(pid, messages, tools)
+        gen = stream_from_pool(pid, messages, tools, skill_ids)
         try:
             first_chunk = await gen.__anext__()
         except StopAsyncIteration:
@@ -182,6 +230,14 @@ async def stream_from_agent_models(
         async for chunk in gen:
             yield chunk
         return
+    if skipped_no_tools:
+        raise RuntimeError(
+            "Nhân viên này có kỹ năng cần gọi công cụ (loại 'api'/'mcp'), nhưng mọi model "
+            "được gán đều không hỗ trợ tool-calling: " + ", ".join(skipped_no_tools)
+            + ". Hãy gán thêm cho nhân viên này một model kiểu 'Qua Subscription' hoặc "
+            "'Qua Provider API chính chủ' (OpenAI-compatible). Model chạy qua CLI gói thuê "
+            "bao không gọi được công cụ nên không làm được việc này."
+        )
     raise last_err or RuntimeError("Không có model nào trong danh sách ưu tiên của nhân viên khả dụng")
 
 
@@ -257,6 +313,7 @@ async def _stream_openai(
         return
 
     from core.hermes.tool_registry import tool_registry
+    from core.skill_tools import record_tool_invocation
 
     tool_calls = []
     tool_messages = []
@@ -266,6 +323,10 @@ async def _stream_openai(
         name = call["function"]["name"]
         raw_args = call["function"]["arguments"] or "{}"
         tool_calls.append(call)
+        # Ghi sổ TRƯỚC khi chạy: một lời gọi có xảy ra là sự thật, bất kể nó
+        # thành công hay ném lỗi. Ghi sau khối try thì lần gọi hỏng sẽ biến mất
+        # khỏi sổ và bước lại trông như "chưa hề gọi".
+        record_tool_invocation(name)
         try:
             args = json.loads(raw_args)
             if not isinstance(args, dict):
@@ -300,6 +361,35 @@ async def _stream_openai(
         next_tools,
         _tool_round + 1,
     ):
+        yield text
+
+
+async def _stream_cli(
+    api_style: str,
+    model_id: str,
+    messages: list[dict],
+    usage_state: dict,
+    entry: dict,
+    skill_ids: list[int] | None = None,
+) -> AsyncIterator[str]:
+    """Stream qua CLI của gói thuê bao — không đụng tới provider bên thứ 3.
+
+    CLI tự báo số token thật trong sự kiện kết thúc, nên `usage_state` được ghi
+    đè bằng số đo thật thay vì ước lượng theo ký tự ở `stream_from_pool`.
+    """
+    from core.cli_provider import stream_claude_cli, stream_codex_cli
+
+    config_dir = (entry.get("cli_config_dir") or "").strip() or None
+
+    if api_style == "claude_cli":
+        # Kỹ năng của nhân viên đi xuống qua MCP (xem mcp_servers/xanax_skills.py).
+        async for text in stream_claude_cli(
+            model_id, messages, usage_state, config_dir, skill_ids=skill_ids
+        ):
+            yield text
+        return
+
+    async for text in stream_codex_cli(model_id, messages, usage_state, config_dir):
         yield text
 
 
@@ -409,6 +499,22 @@ async def test_model_connection(model_pool_id: int) -> dict:
     headers  = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+
+    api_style_pre = entry.get("api_style") or "openai_compat"
+    if api_style_pre in CLI_API_STYLES:
+        # Không có HTTP nào để thử — chạy thẳng CLI một câu ngắn. Đây cũng là
+        # phép kiểm "gói còn đăng nhập không", vì CLI hết phiên sẽ báo lỗi ở đây.
+        probe = [{"role": "user", "content": "Trả lời đúng 2 từ: đang hoạt động"}]
+        usage_state = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
+        try:
+            reply = "".join(
+                [chunk async for chunk in _stream_cli(api_style_pre, model_id, probe, usage_state, entry)]
+            )
+            if not reply.strip():
+                return {"ok": False, "error": "CLI chạy xong nhưng không trả về chữ nào"}
+            return {"ok": True, "reply": reply.strip()[:100]}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:300]}
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:

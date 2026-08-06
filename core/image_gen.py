@@ -211,6 +211,16 @@ async def generate_image(
     from PIL import Image
     import io
 
+    # Model chạy qua CLI cố tình để trống base_url (xác thực nằm ở thư mục tài
+    # khoản, không có endpoint). Không chặn sớm thì httpx nhận URL tương đối và
+    # báo "Request URL is missing an 'http://' or 'https://' protocol" — lỗi đó
+    # nói về giao thức chứ không nói ra rằng model này vốn không sinh được ảnh.
+    if not (base_url or "").strip():
+        raise ImageGenError(
+            f"Model '{model}' không có endpoint sinh ảnh. Model chạy qua CLI gói thuê bao "
+            "chỉ sinh được chữ — cần một image model riêng để tạo ảnh."
+        )
+
     url = _build_image_url(base_url)
     payload = {"model": model, "prompt": prompt, "n": 1}
 

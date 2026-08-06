@@ -25,6 +25,7 @@ import sys
 from typing import AsyncIterator
 
 from api.agents.subprocess_util import stream_proc
+from core.cli_provider import build_clean_env
 
 logger = logging.getLogger("xanax.agents.codex")
 
@@ -58,7 +59,11 @@ async def run(prompt: str, cwd: str | None = None) -> AsyncIterator[dict]:
     had_error = False
 
     try:
-        async for tag, data in stream_proc(cmd, stdin_data=stdin_bytes):
+        # env đã xoá OPENAI_*/ANTHROPIC_* để CLI dùng đăng nhập gói, không bị
+        # một biến sót lại trong môi trường server đẩy sang endpoint bên thứ 3.
+        async for tag, data in stream_proc(
+            cmd, stdin_data=stdin_bytes, env=build_clean_env()
+        ):
             if tag == "stdout":
                 try:
                     obj = json.loads(data)

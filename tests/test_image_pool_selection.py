@@ -237,3 +237,106 @@ def test_records_usage_for_successful_fallback_model(monkeypatch, tmp_path):
         "hourly": [(10, 12, 34, 5)],
         "call_log": [(10, 12, 34, 5)],
     }
+
+
+# ── Model chạy qua CLI ────────────────────────────────────────────────────────
+#
+# `claude`/`codex` CLI chỉ sinh chữ. Entry CLI cố tình để trống base_url (xác
+# thực nằm ở thư mục tài khoản), nên nếu đường tạo ảnh vẫn thử chúng thì httpx
+# nhận URL tương đối và văng "Request URL is missing an 'http://' or 'https://'
+# protocol" — thông báo nói về giao thức, che mất nguyên nhân thật.
+
+
+def _cli_pool(pool_id, name="Model CLI", api_style="claude_cli", **overrides):
+    return _pool(pool_id, name=name, base_url="", api_key="",
+                 api_style=api_style, **overrides)
+
+
+def test_skips_cli_models_when_generating_image(monkeypatch, tmp_path):
+    pools = {9: _cli_pool(9), 10: _pool(10, name="Model ảnh")}
+    result, events, _, generated, _, _, usage_records = _run_image_step(
+        monkeypatch, tmp_path, pools, model_pool_ids=[9, 10])
+
+    assert result is not None
+    assert [c["model"] for c in generated] == ["m-10"], "không được gọi model CLI để tạo ảnh"
+    assert not any(e["type"] == "agent_error" for e in events)
+    assert usage_records["daily"] == [(10, 0, 0, 0)]
+
+
+def test_only_cli_models_gives_actionable_error(monkeypatch, tmp_path):
+    """Nhân viên chỉ có model CLI: phải nói rõ cần thêm image model, chứ không
+    phải để lỗi giao thức của httpx lọt ra giao diện."""
+    pools = {9: _cli_pool(9, name="Haiku qua CLI"), 10: _cli_pool(10, name="Sonnet qua CLI")}
+    result, events, updates, generated, elapsed, sleep_delays, _ = _run_image_step(
+        monkeypatch, tmp_path, pools, model_pool_ids=[9, 10])
+
+    assert result is None
+    assert generated == [], "không được gọi generate_image với base_url rỗng"
+    assert elapsed < 1 and sleep_delays == [], "hỏng chắc chắn thì fail nhanh, đừng chờ retry"
+
+    errors = [e["content"] for e in events if e["type"] == "agent_error"]
+    assert errors, "phải báo lỗi ra phòng họp"
+    msg = errors[0]
+    assert "Codex CLI" in msg, "phải chỉ ra lối thoát không tốn tiền"
+    assert "Haiku qua CLI" in msg, "phải nêu tên model bị bỏ qua"
+    assert "protocol" not in msg.lower(), "không được để lộ lỗi giao thức của httpx"
+    assert updates[-1][1]["review_status"] == "failed"
+
+
+def test_cli_model_mixed_with_failing_image_model_reports_both(monkeypatch, tmp_path):
+    pools = {9: _cli_pool(9, name="Claude qua CLI"), 10: _pool(10, name="Model ảnh")}
+    result, events, _, _, _, _, _ = _run_image_step(
+        monkeypatch, tmp_path, pools, model_pool_ids=[9, 10], failing_models={"m-10"})
+
+    assert result is None
+    msg = [e["content"] for e in events if e["type"] == "agent_error"][0]
+    assert "m-10" in msg, "vẫn phải nêu lỗi thật của model ảnh"
+    assert "Claude qua CLI" in msg, "và nói đã bỏ qua model CLI nào"
+
+
+# ── Codex CLI sinh được ảnh ───────────────────────────────────────────────────
+#
+# Codex có skill hệ thống `imagegen` (bật bằng --enable image_generation), chạy
+# bằng gói ChatGPT. Nên KHÔNG được gộp nó chung với claude_cli để bỏ qua —
+# gộp là bắt người dùng đi mua image model một cách vô ích.
+
+
+def test_codex_cli_is_used_for_image_generation(monkeypatch, tmp_path):
+    called = {}
+
+    async def fake_codex_image(prompt, save_path, model_id="", codex_home=None, ratio=(4, 5)):
+        called.update(prompt=prompt, model_id=model_id, codex_home=codex_home, ratio=ratio)
+        save_path.write_bytes(b"png")
+        return save_path
+
+    monkeypatch.setattr("core.cli_provider.generate_image_via_codex", fake_codex_image)
+
+    pools = {9: _cli_pool(9, name="GPT-5.5 qua CLI", api_style="codex_cli",
+                          cli_config_dir="C:/codex-accounts/acc-fe")}
+    result, events, _, generated, _, _, _ = _run_image_step(
+        monkeypatch, tmp_path, pools, model_pool_ids=[9])
+
+    assert result is not None, "phải tạo được ảnh bằng Codex CLI"
+    assert generated == [], "không được đi đường HTTP /images/generations"
+    assert called["model_id"] == "m-9"
+    assert called["codex_home"] == "C:/codex-accounts/acc-fe"
+    assert not any(e["type"] == "agent_error" for e in events)
+
+
+def test_claude_cli_still_skipped_but_codex_takes_over(monkeypatch, tmp_path):
+    """Nhân viên có cả hai: Claude CLI bị bỏ qua, Codex CLI gánh phần ảnh."""
+    async def fake_codex_image(prompt, save_path, model_id="", codex_home=None, ratio=(4, 5)):
+        save_path.write_bytes(b"png")
+        return save_path
+
+    monkeypatch.setattr("core.cli_provider.generate_image_via_codex", fake_codex_image)
+
+    pools = {
+        9: _cli_pool(9, name="Haiku qua CLI", api_style="claude_cli"),
+        10: _cli_pool(10, name="GPT-5.5 qua CLI", api_style="codex_cli"),
+    }
+    result, events, _, _, _, _, _ = _run_image_step(
+        monkeypatch, tmp_path, pools, model_pool_ids=[9, 10])
+
+    assert result is not None
+    assert not any(e["type"] == "agent_error" for e in events)

@@ -46,7 +46,7 @@ Mặc định: `http://localhost:8000` → đăng nhập → `/hub`. API docs t�
 | Quy trình | `/hub/company-runner` | Thiết kế + chạy quy trình nhiều bước, duyệt từng output |
 | Tác vụ tự động | `/hub/auto-runner` | Quy trình chạy theo lịch cron / webhook |
 | Tài sản | `/hub/assets` | File upload + kết quả quy trình đã lưu trữ, tải về |
-| Model Pool | `/hub/model` | Khai báo model, giới hạn dùng/ngày, test kết nối, biểu đồ top 10 |
+| Model Pool | `/hub/model` | Khai báo model, giới hạn dùng/ngày, test kết nối, biểu đồ top 10. Ba kiểu kết nối: qua provider trung gian, qua API chính chủ, hoặc **qua CLI gói thuê bao** |
 | Chi phí | `/hub/cost` | Thống kê token/chi phí, xuất báo cáo `.xlsx` |
 | Cài đặt | `/hub/settings` | Cấu hình chung |
 
@@ -175,6 +175,8 @@ xanax/
 │   ├── skill_tools.py           # skill type "api" → tool động
 │   ├── secret_crypto.py         # AES-256-GCM cho api_key/token
 │   ├── model_pool_bridge.py     # gọi model qua pool, LimitExceededError
+│   ├── cli_provider.py          # gọi model qua CLI gói thuê bao (claude/codex),
+│   │                            # build_clean_env() chặn rò rỉ biến sang gateway
 │   ├── hermes_bridge.py         # LLM client + phiên chat in-memory
 │   ├── image_gen.py             # sinh ảnh, ImageGenError với lỗi cụ thể
 │   ├── agent_soul.py            # soul.md riêng cho từng nhân viên
@@ -189,7 +191,8 @@ xanax/
 │   └── hermes/                  # framework agent nội bộ: agent, planner,
 │                                # memory, context, tool_registry
 ├── mcp_servers/
-│   └── image_cut.py             # MCP server cắt ảnh sản phẩm
+│   ├── image_cut.py             # MCP server cắt ảnh sản phẩm
+│   └── xanax_skills.py          # cầu nối MCP: phơi skill api/builtin cho CLI gói
 ├── dashboard/
 │   ├── login.html · index.html · workspace.html · taskrunner.html
 │   ├── hub.html                 # khung SPA
@@ -271,12 +274,63 @@ Mỗi tin nhắn tới Xanax đều kèm snapshot DB tươi (`_build_live_contex
 
 MCP stdio server thì khác — Python MCP SDK tự dùng Windows Job Object (`KILL_ON_JOB_CLOSE`), đã kiểm chứng bằng cách hard-kill tiến trình cha: 0 tiến trình mồ côi. Không cần cơ chế dọn PID thủ công.
 
+Prompt phải đi qua **stdin**, không qua `argv`. Prompt của agent dài hàng nghìn ký tự, nhiều dòng, có tiếng Việt và dấu nháy — nhét vào dòng lệnh là hỏng escaping trên Windows.
+
+---
+
+## Gọi model qua CLI gói thuê bao
+
+Nhân viên có thể chạy bằng **tiến trình CLI đã đăng nhập gói** (`claude`, `codex`) thay vì gọi HTTP tới provider trung gian. Không có API key nào trong cấu hình, nên không có key nào để lộ hay bị thu hồi, và chi phí nằm trong gói thuê bao thay vì tính theo token.
+
+Thêm ở **Model Pool → Thêm model → tab "Qua CLI (gói thuê bao)"**:
+
+| Ô | Ý nghĩa |
+|---|---|
+| Engine | `claude_cli` (gói Claude) hoặc `codex_cli` (gói ChatGPT) |
+| Model ID | `claude-haiku-4-5`, `gpt-5.5`… — truyền thành `--model`/`-m` |
+| Thư mục tài khoản | `CLAUDE_CONFIG_DIR` / `CODEX_HOME`. Để trống = tài khoản mặc định. **Mỗi tài khoản một thư mục** — đây là cách chạy nhiều gói song song trên một máy, và cách xoay tài khoản khi một gói cạn hạn mức phiên |
+
+Gán model đó cho nhân viên như bình thường (Nhân sự → chọn agent → Model). Phòng họp và Quy trình tự động dùng, vì cả hai đều đi qua `stream_from_agent_models()`. Thứ tự ưu tiên nhiều model vẫn hoạt động: model CLI hết hạn mức phiên thì tự chuyển sang model kế tiếp trong danh sách.
+
+**Điều quan trọng nhất — `build_clean_env()` trong `core/cli_provider.py`.** CLI ưu tiên biến môi trường hơn đăng nhập gói: nếu tiến trình server có `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` trỏ về gateway, tiến trình con **âm thầm chui qua gateway đó** mà không báo lỗi gì. Nên mọi lần spawn CLI đều chạy bằng env đã xoá sạch nhóm biến này. Đừng bỏ qua nó khi thêm engine CLI mới.
+
+Hai giới hạn phải biết trước:
+
+- **Tool-calling đi bằng MCP, không phải `tools[]`.** CLI không nhận `tools[]` theo JSON Schema. Kỹ năng của nhân viên được phơi ra cho `claude` qua MCP:
+
+  | Loại kỹ năng | Đường đi tới CLI |
+  |---|---|
+  | `custom` | Nằm trong system prompt, không phải tool — luôn chạy được |
+  | `api`, `builtin` | Qua cầu nối `mcp_servers/xanax_skills.py` (stdio), dùng lại `tool_registry` nên hành vi giống hệt đường HTTP |
+  | `mcp` | Khai báo **thẳng** cho CLI. Đi vòng qua cầu nối sẽ thành MCP-trong-MCP: mở phiên con mất vài giây, đủ để CLI bỏ cuộc và báo server `pending` |
+
+  Hai chi tiết đã phải trả giá mới tìm ra: schema tool lấy từ `ToolDefinition.to_schema()` (để FastMCP tự suy từ chữ ký hàm sẽ ra một ô `kwargs` vô nghĩa), và **`ToolSearch` phải được cho phép** — CLI hoãn nạp schema MCP và bắt model gọi `ToolSearch` để lấy, tắt nó đi là nhân viên báo "công cụ chưa khả dụng" rồi bó tay.
+
+  `codex_cli` **chưa** có cầu nối, nên vẫn không gọi được công cụ.
+
+- **Log thành công phải dựa trên việc đã làm.** `stream_from_agent_models()` bỏ qua model không gọi được công cụ khi có `tools`, và báo lỗi rõ nếu nhân viên không còn model nào dùng được. Bước quy trình còn kiểm thêm một tầng: nhân viên **có công cụ mà không gọi cái nào thì bước TRƯỢT**, vì không có bằng chứng việc đã xảy ra — chỉ có lời nhân viên tự thuật.
+
+  **Chỉ kỹ năng loại `api` mới là việc bắt buộc** (`_required_tool_names()`): người dùng cấu hình hẳn một endpoint rồi giao cho nhân viên đúng việc gọi nó. `mcp`/`builtin` là công cụ dùng khi cần — bắt buộc chúng là đánh trượt oan, đã gặp thật: nhân viên tạo ảnh có kèm skill MCP cắt ảnh nhưng lần chạy đó không cần cắt, bài viết và ảnh đều giao đủ mà quy trình vẫn dừng.
+
+  Sổ bằng chứng là `collect_tool_invocations()` (`core/skill_tools.py`), ghi ở đúng nơi tool được thực thi: `_stream_openai` cho đường HTTP, và sự kiện `tool_use` của CLI cho đường MCP. Chỉ tool đi qua MCP mới được tính — tool nội bộ của CLI như `ToolSearch` thì không, nếu không một nhân viên tra cứu rồi bịa kết quả vẫn qua được cửa.
+
+  Đây là hành vi cố ý sau sự cố thật: nhân viên đăng Facebook chạy trên model CLI, tool bị bỏ im lặng, nhân viên vẫn sinh ra chữ và bước quy trình ghi "Đã chạy xong" trong khi **không có request nào tới Facebook** — chỉ mở fanpage ra mới biết. Thà hỏng ồn ào còn hơn thành công giả.
+- **Codex CLI sinh được ảnh.** Bật bằng `--enable image_generation` — Codex có skill hệ thống `imagegen` chạy trong gói ChatGPT, nên **không cần mua image model riêng**. `_maybe_generate_image()` tự dùng đường này cho entry `codex_cli`.
+
+  Khác đường HTTP ở một điểm: Codex **tự chọn nơi lưu** (`~/.codex/generated_images/<thread_id>/call_*.png`), nên phải bắt `thread_id` từ sự kiện `thread.started` rồi copy về thư mục của lần chạy. Codex không trả `usage` cho ảnh nên bảng chi phí ghi 0 — đúng bản chất, ảnh nằm trong gói chứ không tính theo token.
+
+  `claude_cli` thì **không** sinh được ảnh, vẫn bị bỏ qua ở bước này.
+
+- **Model trong pool chỉ để trả lời chữ.** Bộ công cụ của Claude Code bị tắt (`_CHAT_ONLY_DISALLOWED_TOOLS`) — vừa đúng vai, vừa cắt ~44% token ngữ cảnh mỗi lượt (đo thật: 20.161 → 11.383), đáng kể với hạn mức 5 giờ của gói. Đường cần thao tác file là `api/agents/claude_runner.py`.
+
+CLI trả về số token thật trong sự kiện kết thúc, nên trang Chi phí và giới hạn dùng/ngày vẫn đo đúng chứ không phải ước lượng theo ký tự.
+
 ---
 
 ## Kiểm thử
 
 ```powershell
-python -m pytest tests/ -q      # 75 passed
+python -m pytest tests/ -q      # 159 passed
 ```
 
 `tests/test_api.py` có `anon_client` (không đăng nhập) và `client` (tự tạo rồi xoá user tạm) — `TestAuthGuard` kiểm tra đúng cả hai chiều: endpoint bị chặn khi không có phiên, và chạy được khi có.
@@ -308,6 +362,15 @@ Còn phải làm:
 |---|---|
 | LLM không phản hồi | Kiểm tra `GET /api/health` và `HUB_LLM_API_BASE` trong `.env` |
 | Model Pool báo `404 no active credential` | Credential phải cấu hình ở dashboard của provider (9router), không phải trong Xanax |
+| Model CLI báo `model requires a newer version of Codex` | Model mặc định của gói mới hơn `codex` CLI đang cài. Điền Model ID rõ ràng (`gpt-5.5`, `gpt-5.4`) thay vì để trống, hoặc nâng cấp CLI |
+| Model CLI báo `not supported when using Codex with a ChatGPT account` | Model đó chỉ dùng được với API key, không dùng được bằng gói. Đổi sang model khác |
+| Model CLI bỗng báo lỗi xác thực dù không đổi gì | Kiểm biến rò rỉ: `Get-ChildItem env: \| Where-Object Name -match 'ANTHROPIC\|OPENAI'`. `build_clean_env()` chặn chúng khi spawn, nhưng nếu ai đó gọi `stream_proc` mà quên truyền `env` thì lỗ hổng quay lại |
+| Model CLI hết hạn mức phiên 5 giờ | Xoay tài khoản: đổi ô "Thư mục tài khoản" của entry sang thư mục gói khác. Không cần restart |
+| Nhân viên báo "đã đăng/đã gửi" nhưng thực tế không có gì | Không còn xảy ra âm thầm: bước sẽ trượt kèm lý do. Nếu vẫn gặp, kiểm `collect_tool_invocations()` có ghi gì không |
+| Bước trượt vì `KHÔNG gọi công cụ` dù nhân viên đã giao đủ việc | Kỹ năng đó có phải loại `api` không? Chỉ `api` mới bắt buộc. Nếu là `mcp`/`builtin` mà vẫn trượt thì là lỗi — xem `_required_tool_names()` |
+| `Nhân viên này có kỹ năng cần gọi công cụ...` | Nhân viên chỉ còn model không gọi được công cụ. Với `claude_cli` thì phải có `skill_ids`; với `codex_cli` thì chưa hỗ trợ — thêm 1 model OpenAI-compatible |
+| MCP server báo `status: pending`, tool không hiện | Server khởi động quá chậm (thường do MCP lồng MCP), hoặc `ToolSearch` bị tắt nên model không nạp được schema |
+| Nhân viên CLI kể việc sắp làm thay vì làm | `claude`/`codex` là agent lập trình, phản xạ là báo kế hoạch trước. Đã chặn bằng `_DELIVERABLE_ONLY` + `--permission-mode default` (KHÔNG dùng `plan`) |
 | Nhân viên dùng sai model | Nhân sự → chọn agent → đổi Model → Save. `model_pool_id` là số nguyên, không phải chuỗi |
 | Sinh ảnh thất bại | Model text không hỗ trợ `/images/generations` — cần thêm image model vào pool. Lỗi hiện nguyên văn kèm tên model và HTTP status |
 | Skill MCP không thấy tool nào | Bấm "Kiểm tra kết nối" trên thẻ skill. Sai `target` hoặc sai Python venv là nguyên nhân phổ biến nhất |

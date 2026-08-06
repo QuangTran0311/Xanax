@@ -19,16 +19,17 @@ import shutil
 from typing import AsyncIterator
 
 from api.agents.subprocess_util import stream_proc
+from core.cli_provider import build_clean_env
 
 logger = logging.getLogger("xanax.agents.claude")
 
 _FALLBACK = r"C:\Users\Quang\.local\bin\claude.EXE"
 
 
-def _build_cmd(prompt: str) -> list[str]:
+def _build_cmd() -> list[str]:
     bin_ = shutil.which("claude") or _FALLBACK
     return [
-        bin_, "-p", prompt,
+        bin_, "-p",
         "--output-format", "stream-json",
         "--verbose",
         "--permission-mode", "auto",
@@ -36,13 +37,19 @@ def _build_cmd(prompt: str) -> list[str]:
 
 
 async def run(prompt: str, cwd: str | None = None) -> AsyncIterator[dict]:
-    cmd = _build_cmd(prompt)
-    logger.debug("claude: %s (cwd=%s)", cmd[0], cwd)
+    cmd = _build_cmd()
+    logger.debug("claude: %s (cwd=%s, prompt_len=%d)", cmd[0], cwd, len(prompt))
 
     had_error = False
 
     try:
-        async for tag, data in stream_proc(cmd, cwd=cwd):
+        # Prompt đi qua stdin, không qua dòng lệnh: prompt ở đây dài hàng nghìn
+        # ký tự, nhiều dòng, có tiếng Việt và dấu nháy — nhét vào argv là hỏng
+        # trên Windows. env đã xoá ANTHROPIC_*/OPENAI_* để CLI buộc phải dùng
+        # đăng nhập gói, không lặng lẽ đi qua gateway nào.
+        async for tag, data in stream_proc(
+            cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=build_clean_env()
+        ):
             if tag == "stdout":
                 try:
                     obj = json.loads(data)

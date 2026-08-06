@@ -202,6 +202,9 @@ def _meeting_progress_sender(
     """
     labels = node_labels or {}
     state = {"task_name": "", "total": 0, "step": 0}
+    # Một bước hỏng phát ra `agent_error` rồi `run_failed` mang cùng một câu lỗi,
+    # nên phòng họp nhận hai tin nhắn giống hệt nhau. Nhớ câu vừa gửi để bỏ trùng.
+    last_notice: dict[str, str] = {}
 
     def _label_of(msg: dict) -> str:
         return (
@@ -256,8 +259,10 @@ def _meeting_progress_sender(
             # sống trong phiên đang mở, người vào sau sẽ không thấy gì.
             if progress["status"] in ("done", "failed", "cancelled"):
                 text = f'Quy trình "{state["task_name"]}": {progress["label"]}.'
-                await add_meeting_message(meeting_id, "Hệ thống", "system", text)
-                await push_meeting_notice(meeting_id, text)
+                if last_notice.get("text") != text:
+                    last_notice["text"] = text
+                    await add_meeting_message(meeting_id, "Hệ thống", "system", text)
+                    await push_meeting_notice(meeting_id, text)
         except Exception:
             logger.exception("Không phát được tiến độ vào cuộc họp %s", meeting_id)
 
@@ -415,6 +420,27 @@ def _estimate_tokens_rough(text: str) -> int:
     return max(0, len(text or "") // 4)
 
 
+async def _required_tool_names(skill_ids: list[int]) -> set[str]:
+    """Tên các tool mà nhân viên BẮT BUỘC phải gọi thì bước mới tính là xong.
+
+    Chỉ kỹ năng loại 'api'. Người dùng cấu hình hẳn một endpoint rồi giao cho
+    nhân viên đúng việc gọi nó — không gọi nghĩa là việc chưa xảy ra, dù nhân
+    viên có viết ra bao nhiêu chữ.
+
+    'mcp' và 'builtin' KHÔNG bắt buộc: chúng là công cụ dùng khi cần. Từng đánh
+    trượt oan nhân viên tạo ảnh chỉ vì cô ấy có kèm skill cắt ảnh mà lần chạy đó
+    không cần cắt — trong khi bài viết và ảnh đều đã giao đủ.
+    """
+    from core.skill_tools import tool_name_for_skill
+
+    names: set[str] = set()
+    for sid in skill_ids or []:
+        skill = await get_skill(sid)
+        if skill and skill.get("type") == "api":
+            names.add(tool_name_for_skill(skill))
+    return names
+
+
 async def _build_agent_tools(skill_ids: list[int]) -> list[dict]:
     """Build OpenAI function schemas for the agent's built-in skills."""
     if not skill_ids:
@@ -508,7 +534,7 @@ async def _maybe_generate_image(
     # Tạo ảnh dùng đúng model đã cấu hình cho nhân viên (tab Nhân sự), không có
     # model riêng cho skill và không phân loại text/ảnh. Luồng ảnh và text dùng
     # chung một helper để giữ nguyên thứ tự ưu tiên, trạng thái và hạn mức ngày.
-    from core.model_pool_bridge import iter_usable_pool_entries
+    from core.model_pool_bridge import CLI_API_STYLES, iter_usable_pool_entries
     from hub.database import (
         record_model_usage,
         record_model_usage_hourly,
@@ -519,11 +545,25 @@ async def _maybe_generate_image(
     attempted_any = False
     announced = False
     save_path = None
+    skipped_cli: list[str] = []
 
     for round_index in range(2):
         failed_label: str | None = None
         async for pool_entry in iter_usable_pool_entries(model_pool_ids or []):
             model_label = f"{pool_entry['name']} · {pool_entry['model_id']}"
+
+            api_style = pool_entry.get("api_style") or ""
+            # `claude` CLI không sinh được ảnh, và entry CLI cố tình để trống
+            # base_url. Không chặn ở đây thì nó ghép thành URL tương đối rồi văng
+            # "Request URL is missing an 'http://' or 'https://' protocol", che
+            # mất nguyên nhân thật.
+            #
+            # `codex` CLI thì SINH ĐƯỢC — nó có skill hệ thống `imagegen` chạy
+            # bằng gói ChatGPT, nên không cần mua image model riêng.
+            if api_style in CLI_API_STYLES and api_style != "codex_cli":
+                if model_label not in skipped_cli:
+                    skipped_cli.append(model_label)
+                continue
             if not announced:
                 await send({
                     "type": "agent_chunk",
@@ -546,15 +586,28 @@ async def _maybe_generate_image(
             attempted_any = True
             usage_state = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
             try:
-                await generate_image(
-                    prompt=img_prompt,
-                    base_url=pool_entry["base_url"],
-                    api_key=pool_entry["api_key"],
-                    model=pool_entry["model_id"],
-                    save_path=save_path,
-                    ratio=ratio,
-                    usage_state=usage_state,
-                )
+                if api_style == "codex_cli":
+                    # Codex tự chọn nơi lưu rồi ta copy về; không có usage trả về
+                    # nên bảng chi phí ghi 0 cho lượt này — đúng bản chất, ảnh
+                    # nằm trong gói thuê bao chứ không tính theo token.
+                    from core.cli_provider import generate_image_via_codex
+                    await generate_image_via_codex(
+                        prompt=img_prompt,
+                        save_path=save_path,
+                        model_id=pool_entry["model_id"],
+                        codex_home=(pool_entry.get("cli_config_dir") or "").strip() or None,
+                        ratio=ratio,
+                    )
+                else:
+                    await generate_image(
+                        prompt=img_prompt,
+                        base_url=pool_entry["base_url"],
+                        api_key=pool_entry["api_key"],
+                        model=pool_entry["model_id"],
+                        save_path=save_path,
+                        ratio=ratio,
+                        usage_state=usage_state,
+                    )
             except ImageGenError as img_err:
                 logger.warning(
                     "Tạo ảnh bằng model %s thất bại ở vòng %s: %s",
@@ -596,10 +649,19 @@ async def _maybe_generate_image(
 
         if round_index == 0:
             if not attempted_any:
-                err = (
-                    "Nhân viên chưa được gán model khả dụng nào. Vui lòng chọn model cho "
-                    "nhân viên này ở tab Nhân sự rồi chạy lại."
-                )
+                if skipped_cli:
+                    err = (
+                        "Nhân viên này chỉ có model không sinh được ảnh ("
+                        + ", ".join(skipped_cli)
+                        + "). Claude CLI không có khả năng tạo ảnh — hãy gán thêm cho nhân "
+                        "viên này một model Codex CLI (dùng skill imagegen của gói ChatGPT, "
+                        "không tốn thêm tiền) hoặc một image model qua API."
+                    )
+                else:
+                    err = (
+                        "Nhân viên chưa được gán model khả dụng nào. Vui lòng chọn model cho "
+                        "nhân viên này ở tab Nhân sự rồi chạy lại."
+                    )
                 await send({
                     "type": "agent_chunk",
                     "run_id": run_id,
@@ -633,6 +695,10 @@ async def _maybe_generate_image(
         "Tạo ảnh thất bại sau khi thử hết model của nhân viên:\n"
         + "\n".join(attempt_errors)
     )
+    if skipped_cli:
+        err += (
+            "\n\n(Đã bỏ qua model không sinh được ảnh: " + ", ".join(skipped_cli) + ")"
+        )
     await send({"type": "agent_chunk", "run_id": run_id, "step": step_num, "content": f"\n\n❌ {err}"})
     await update_workflow_output(
         output_id, status="error", output_content=full_output + f"\n\n❌ {err}",
@@ -744,15 +810,21 @@ async def _run_agent_step(
 
     accumulated: list[str] = []
     from core.skill_tools import (
-        begin_api_call_tracking, collect_api_call_failures, end_api_call_tracking,
+        begin_api_call_tracking, collect_api_call_failures, collect_tool_invocations,
+        end_api_call_tracking,
     )
     api_track_token = begin_api_call_tracking()
+    # Đường hermes (không có model pool) không dựng tool, nên để rỗng ở đây —
+    # thiếu dòng này là nhánh đó ném NameError ở phép kiểm cuối bước.
+    agent_tools: list[dict] = []
     try:
         if model_pool_ids:
             from core.model_pool_bridge import stream_from_agent_models
             agent_tools = await _build_agent_tools(skill_ids)
             try:
-                stream_iter = stream_from_agent_models(model_pool_ids, messages, tools=agent_tools or None)
+                stream_iter = stream_from_agent_models(
+                    model_pool_ids, messages, tools=agent_tools or None, skill_ids=skill_ids,
+                )
             except Exception as exc:
                 await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": str(exc), "node_id": node_id})
                 await update_workflow_output(
@@ -790,6 +862,34 @@ async def _run_agent_step(
         if api_failures:
             err_msg = "Gọi API thất bại nên bước này không hoàn tất:\n" + "\n".join(
                 f"• {f}" for f in api_failures
+            )
+            await update_workflow_output(
+                output_id, status="error", output_content=full_output + "\n\n❌ " + err_msg,
+                review_status="failed", finished_at=_now(),
+            )
+            await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": err_msg, "node_id": node_id})
+            return {"status": "error", "content": err_msg, "output_id": output_id}
+
+        # Kỹ năng loại 'api' là việc BẮT BUỘC phải làm: người dùng cấu hình hẳn một
+        # endpoint và giao cho nhân viên đúng việc gọi nó. Không gọi = việc chưa xảy
+        # ra, dù nhân viên có viết ra bao nhiêu chữ.
+        #
+        # Sự cố thật: nhân viên đăng Facebook chạy trên model không gọi được công cụ.
+        # Không một request nào rời khỏi máy, nhưng nhân viên vẫn sinh ra chữ nên bước
+        # ghi "Đã chạy xong". Mở fanpage mới biết chưa có bài nào.
+        #
+        # Kỹ năng 'mcp'/'builtin' thì KHÔNG bắt buộc — chúng là công cụ dùng khi cần.
+        # Bắt buộc chúng là đánh trượt oan: nhân viên tạo ảnh có kèm skill cắt ảnh
+        # nhưng lần chạy này không cần cắt, vẫn giao đủ bài viết và ảnh.
+        required_tools = await _required_tool_names(skill_ids)
+        if required_tools and not (required_tools & set(collect_tool_invocations())):
+            err_msg = (
+                "Nhân viên này có công cụ BẮT BUỘC để thực hiện việc được giao nhưng "
+                f"KHÔNG gọi ({', '.join(sorted(required_tools))}), nên việc chưa thật sự "
+                "được làm — phần chữ bên dưới chỉ là lời nhân viên tự thuật.\n"
+                "Thường do model được gán không hỗ trợ tool-calling. Hãy gán cho nhân "
+                "viên này một model kiểu OpenAI-compatible, hoặc một model Claude CLI "
+                "(gọi được công cụ qua MCP)."
             )
             await update_workflow_output(
                 output_id, status="error", output_content=full_output + "\n\n❌ " + err_msg,

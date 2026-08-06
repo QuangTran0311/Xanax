@@ -519,19 +519,33 @@ const NATIVE_API_STYLES = { openai: 'openai_native', anthropic: 'anthropic_nativ
 const NATIVE_PROVIDER_LABELS = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' };
 const NATIVE_MODEL_PLACEHOLDERS = { openai: 'gpt-4o', anthropic: 'claude-sonnet-4-5', gemini: 'gemini-2.0-flash' };
 
+const CLI_PROVIDER_LABELS = { claude_cli: 'Claude CLI', codex_cli: 'Codex CLI' };
+const CLI_MODEL_PLACEHOLDERS = { claude_cli: 'claude-sonnet-5', codex_cli: 'gpt-5.5' };
+const CLI_CONFIG_HINTS = {
+  claude_cli: 'Thư mục CLAUDE_CONFIG_DIR. Để trống = ~/.claude. Mỗi tài khoản một thư mục riêng — cách chạy nhiều gói song song.',
+  codex_cli: 'Thư mục CODEX_HOME. Để trống = ~/.codex. Mỗi tài khoản một thư mục riêng — cách chạy nhiều gói song song.',
+};
+
 function switchModelModalTab(tab) {
   _modalActiveTab = tab;
-  document.getElementById('mp-subtab-btn-subscription').classList.toggle('active', tab === 'subscription');
-  document.getElementById('mp-subtab-btn-native').classList.toggle('active', tab === 'native');
-  document.getElementById('mp-subtab-subscription').style.display = tab === 'subscription' ? '' : 'none';
-  document.getElementById('mp-subtab-native').style.display = tab === 'native' ? '' : 'none';
+  for (const t of ['subscription', 'native', 'cli']) {
+    document.getElementById(`mp-subtab-btn-${t}`).classList.toggle('active', tab === t);
+    document.getElementById(`mp-subtab-${t}`).style.display = tab === t ? '' : 'none';
+  }
   if (tab === 'native') updateNativeModelHints();
+  if (tab === 'cli') updateCliModelHints();
 }
 
 function updateNativeModelHints() {
   const p = document.getElementById('mp-modal-native-provider').value;
   document.getElementById('mp-modal-native-model-id').placeholder = NATIVE_MODEL_PLACEHOLDERS[p] || '';
   document.getElementById('mp-modal-native-base-url-preview').value = NATIVE_BASE_URLS[p] || '';
+}
+
+function updateCliModelHints() {
+  const e = document.getElementById('mp-modal-cli-engine').value;
+  document.getElementById('mp-modal-cli-model-id').placeholder = CLI_MODEL_PLACEHOLDERS[e] || '';
+  document.getElementById('mp-modal-cli-config-hint').textContent = CLI_CONFIG_HINTS[e] || '';
 }
 
 function openModelModal(id) {
@@ -542,8 +556,14 @@ function openModelModal(id) {
 
   const NATIVE_STYLE_TO_PROVIDER = { openai_native: 'openai', anthropic_native: 'anthropic', gemini_native: 'gemini' };
   const isNative = entry && NATIVE_STYLE_TO_PROVIDER[entry.api_style];
-  switchModelModalTab(isNative ? 'native' : 'subscription');
-  if (isNative) {
+  const isCli = entry && CLI_PROVIDER_LABELS[entry.api_style];
+  switchModelModalTab(isCli ? 'cli' : (isNative ? 'native' : 'subscription'));
+  if (isCli) {
+    document.getElementById('mp-modal-cli-engine').value = entry.api_style;
+    document.getElementById('mp-modal-cli-model-id').value = entry.model_id || '';
+    document.getElementById('mp-modal-cli-config-dir').value = entry.cli_config_dir || '';
+    updateCliModelHints();
+  } else if (isNative) {
     document.getElementById('mp-modal-native-provider').value = NATIVE_STYLE_TO_PROVIDER[entry.api_style];
     document.getElementById('mp-modal-native-model-id').value = entry.model_id || '';
     document.getElementById('mp-modal-native-api-key').value = '';
@@ -568,7 +588,18 @@ function openModelModal(id) {
 async function saveModel() {
   const id = document.getElementById('mp-modal-id').value;
   let conn;
-  if (_modalActiveTab === 'native') {
+  if (_modalActiveTab === 'cli') {
+    const e = document.getElementById('mp-modal-cli-engine').value;
+    conn = {
+      provider: CLI_PROVIDER_LABELS[e],
+      api_style: e,
+      model_id: document.getElementById('mp-modal-cli-model-id').value.trim(),
+      // CLI xác thực bằng thư mục tài khoản, không có endpoint/key nào.
+      base_url: '',
+      api_key: '',
+      cli_config_dir: document.getElementById('mp-modal-cli-config-dir').value.trim(),
+    };
+  } else if (_modalActiveTab === 'native') {
     const p = document.getElementById('mp-modal-native-provider').value;
     conn = {
       provider: NATIVE_PROVIDER_LABELS[p],
@@ -3523,6 +3554,7 @@ function handleMeetingMsg(msg) {
       const time = _parseServerTime(m.created_at);
       _maybeInsertTimeDivider(time);
       if (m.sender_type === 'user') appendMeetingMsg('user', m.content, 'var(--cyan)', time);
+      else if (m.sender_type === 'system') appendSystemMsg(m.content, time);
       else if (m.sender === 'Xanax') appendMeetingMsg('Xanax', m.content, 'var(--gold)', time);
       else {
         const a = agents.find(x => x.name === m.sender);
@@ -3558,7 +3590,7 @@ function handleMeetingMsg(msg) {
   // Nội dung đã được lưu vào lịch sử họp phía server, đây chỉ là hiện ngay.
   if (msg.type === 'system_notice') {
     _maybeInsertTimeDivider(new Date());
-    appendMeetingMsg('system', msg.content, 'var(--amber)');
+    appendSystemMsg(msg.content);
     return;
   }
   if (msg.type === 'workflow_progress') {
@@ -3589,6 +3621,18 @@ function handleMeetingMsg(msg) {
     if (msg.draft_minutes) openFinalizeModal(msg.draft_minutes);
     return;
   }
+}
+
+// Thông báo hệ thống được LƯU vào lịch sử họp, nên lúc hiện ngay và lúc tải lại
+// phải trông y hệt nhau. Trước đây live gọi appendMeetingMsg('system', …) — ra
+// chữ nghiêng xám không tên không giờ — còn lịch sử đi nhánh thường với
+// sender = "Hệ thống" nên có avatar, tên và giờ. Cùng một nội dung, hai hình
+// dạng, và người dùng phải F5 mới thấy dạng thật.
+const SYSTEM_SENDER = 'Hệ thống';
+const SYSTEM_COLOR = 'var(--purple)';
+
+function appendSystemMsg(content, time) {
+  appendMeetingMsg(SYSTEM_SENDER, content, SYSTEM_COLOR, time || new Date());
 }
 
 function appendMeetingMsg(sender, content, color, time) {
@@ -3628,26 +3672,43 @@ function renderWorkflowProgress(msg) {
   const style = WF_PROGRESS_STYLE[msg.status] || WF_PROGRESS_STYLE.running;
   const id = `wf-progress-${msg.run_id}`;
   let el = document.getElementById(id);
+
+  // Chạy xong thì bong bóng này hết việc: server đã lưu kết quả thành tin nhắn
+  // "Hệ thống" và đẩy kèm system_notice. Giữ lại bong bóng là hiện hai lần cùng
+  // một chuyện, và bong bóng biến mất sau khi tải lại — đúng cái làm màn hình
+  // trước và sau F5 khác nhau.
+  if (msg.status === 'done' || msg.status === 'failed' || msg.status === 'cancelled') {
+    if (el) el.remove();
+    return;
+  }
+
   if (!el) {
     el = document.createElement('div');
     el.className = 'message-row';
     el.id = id;
     area.appendChild(el);
   }
+  // Tới đây chỉ còn 'running' hoặc 'waiting' — trạng thái kết thúc đã thoát ở trên.
+  //
+  // Dựng đúng khung của một tin nhắn hệ thống: avatar + tên người gửi + giờ.
+  // Trước đây bong bóng này là một khối riêng không avatar không giờ, nên dòng
+  // thời gian trong phòng họp có hai loại hình dạng lẫn vào nhau.
   const stepText = msg.total ? ` · bước ${msg.step || 0}/${msg.total}` : '';
-  const done = msg.status !== 'running' && msg.status !== 'waiting';
   const statusIcon = msg.status === 'running'
     ? '<span class="busy-spinner" aria-hidden="true"></span>'
     : style.icon;
+  const title = `${esc(msg.task_name || 'Quy trình')}${esc(stepText)}`;
   el.innerHTML = `
+    ${avatarHtml(SYSTEM_COLOR, SYSTEM_SENDER, 'avatar-sm')}
     <div>
       <div class="message-sender" style="color:${style.color}">
-        ${statusIcon} ${esc(msg.task_name || 'Quy trình')}${esc(stepText)}
+        ${statusIcon} ${esc(SYSTEM_SENDER)} · ${title}
       </div>
       <div class="message-bubble agent-bubble"
-           style="border-color:${style.color};${done ? '' : 'opacity:.92;'}">
-        ${esc(msg.label || '')}${done ? '' : ' <span class="thinking-dots" aria-hidden="true"></span>'}
+           style="border-color:${style.color};opacity:.92;">
+        ${esc(msg.label || '')} <span class="thinking-dots" aria-hidden="true"></span>
       </div>
+      <div class="msg-time">${esc(_msgTimeLabel(new Date()))}</div>
     </div>`;
   area.scrollTop = area.scrollHeight;
 }

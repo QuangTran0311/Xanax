@@ -34,6 +34,9 @@ class ModelPoolCreate(BaseModel):
     model_id: str = Field(..., min_length=1)
     base_url: str = Field("")
     api_key: str = Field("")
+    # Chỉ dùng cho api_style claude_cli/codex_cli: thư mục tài khoản của CLI.
+    # Để trống = tài khoản mặc định (~/.claude, ~/.codex).
+    cli_config_dir: str = Field("")
     category: str = Field("general")
     max_requests_per_day: int = Field(0, ge=0)
     max_tokens_per_day: int = Field(0, ge=0)
@@ -50,6 +53,7 @@ class ModelPoolUpdate(BaseModel):
     model_id: str | None = None
     base_url: str | None = None
     api_key: str | None = None
+    cli_config_dir: str | None = None
     category: str | None = None
     max_requests_per_day: int | None = None
     max_tokens_per_day: int | None = None
@@ -82,6 +86,7 @@ async def create_model(body: ModelPoolCreate):
         model_id=body.model_id,
         base_url=body.base_url,
         api_key=body.api_key,
+        cli_config_dir=body.cli_config_dir,
         category=body.category,
         max_requests_per_day=body.max_requests_per_day,
         max_tokens_per_day=body.max_tokens_per_day,

@@ -263,7 +263,14 @@ async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict]) -> str
         if model_pool_ids:
             from core.model_pool_bridge import stream_from_agent_models
             agent_tools = await _build_agent_tools(agent)
-            async for delta in stream_from_agent_models(model_pool_ids, llm_messages, tools=agent_tools or None):
+            try:
+                agent_skill_ids = json.loads(agent.get("skills_json") or "[]")
+            except Exception:
+                agent_skill_ids = []
+            async for delta in stream_from_agent_models(
+                model_pool_ids, llm_messages, tools=agent_tools or None,
+                skill_ids=agent_skill_ids,
+            ):
                 full_response += delta
                 await _emit(delta)
         else:
@@ -454,6 +461,79 @@ def _is_workflow_command(content: str) -> bool:
     return bool(_RUN_WORKFLOW_RE.search(content or ""))
 
 
+# Dấu hiệu Xanax đang KHẲNG ĐỊNH đã chạy, chứ không phải hứa sẽ chạy hay hỏi lại.
+_WF_DONE_MARK_RE = re.compile(
+    r"\b(?:đã|da|vừa|vua|rồi|roi|xong|đang|dang)\b", re.IGNORECASE
+)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+# Câu đang KỂ LẠI một lần chạy trước (thường là để báo hỏng), không phải khẳng
+# định vừa kích hoạt cái mới.
+_WF_REPORT_RE = re.compile(
+    r"\b(?:lỗi|loi|thất\s*bại|that\s*bai|fail|error|dừng|dung\s*lai|"
+    r"không\s*thành\s*công|khong\s*thanh\s*cong|chưa\s*xong|chua\s*xong)\b",
+    re.IGNORECASE,
+)
+
+
+def _claims_workflow_ran(reply: str) -> bool:
+    """Câu trả lời này có KHẲNG ĐỊNH vừa kích hoạt quy trình không.
+
+    Xét theo từng câu chứ không theo cả đoạn: một đoạn thường vừa hỏi vừa kể, và
+    dấu hoàn thành của câu này dễ bị ghép nhầm với động từ của câu kia.
+
+    Hai loại câu bị loại vì chúng KHÔNG phải lời khẳng định:
+
+    - **Câu hỏi.** "Papa muốn con kích hoạt lại quy trình không, hay để Papa xử
+      lý phần ảnh trước rồi chạy lại sau?" — đủ cả động từ, danh từ lẫn chữ
+      "rồi", nhưng đang xin ý kiến.
+    - **Câu báo hỏng.** "Quy trình 'Đăng bài lên fanpage' vừa chạy bị lỗi ở bước
+      tạo ảnh." — chủ ngữ là quy trình chứ không phải Xanax; đây là kể lại lần
+      chạy trước có thật, đính chính vào đó là sai.
+
+    Chỗ này cố tình thà BỎ SÓT hơn là báo nhầm: bỏ sót thì quay lại đúng hành vi
+    cũ, còn đính chính một lời Xanax chưa hề nói sẽ làm người dùng mất tin vào
+    chính cơ chế đính chính.
+    """
+    for sentence in _SENTENCE_SPLIT_RE.split(reply or ""):
+        sentence = sentence.strip()
+        if not sentence or sentence.endswith("?") or _WF_REPORT_RE.search(sentence):
+            continue
+        if _RUN_WORKFLOW_RE.search(sentence) and _WF_DONE_MARK_RE.search(sentence):
+            return True
+    return False
+
+
+# Lời Xanax nói chỉ là chữ do model sinh ra; thứ thật sự chạy quy trình là mảng
+# "run_workflows". Prompt đã dặn "không nói là đã chạy nếu để run_workflows rỗng",
+# nhưng dặn không phải là ép: model vẫn nói "con đã chạy lại quy trình #14 rồi"
+# với mảng rỗng, và người dùng ngồi chờ một quy trình chưa hề khởi động. Câu xác
+# nhận thật luôn do _run_workflows_from_meeting sinh ra, không bao giờ do model.
+_FALSE_CLAIM_NOTE = (
+    "⚠️ Đính chính tự động: Xanax nói đã chạy nhưng thực tế CHƯA có quy trình nào được "
+    "kích hoạt. Hãy nhắc lại kèm tên quy trình và chủ đề — ví dụ: "
+    '"chạy quy trình Đăng bài lên fanpage với chủ đề móc khóa cỏ 4 lá".'
+)
+
+
+def _guard_false_run_claim(reply: str, run_workflows: list, asked_to_run: bool = True) -> str:
+    """Gắn đính chính khi lời nói không khớp việc đã làm.
+
+    `asked_to_run` = lượt này CEO có thật sự bảo chạy quy trình không. Nếu không,
+    Xanax nhắc tới một quy trình đang chạy là chuyện bình thường — nó kể lại lần
+    kích hoạt trước chứ không nhận công. Đã đính chính oan đúng kiểu đó: CEO hỏi
+    cách HUỶ quy trình, Xanax đáp "quy trình #14 vừa được kích hoạt và đang chạy"
+    (đúng sự thật), và bị dán thêm "thực tế CHƯA có quy trình nào được kích hoạt".
+
+    Đính chính được nối thẳng vào lời Xanax (thay vì gửi riêng) để nó cũng đi vào
+    lịch sử hội thoại — nếu không, lượt sau Xanax đọc lại vẫn tưởng mình đã chạy
+    và tiếp tục báo cáo tiến độ của một quy trình không tồn tại.
+    """
+    if run_workflows or not asked_to_run or not _claims_workflow_ran(reply):
+        return reply
+    return f"{reply}\n\n{_FALSE_CLAIM_NOTE}" if reply else _FALSE_CLAIM_NOTE
+
+
 _ORCH_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
@@ -562,12 +642,15 @@ async def _build_workflow_roster_text() -> str:
 
 
 async def _run_workflows_from_meeting(
-    ws: WebSocket, meeting_id: int, project_id: int | None, requests: list[dict],
+    meeting_id: int, project_id: int | None, requests: list[dict],
 ) -> list[str]:
     """Chạy các quy trình Xanax vừa quyết định gọi, mỗi cái kèm chủ đề riêng.
 
     Chạy nền nên node chờ duyệt sẽ nhắn ngược lại đúng cuộc họp này
     (xem _notify_approval_needed trong api/websocket_workflow.py).
+
+    Không cần tham số `ws`: thông báo đi qua `push_meeting_notice`, vốn phát cho
+    MỌI client đang mở cuộc họp này chứ không riêng người vừa gõ lệnh.
     """
     from api.websocket_workflow import execute_workflow_headless
 
@@ -598,13 +681,14 @@ async def _run_workflows_from_meeting(
             f'Đã kích hoạt {noun} "{task["name"]}" (#{task_id})'
             + (f' với chủ đề: "{topic}".' if topic else " — không có chủ đề kèm theo.")
         )
+    # Gửi dưới danh nghĩa HỆ THỐNG, không phải Xanax. Câu này do code sinh ra sau
+    # khi quy trình đã thật sự khởi động, nên nó là bằng chứng máy móc. Để nó mang
+    # tên Xanax thì nó trông y hệt lời model tự nói — mà model thì từng nói "đã
+    # chạy rồi nha Papa" trong khi không chạy gì. Tách tên ra để nhìn là biết
+    # dòng nào là sự thật máy ghi, dòng nào là lời nhân viên.
     for note in notes:
-        await ws.send_json({
-            "type": "agent_chunk", "agent": XANAX_NAME, "agent_id": XANAX_AGENT_ID,
-            "color": XANAX_AVATAR, "content": note,
-        })
-        await ws.send_json({"type": "agent_done", "agent": XANAX_NAME, "agent_id": XANAX_AGENT_ID})
-        await add_meeting_message(meeting_id, XANAX_NAME, "agent", note)
+        await add_meeting_message(meeting_id, "Hệ thống", "system", note)
+        await push_meeting_notice(meeting_id, note)
     return notes
 
 
@@ -846,6 +930,10 @@ async def meeting_ws(ws: WebSocket, meeting_id: int):
                                          "agent_id": XANAX_AGENT_ID, "color": XANAX_AVATAR})
                     decision = await _xanax_orchestrate(conv_context, participant_ids)
                     reply = _strip_hallucinated_continuation(decision["reply"], [a["name"] for a in all_agents])
+                    reply = _guard_false_run_claim(
+                        reply, decision.get("run_workflows") or [],
+                        asked_to_run=is_workflow_command,
+                    )
                     if reply:
                         await ws.send_json({"type": "agent_chunk", "agent": XANAX_NAME,
                                              "agent_id": XANAX_AGENT_ID, "color": XANAX_AVATAR, "content": reply})
@@ -860,11 +948,11 @@ async def meeting_ws(ws: WebSocket, meeting_id: int):
                     if decision.get("run_workflows"):
                         meeting_row = await get_meeting(meeting_id)
                         notes = await _run_workflows_from_meeting(
-                            ws, meeting_id, (meeting_row or {}).get("project_id"),
+                            meeting_id, (meeting_row or {}).get("project_id"),
                             decision["run_workflows"],
                         )
                         for note in notes:
-                            conv_context.append({"role": "assistant", "content": f"[{XANAX_NAME}]: {note}"})
+                            conv_context.append({"role": "assistant", "content": f"[Hệ thống]: {note}"})
 
                     valid_ids = {a["id"] for a in all_agents}
                     dismiss_ids = {aid for aid in decision["dismiss_agents"] if aid in participant_ids}

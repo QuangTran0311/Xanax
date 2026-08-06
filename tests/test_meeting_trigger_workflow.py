@@ -68,11 +68,20 @@ async def test_chay_quy_trinh_kem_chu_de_tu_phong_hop(tmp_path, monkeypatch):
     import api.websocket_workflow as wf
     monkeypatch.setattr(wf, "execute_workflow_headless", fake_headless)
 
-    ws = FakeWS()
-    notes = await wm._run_workflows_from_meeting(
-        ws, meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa hình thú"}],
-    )
-    await asyncio.sleep(0.05)  # để asyncio.create_task chạy
+    # Người đang mở cuộc họp phải thấy ngay, không cần tải lại trang.
+    seen: list[dict] = []
+
+    async def fake_send(payload):
+        seen.append(payload)
+
+    wm._meeting_clients.setdefault(meeting_id, set()).add(fake_send)
+    try:
+        notes = await wm._run_workflows_from_meeting(
+            meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa hình thú"}],
+        )
+        await asyncio.sleep(0.05)  # để asyncio.create_task chạy
+    finally:
+        wm._meeting_clients.get(meeting_id, set()).discard(fake_send)
 
     assert called["task_id"] == task_id
     assert called["user_input"] == "móc khóa hình thú"      # chủ đề đi kèm, không rỗng
@@ -80,10 +89,17 @@ async def test_chay_quy_trinh_kem_chu_de_tu_phong_hop(tmp_path, monkeypatch):
     assert called["meeting_id"] == meeting_id               # để node duyệt nhắn ngược lại
     assert "móc khóa hình thú" in notes[0]
 
-    # Xanax phải nói ra trong phòng họp là đã chạy, và lời đó được lưu vào lịch sử họp
-    assert any(p.get("type") == "agent_chunk" for p in ws.sent)
+    # Câu xác nhận phải tới ngay người đang mở họp, VÀ được lưu vào lịch sử.
+    assert any(p.get("type") == "system_notice" for p in seen), seen
+
+    # Gửi dưới danh nghĩa HỆ THỐNG chứ không phải Xanax: câu này do code sinh ra
+    # sau khi quy trình đã thật sự khởi động, nên nó là bằng chứng máy móc. Mang
+    # tên Xanax thì nó lẫn với lời model — mà model từng nói "đã chạy rồi nha
+    # Papa" trong khi không chạy gì.
     messages = await database.get_meeting_messages(meeting_id)
-    assert any("Đã kích hoạt quy trình" in m["content"] for m in messages)
+    note_msg = next(m for m in messages if "Đã kích hoạt quy trình" in m["content"])
+    assert note_msg["sender"] == "Hệ thống"
+    assert note_msg["sender_type"] == "system"
 
 
 async def test_khong_chay_quy_trinh_dang_tat(tmp_path, monkeypatch):
@@ -105,7 +121,7 @@ async def test_khong_chay_quy_trinh_dang_tat(tmp_path, monkeypatch):
     monkeypatch.setattr(wf, "execute_workflow_headless", fake_headless)
 
     notes = await wm._run_workflows_from_meeting(
-        FakeWS(), meeting_id, project_id, [{"task_id": task_id, "input": "x"}],
+        meeting_id, project_id, [{"task_id": task_id, "input": "x"}],
     )
     await asyncio.sleep(0.05)
     assert not ran, "quy trình chưa bật thì không được chạy"
@@ -119,7 +135,7 @@ async def test_bao_khi_khong_tim_thay_quy_trinh(tmp_path, monkeypatch):
 
     meeting_id = await database.create_meeting("Hop", "", "[]", None)
     notes = await wm._run_workflows_from_meeting(
-        FakeWS(), meeting_id, None, [{"task_id": 999, "input": "x"}],
+        meeting_id, None, [{"task_id": 999, "input": "x"}],
     )
     assert "Không tìm thấy quy trình/tác vụ #999" in notes[0]
 
@@ -152,11 +168,11 @@ async def test_phan_biet_quy_trinh_va_tac_vu(tmp_path, monkeypatch):
     monkeypatch.setattr(wf, "execute_workflow_headless", fake_headless)
 
     notes = await wm._run_workflows_from_meeting(
-        FakeWS(), meeting_id, project_id, [{"task_id": quy_trinh, "input": "x"}],
+        meeting_id, project_id, [{"task_id": quy_trinh, "input": "x"}],
     )
     assert 'Đã kích hoạt quy trình' in notes[0], notes
 
     notes = await wm._run_workflows_from_meeting(
-        FakeWS(), meeting_id, project_id, [{"task_id": tac_vu, "input": "x"}],
+        meeting_id, project_id, [{"task_id": tac_vu, "input": "x"}],
     )
     assert 'Đã kích hoạt tác vụ' in notes[0], notes

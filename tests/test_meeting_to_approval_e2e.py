@@ -51,7 +51,7 @@ async def test_goi_tu_phong_hop_chay_that_va_bao_khi_cho_duyet(tmp_path, monkeyp
 
     ws = FakeWS()
     notes = await wm._run_workflows_from_meeting(
-        ws, meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa hình mèo"}],
+        meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa hình mèo"}],
     )
     assert "quy trình" in notes[0]
 
@@ -106,7 +106,7 @@ async def test_ceo_dang_mo_phong_hop_thay_thong_bao_ngay(tmp_path, monkeypatch):
     wm._meeting_clients.setdefault(meeting_id, set()).add(fake_send)
     try:
         await wm._run_workflows_from_meeting(
-            FakeWS(), meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa"}],
+            meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa"}],
         )
         for _ in range(60):
             await asyncio.sleep(0.05)
@@ -162,7 +162,7 @@ async def test_tien_do_tung_buoc_hien_trong_phong_hop(tmp_path, monkeypatch):
     wm._meeting_clients.setdefault(meeting_id, set()).add(fake_send)
     try:
         await wm._run_workflows_from_meeting(
-            FakeWS(), meeting_id, project_id, [{"task_id": task_id, "input": "chủ đề"}],
+            meeting_id, project_id, [{"task_id": task_id, "input": "chủ đề"}],
         )
         for _ in range(80):
             await asyncio.sleep(0.05)

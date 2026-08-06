@@ -30,18 +30,42 @@ _workflow_image_path: ContextVar[str | None] = ContextVar(
 _api_call_failures: ContextVar[list[str] | None] = ContextVar(
     "api_skill_failures", default=None,
 )
+# Danh sách MỌI tool đã thật sự được gọi trong 1 bước agent, kể cả khi gọi lỗi.
+# Danh sách lỗi ở trên chỉ trả lời "có lời gọi nào hỏng không"; nó im lặng khi
+# model KHÔNG gọi gì cả — và im lặng đó từng bị hiểu là thành công. Sự cố thật:
+# nhân viên đăng Facebook chạy trên model không gọi được công cụ, không có
+# request nào rời khỏi máy, nhưng bước quy trình vẫn ghi "Đã chạy xong".
+# Có sổ này thì mới phân biệt được "gọi và ổn" với "chưa hề gọi".
+_tool_invocations: ContextVar[list[str] | None] = ContextVar(
+    "tool_invocations", default=None,
+)
 
 
-def begin_api_call_tracking() -> Token:
-    return _api_call_failures.set([])
+def begin_api_call_tracking() -> tuple[Token, Token]:
+    return _api_call_failures.set([]), _tool_invocations.set([])
 
 
 def collect_api_call_failures() -> list[str]:
     return list(_api_call_failures.get() or [])
 
 
-def end_api_call_tracking(token: Token) -> None:
-    _api_call_failures.reset(token)
+def collect_tool_invocations() -> list[str]:
+    """Tên các tool đã được gọi trong bước hiện tại (có thể trùng lặp)."""
+    return list(_tool_invocations.get() or [])
+
+
+def record_tool_invocation(tool_name: str) -> None:
+    """Đánh dấu đã thật sự chạy một tool. Gọi ở nơi tool được thực thi, KHÔNG
+    phải nơi model nói là nó gọi."""
+    bucket = _tool_invocations.get()
+    if bucket is not None:
+        bucket.append(tool_name)
+
+
+def end_api_call_tracking(token: tuple[Token, Token]) -> None:
+    failures_token, invocations_token = token
+    _api_call_failures.reset(failures_token)
+    _tool_invocations.reset(invocations_token)
 
 
 def _record_api_failure(tool_name: str, detail: str) -> None:

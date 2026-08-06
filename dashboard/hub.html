@@ -909,6 +909,7 @@
     <div class="modal-subtabs">
       <button type="button" class="modal-subtab-btn active" id="mp-subtab-btn-subscription" onclick="switchModelModalTab('subscription')">Qua Subscription (9router...)</button>
       <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-native" onclick="switchModelModalTab('native')">Qua Provider API chính chủ</button>
+      <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-cli" onclick="switchModelModalTab('cli')">Qua CLI (gói thuê bao)</button>
     </div>
     <div class="form-group">
       <label class="form-label">Tên hiển thị *</label>
@@ -954,6 +955,30 @@
       <div class="form-group">
         <label class="form-label">Endpoint (tự động)</label>
         <input class="form-input" id="mp-modal-native-base-url-preview" readonly disabled style="opacity:0.6;">
+      </div>
+    </div>
+    <div id="mp-subtab-cli" style="display:none;">
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.6;">
+        Gọi model bằng tiến trình CLI đã đăng nhập gói thuê bao — không qua provider trung gian,
+        không cần API key, nên không có key nào để lộ. Máy chạy Xanax phải cài sẵn CLI tương ứng.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Engine</label>
+        <select class="form-select" id="mp-modal-cli-engine" onchange="updateCliModelHints()">
+          <option value="claude_cli">Claude Code CLI (gói Claude)</option>
+          <option value="codex_cli">Codex CLI (gói ChatGPT)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Model ID *</label>
+        <input class="form-input" id="mp-modal-cli-model-id" placeholder="claude-sonnet-5">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Thư mục tài khoản (tuỳ chọn)</label>
+        <input class="form-input" id="mp-modal-cli-config-dir" placeholder="Để trống = tài khoản mặc định">
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;line-height:1.5;" id="mp-modal-cli-config-hint">
+          Mỗi tài khoản một thư mục riêng — cách chạy nhiều gói song song trên cùng một máy.
+        </p>
       </div>
     </div>
     <details style="margin-top: 14px; border: 1px solid var(--border); padding: 12px; border-radius: 8px;">
