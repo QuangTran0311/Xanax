@@ -504,6 +504,35 @@ def _claims_workflow_ran(reply: str) -> bool:
     return False
 
 
+# Dấu hiệu Xanax đang HỨA sẽ chạy, chưa khẳng định đã chạy.
+_WF_PROMISE_RE = re.compile(
+    r"\b(?:sẽ|se|sắp|sap)\b|\bđể\s+con\b|\bde\s+con\b", re.IGNORECASE
+)
+
+
+def _promises_workflow_run(reply: str) -> bool:
+    """Câu trả lời này có HỨA sẽ kích hoạt quy trình không.
+
+    Tách riêng khỏi _claims_workflow_ran vì đây là kiểu hỏng khác: Xanax không
+    nói dối về quá khứ, nó hứa về tương lai rồi không có lượt nào để thực hiện.
+    Quan sát thật: "Dạ, con sẽ kích hoạt quy trình 'Đăng bài lên fanpage' với
+    chủ đề 'móc khóa con khỉ' ngay ạ." — run_workflows rỗng, không gì chạy, và
+    vì đây không phải lời khẳng định nên không bị đính chính. CEO phải hỏi lại
+    "đã kích hoạt chưa" mới lòi ra.
+
+    Chỉ xét khi CEO thật sự vừa bảo chạy (xem `asked_to_run`), nên một lời hứa
+    có điều kiện hợp lệ ("con sẽ chạy sau khi Papa duyệt") cũng không bị hiểu
+    sai — ghi chú đính kèm chỉ nêu TRẠNG THÁI THẬT, không quy kết ai nói dối.
+    """
+    for sentence in _SENTENCE_SPLIT_RE.split(reply or ""):
+        sentence = sentence.strip()
+        if not sentence or sentence.endswith("?") or _WF_REPORT_RE.search(sentence):
+            continue
+        if _RUN_WORKFLOW_RE.search(sentence) and _WF_PROMISE_RE.search(sentence):
+            return True
+    return False
+
+
 # Lời Xanax nói chỉ là chữ do model sinh ra; thứ thật sự chạy quy trình là mảng
 # "run_workflows". Prompt đã dặn "không nói là đã chạy nếu để run_workflows rỗng",
 # nhưng dặn không phải là ép: model vẫn nói "con đã chạy lại quy trình #14 rồi"
@@ -513,6 +542,15 @@ _FALSE_CLAIM_NOTE = (
     "⚠️ Đính chính tự động: Xanax nói đã chạy nhưng thực tế CHƯA có quy trình nào được "
     "kích hoạt. Hãy nhắc lại kèm tên quy trình và chủ đề — ví dụ: "
     '"chạy quy trình Đăng bài lên fanpage với chủ đề móc khóa cỏ 4 lá".'
+)
+
+
+# Lời hứa suông khác lời nói dối, nên ghi chú cũng phải khác: chỉ nêu trạng
+# thái thật, không quy kết. Xanax có thể đang hứa hợp lệ ("con sẽ chạy sau khi
+# Papa duyệt"), và câu dưới đây vẫn đúng trong cả hai trường hợp.
+_EMPTY_PROMISE_NOTE = (
+    "⚠️ Trạng thái thật: lượt này CHƯA có quy trình nào được kích hoạt — trên đây mới "
+    "là dự định. Nếu Papa muốn chạy ngay, nhắc lại kèm tên quy trình và chủ đề."
 )
 
 
@@ -529,12 +567,62 @@ def _guard_false_run_claim(reply: str, run_workflows: list, asked_to_run: bool =
     lịch sử hội thoại — nếu không, lượt sau Xanax đọc lại vẫn tưởng mình đã chạy
     và tiếp tục báo cáo tiến độ của một quy trình không tồn tại.
     """
-    if run_workflows or not asked_to_run or not _claims_workflow_ran(reply):
+    if run_workflows or not asked_to_run:
         return reply
-    return f"{reply}\n\n{_FALSE_CLAIM_NOTE}" if reply else _FALSE_CLAIM_NOTE
+    if _claims_workflow_ran(reply):
+        note = _FALSE_CLAIM_NOTE
+    elif _promises_workflow_run(reply):
+        note = _EMPTY_PROMISE_NOTE
+    else:
+        return reply
+    return f"{reply}\n\n{note}" if reply else note
 
 
 _ORCH_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+# Xanax biết HAI phương ngữ để kích hoạt quy trình. Chat huấn luyện dùng marker
+# [[XANAX:trigger_workflow|...]] (xem api/websocket_training.py); phòng họp dùng
+# trường "run_workflows" trong JSON. Model học marker từ nội dung session
+# training được nhét vào base_context, nên trong phòng họp nó vẫn viết marker
+# vào giữa "reply" và để "run_workflows" rỗng.
+#
+# Hậu quả quan sát được: quy trình KHÔNG chạy, marker hiện nguyên văn ra màn
+# hình, và vì lời Xanax được lưu vào meeting_messages nên lượt sau nó đọc lại
+# lịch sử của chính mình, thấy marker, rồi bắt chước tiếp — một vòng lặp tự
+# củng cố. Ba tin nhắn trong DB đã dính đúng kiểu này.
+#
+# Nên ở đây coi marker là cách viết TƯƠNG ĐƯƠNG với run_workflows: quy nó về
+# cùng một chỗ để việc thật sự xảy ra, thay vì bắt model phải nhớ đúng phương
+# ngữ. Prompt vẫn dặn dùng JSON; đây là lưới đỡ, không phải lời mời dùng marker.
+_TRIGGER_MARKER_RE = re.compile(
+    r"\[\[XANAX:trigger_workflow\|([^\]]*)\]\]", re.IGNORECASE
+)
+# Mọi marker khác (save_note, create_work_item...) phòng họp không thực hiện
+# được. Vẫn phải gỡ khỏi lời nói: để nguyên thì người dùng đọc được một chuỗi
+# kỹ thuật vô nghĩa, và nó lại trôi vào lịch sử nuôi tiếp vòng lặp trên.
+_ANY_MARKER_RE = re.compile(r"\[\[XANAX:[^\]]*\]\]", re.IGNORECASE)
+
+
+def _extract_trigger_markers(reply: str) -> tuple[str, list[dict]]:
+    """Tách marker trong lời nói thành (lời đã sạch, danh sách quy trình cần chạy)."""
+    runs: list[dict] = []
+    for m in _TRIGGER_MARKER_RE.finditer(reply or ""):
+        params: dict[str, str] = {}
+        for part in m.group(1).split("|"):
+            if "=" in part:
+                k, _, v = part.partition("=")
+                params[k.strip().lower()] = v.strip()
+        task_id = params.get("task_id", "")
+        if task_id.lstrip("-").isdigit():
+            runs.append({"task_id": int(task_id), "input": params.get("input", "")})
+
+    cleaned = _ANY_MARKER_RE.sub("", reply or "")
+    # Gỡ marker thường để lại dòng trống thừa và dấu hai chấm cụt ở cuối câu
+    # dẫn ("Để con kích hoạt ngay bây giờ:"), nên dọn luôn cho lời nói gọn.
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    cleaned = re.sub(r":\s*$", ".", cleaned)
+    return cleaned, runs
 
 
 def _parse_orchestrator_json(raw: str) -> dict:
@@ -542,20 +630,27 @@ def _parse_orchestrator_json(raw: str) -> dict:
     if m:
         try:
             data = json.loads(m.group(0))
+            reply, marker_runs = _extract_trigger_markers(str(data.get("reply") or ""))
+            runs = [
+                {"task_id": int(item["task_id"]), "input": str(item.get("input") or "")}
+                for item in (data.get("run_workflows") or [])
+                if isinstance(item, dict) and str(item.get("task_id", "")).lstrip("-").isdigit()
+            ]
+            # Marker chỉ bù vào khi model quên điền run_workflows. Nếu nó viết cả
+            # hai thì hai bên nói cùng một việc — cộng dồn sẽ chạy quy trình hai lần.
+            seen = {(r["task_id"], r["input"]) for r in runs}
+            runs += [r for r in marker_runs if (r["task_id"], r["input"]) not in seen]
             return {
-                "reply": str(data.get("reply") or "").strip(),
+                "reply": reply,
                 "call_agents": [int(x) for x in (data.get("call_agents") or []) if str(x).lstrip("-").isdigit()],
                 "dismiss_agents": [int(x) for x in (data.get("dismiss_agents") or []) if str(x).lstrip("-").isdigit()],
-                "run_workflows": [
-                    {"task_id": int(item["task_id"]), "input": str(item.get("input") or "")}
-                    for item in (data.get("run_workflows") or [])
-                    if isinstance(item, dict) and str(item.get("task_id", "")).lstrip("-").isdigit()
-                ],
+                "run_workflows": runs,
             }
         except Exception:
             pass
     # Fallback: model không trả JSON hợp lệ -> coi cả câu trả lời là lời Xanax nói, không gọi ai
-    return {"reply": (raw or "").strip(), "call_agents": [], "dismiss_agents": [], "run_workflows": []}
+    reply, marker_runs = _extract_trigger_markers(raw or "")
+    return {"reply": reply, "call_agents": [], "dismiss_agents": [], "run_workflows": marker_runs}
 
 
 async def _soul_and_live_context() -> str:
