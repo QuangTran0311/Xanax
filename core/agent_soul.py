@@ -30,6 +30,14 @@ _FEEDBACK_START = "<!-- AGENT_FEEDBACK_START -->"
 _FEEDBACK_END = "<!-- AGENT_FEEDBACK_END -->"
 _MAX_FEEDBACK = 40  # giữ tối đa N mục gần nhất, xoá cũ nhất khi vượt
 
+# Bài học Papa dạy trực tiếp trong phòng dạy AI (api/websocket_training.py).
+# Cố tình TÁCH khỏi khối FEEDBACK dù hai bên đều là "bài học": FEEDBACK sinh ra
+# từ việc chấm output có thật và bị cắt còn 40 mục gần nhất, nên nếu trộn chung
+# thì thứ Papa đích thân dạy sẽ bị output thường ngày đẩy ra ngoài. Tách ra còn
+# giữ được nguồn gốc — sau này muốn xoá riêng một loại vẫn làm được.
+_LESSON_START = "<!-- AGENT_LESSON_START -->"
+_LESSON_END = "<!-- AGENT_LESSON_END -->"
+
 
 def soul_path(agent_id: int) -> Path:
     return SOULS_DIR / f"agent_{agent_id}.md"
@@ -51,7 +59,9 @@ def _seed_template(agent: dict) -> str:
         "## Dữ liệu thực tế (tự động đồng bộ)\n"
         f"{_DATA_START}\n{_DATA_END}\n\n"
         "## Bài học từ phản hồi thực tế (Papa chấm ĐẠT/KHÔNG ĐẠT)\n"
-        f"{_FEEDBACK_START}\n{_FEEDBACK_END}\n"
+        f"{_FEEDBACK_START}\n{_FEEDBACK_END}\n\n"
+        "## Bài học từ buổi dạy (Papa dạy trực tiếp)\n"
+        f"{_LESSON_START}\n{_LESSON_END}\n"
     )
 
 
@@ -132,6 +142,46 @@ async def sync_agent_soul(agent: dict) -> None:
         p.write_text(_replace_block(text, _DATA_START, _DATA_END, block), encoding="utf-8")
     except Exception:
         logger.exception("sync_agent_soul failed for agent %s", agent.get("id"))
+
+
+def append_lessons(agent_id: int, agent_name: str, session_title: str,
+                   lessons: list[str], taught_at: str = "") -> int:
+    """Ghi các bài học đã được Papa DUYỆT từ một buổi dạy vào soul của nhân viên.
+
+    Trả về số mục thực sự ghi. Cố ý không cắt bớt theo số lượng như
+    `append_feedback`: khối này chỉ lớn lên khi Papa đích thân dạy, và mất một
+    bài đã dạy thì tệ hơn nhiều so với việc mất một dòng chấm output.
+
+    Danh sách truyền vào phải là bản Papa đã xem và sửa (xem
+    api/routes/training.py, POST /sessions/{id}/lessons). Hàm này KHÔNG tự
+    chưng cất — nếu nó vừa tóm tắt vừa ghi thì không ai kiểm được thứ đi vào
+    soul, mà soul thì ảnh hưởng mọi lần nhân viên làm việc sau đó.
+    """
+    lessons = [str(x).strip() for x in (lessons or []) if str(x).strip()]
+    if not lessons:
+        return 0
+
+    p = soul_path(agent_id)
+    if not p.exists():
+        ensure_soul_file({"id": agent_id, "name": agent_name, "role": "", "system_prompt": ""})
+
+    header = f"\n**[Buổi dạy] {session_title or 'Không tên'}"
+    header += f" — {taught_at}**" if taught_at else "**"
+    entry = "\n".join([header] + [f"- {x}" for x in lessons])
+
+    try:
+        text = p.read_text(encoding="utf-8")
+        inner = ""
+        if _LESSON_START in text and _LESSON_END in text:
+            inner = text[text.index(_LESSON_START) + len(_LESSON_START):text.index(_LESSON_END)]
+        new_inner = (inner.strip("\n") + "\n" + entry).strip("\n")
+        p.write_text(_replace_block(text, _LESSON_START, _LESSON_END, new_inner), encoding="utf-8")
+        logger.info("soul.md: ghi %d bài học từ buổi dạy '%s' cho nhân viên %s",
+                    len(lessons), session_title, agent_id)
+        return len(lessons)
+    except Exception:
+        logger.exception("append_lessons failed for agent %s", agent_id)
+        return 0
 
 
 def append_feedback(agent_id: int, agent_name: str, task_name: str, verdict: str, content: str, notes: str = "") -> None:

@@ -123,6 +123,11 @@
 
       <button class="btn-feedback visible" id="btn-feedback" onclick="openFeedbackPopup()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8V4"/><rect x="8" y="14" width="8" height="6"/></svg> Lưu bài học kinh nghiệm</button>
 
+      <!-- Chỉ hiện với phiên CÓ học viên (xem renderStudentBar): phiên dạy chính
+           Xanax không có soul nhân viên nào để ghi vào. -->
+      <button class="btn-feedback" id="btn-end-lesson" style="display:none;"
+              onclick="endLesson()">Kết thúc buổi học → ghi vào soul học viên</button>
+
       <div class="info-divider"></div>
 
       <button class="btn-delete-session" onclick="deleteCurrentSession()">Xoá phiên dạy học này</button>
@@ -167,10 +172,39 @@
   <div class="modal">
     <h3><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Tạo Phiên Dạy Học Mới</h3>
     <input type="text" id="new-title" placeholder="Tên phiên dạy học (vd: Dạy trợ lý viết email bán hàng)" maxlength="100">
+    <!-- Học viên chọn ở ĐÂY và không đổi được sau khi tạo: bài học cuối buổi sẽ
+         ghi vào soul của đúng người này, nên đổi giữa chừng là ghi nhầm sổ. -->
+    <label class="field-label" for="new-agent">Học viên của buổi dạy</label>
+    <select id="new-agent">
+      <option value="">Dạy chính Xanax (như trước)</option>
+    </select>
+    <div class="field-hint" id="new-agent-hint">
+      Mỗi phòng dạy đúng một nhân viên. Chọn xong không đổi được — kết thúc buổi
+      học, bài học sẽ ghi vào soul của nhân viên này.
+    </div>
     <textarea id="new-task" placeholder="Mô tả yêu cầu nhiệm vụ huấn luyện (không bắt buộc)"></textarea>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeNewSession()">Huỷ</button>
       <button class="btn-create" onclick="createSession()">Tạo phiên</button>
+    </div>
+  </div>
+</div>
+
+<!-- Duyệt bài học trước khi ghi vào soul học viên.
+     Có bước này vì soul ảnh hưởng MỌI lần nhân viên làm việc sau đó: một bản
+     tóm sai sẽ âm thầm dạy sai mãi, mà không ai lần ra nó từ đâu. -->
+<div class="modal-overlay" id="lessons-overlay">
+  <div class="modal modal-lessons">
+    <h3>Kết thúc buổi học — duyệt bài học</h3>
+    <div class="field-hint" id="lessons-intro"></div>
+    <div id="lessons-list"></div>
+    <button class="btn-add-lesson" onclick="addLessonRow('')">+ Thêm bài học</button>
+    <div class="field-hint">
+      Sửa thoải mái trước khi ghi. Bỏ trống hết = không ghi gì vào soul.
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeLessons()">Để sau</button>
+      <button class="btn-create" id="lessons-save-btn" onclick="saveLessons()">Ghi vào soul</button>
     </div>
   </div>
 </div>

@@ -810,3 +810,89 @@ body {
 .toast.show    { transform: translateX(-50%) translateY(0); }
 .toast.success { border-color: rgba(var(--green-rgb),0.5);  color: var(--pass); }
 .toast.error   { border-color: rgba(var(--red-rgb),0.5);  color: var(--fail); }
+
+/* ── Buổi dạy có học viên ──────────────────────────────────────────────── */
+
+.field-label {
+  display: block;
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#new-agent {
+  width: 100%;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.field-hint {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* Danh sách bài học chờ duyệt — dài thì cuộn trong khối, không đẩy nút Ghi
+   xuống dưới mép màn hình. */
+.modal-lessons { max-width: 640px; }
+
+#lessons-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 10px 0 6px;
+}
+
+.lesson-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.lesson-input {
+  flex: 1;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  resize: vertical;
+}
+
+.lesson-remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.lesson-remove:hover { color: var(--fail); border-color: var(--fail); }
+
+.btn-add-lesson {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.btn-add-lesson:hover { color: var(--text); border-color: var(--muted); }

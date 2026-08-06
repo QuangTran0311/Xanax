@@ -28,7 +28,7 @@ let streamTimer = null;
   const me = await fetch('/api/auth/me').then(r => r.ok ? r.json() : null);
   if (!me) { window.top.location.href = '/login'; return; }
   document.getElementById('username-display').textContent = me.username;
-  await loadSessions();
+  await Promise.all([loadSessions(), loadAgentRoster()]);
 })();
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ function renderSessionList(sessions) {
       <div class="session-dot dot-${s.status}"></div>
       <div class="session-info">
         <div class="session-title">${esc(s.title)}</div>
-        <div class="session-meta">${fmtDate(s.created_at)}</div>
+        <div class="session-meta">${s.agent_name ? '👤 ' + esc(s.agent_name) + ' · ' : ''}${fmtDate(s.created_at)}</div>
       </div>
     </div>
   `).join('');
@@ -92,12 +92,111 @@ async function selectSession(id) {
   document.getElementById('chat-messages').style.display = 'flex';
   document.getElementById('chat-input-area').style.display = isDone ? 'none' : 'block';
 
+  renderStudentBar(session);
+
   const wrap = document.getElementById('chat-messages');
   wrap.innerHTML = '';
   (session.messages || []).forEach(m => appendMsg(m.role, m.content));
   scrollBottom();
 
   connectWS(id);
+}
+
+// ── Buổi dạy có học viên ─────────────────────────────────────────────────────
+
+let currentStudent = null;   // { id, name } của phiên đang mở, null = dạy Xanax
+
+function renderStudentBar(session) {
+  currentStudent = session.agent_id
+    ? { id: session.agent_id, name: session.agent_name || `#${session.agent_id}` }
+    : null;
+  const btn = document.getElementById('btn-end-lesson');
+  // Phiên dạy chính Xanax không có soul nhân viên nào để ghi vào.
+  if (btn) btn.style.display = currentStudent ? '' : 'none';
+}
+
+async function endLesson() {
+  if (!currentSessionId || !currentStudent) return;
+  const btn = document.getElementById('btn-end-lesson');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Đang đọc lại buổi học...';
+  try {
+    const res = await fetch(`/api/training/sessions/${currentSessionId}/distill`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(err.detail || 'Không chưng cất được buổi học', 'error');
+      return;
+    }
+    const data = await res.json();
+    openLessons(data.lessons || []);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+function openLessons(lessons) {
+  if (!currentStudent) return;   // không có học viên thì không có soul nào để ghi
+  document.getElementById('lessons-intro').textContent = lessons.length
+    ? `${lessons.length} bài học rút ra cho ${currentStudent.name}. Xem lại và sửa trước khi ghi — soul ảnh hưởng mọi lần ${currentStudent.name} làm việc sau này.`
+    : `Chưa rút được bài học rõ ràng nào từ buổi này. Bạn có thể tự thêm, hoặc để sau.`;
+  const list = document.getElementById('lessons-list');
+  list.innerHTML = '';
+  lessons.forEach(x => addLessonRow(x));
+  if (!lessons.length) addLessonRow('');
+  document.getElementById('lessons-overlay').classList.add('visible');
+}
+
+function addLessonRow(text) {
+  const row = document.createElement('div');
+  row.className = 'lesson-row';
+  const ta = document.createElement('textarea');
+  ta.className = 'lesson-input';
+  ta.rows = 2;
+  ta.value = text || '';
+  ta.placeholder = 'Một bài học ngắn, đọc riêng vẫn hiểu...';
+  const del = document.createElement('button');
+  del.className = 'lesson-remove';
+  del.textContent = '×';
+  del.title = 'Bỏ bài học này';
+  del.onclick = () => row.remove();
+  row.append(ta, del);
+  document.getElementById('lessons-list').appendChild(row);
+}
+
+function closeLessons() {
+  document.getElementById('lessons-overlay').classList.remove('visible');
+}
+
+async function saveLessons() {
+  const lessons = [...document.querySelectorAll('.lesson-input')]
+    .map(x => x.value.trim()).filter(Boolean);
+  const btn = document.getElementById('lessons-save-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/training/sessions/${currentSessionId}/lessons`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lessons }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(err.detail || 'Không ghi được vào soul', 'error');
+      return;
+    }
+    const data = await res.json();
+    closeLessons();
+    await loadSessions();
+    await selectSession(currentSessionId);
+    toast(data.written
+      ? `Đã ghi ${data.written} bài học vào soul của ${data.agent_name}`
+      : 'Đã kết thúc buổi học, không ghi bài học nào', 'success');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -415,14 +514,38 @@ function closeModal(e) {
   if (e.target === document.getElementById('modal-overlay')) closeNewSession();
 }
 
+// ── Học viên của buổi dạy ────────────────────────────────────────────────────
+// Danh sách nhân viên nạp một lần, dùng cho ô chọn lúc tạo phòng.
+let agentRoster = [];
+
+async function loadAgentRoster() {
+  try {
+    const res = await fetch('/api/agent-configs/');
+    if (!res.ok) return;
+    agentRoster = (await res.json()).agents || [];
+  } catch { /* mất mạng — ô chọn vẫn dùng được với mỗi lựa chọn Xanax */ }
+
+  const sel = document.getElementById('new-agent');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Dạy chính Xanax (như trước)</option>' +
+    agentRoster.map(a =>
+      `<option value="${a.id}">${esc(a.name)}${a.role ? ' — ' + esc(a.role) : ''}</option>`
+    ).join('');
+}
+
 async function createSession() {
   const title = document.getElementById('new-title').value.trim();
   if (!title) { document.getElementById('new-title').focus(); return; }
   const task  = document.getElementById('new-task').value.trim();
+  const agentId = document.getElementById('new-agent').value;
   const res = await fetch('/api/training/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, task_description: task }),
+    body: JSON.stringify({
+      title,
+      task_description: task,
+      agent_id: agentId ? parseInt(agentId) : null,
+    }),
   });
   if (!res.ok) { toast('Không tạo được session', 'error'); return; }
   const session = await res.json();

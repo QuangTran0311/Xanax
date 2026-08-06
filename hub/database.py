@@ -54,6 +54,13 @@ async def init_db() -> None:
                 task_description TEXT    NOT NULL DEFAULT '',
                 status           TEXT    NOT NULL DEFAULT 'in_progress',
                 result_notes     TEXT    NOT NULL DEFAULT '',
+                -- Học viên của buổi dạy: đúng MỘT nhân viên, chọn lúc tạo phòng
+                -- và không đổi. NULL = phiên dạy chính Xanax (toàn bộ phiên cũ).
+                agent_id         INTEGER,
+                -- Bài học đã chưng cất, chờ Papa duyệt trước khi ghi vào soul.
+                -- Giữ trong DB thay vì chỉ trong RAM để đóng trình duyệt giữa
+                -- chừng không mất bản nháp.
+                lessons_json     TEXT    NOT NULL DEFAULT '',
                 created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
             )
@@ -225,11 +232,14 @@ async def clear_all_sessions() -> None:
 
 # ── Training sessions ────────────────────────────────────────────────────────
 
-async def create_training_session(title: str, task_description: str = "") -> int:
+async def create_training_session(title: str, task_description: str = "",
+                                  agent_id: int | None = None) -> int:
+    """agent_id = học viên của buổi dạy, chọn lúc tạo và không đổi về sau.
+    None = dạy chính Xanax (hành vi cũ)."""
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO training_sessions (title, task_description) VALUES (?, ?)",
-            (title, task_description),
+            "INSERT INTO training_sessions (title, task_description, agent_id) VALUES (?, ?, ?)",
+            (title, task_description, agent_id),
         )
         await db.commit()
         return cur.lastrowid
@@ -239,8 +249,13 @@ async def list_training_sessions() -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, title, task_description, status, result_notes, created_at, updated_at "
-            "FROM training_sessions ORDER BY created_at DESC"
+            "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
+            "       s.agent_id, s.lessons_json, s.created_at, s.updated_at, "
+            "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
+            "       a.avatar_icon AS agent_avatar_icon "
+            "FROM training_sessions s "
+            "LEFT JOIN agent_configs a ON a.id = s.agent_id "
+            "ORDER BY s.created_at DESC"
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
@@ -250,8 +265,13 @@ async def get_training_session(session_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, title, task_description, status, result_notes, created_at, updated_at "
-            "FROM training_sessions WHERE id = ?",
+            "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
+            "       s.agent_id, s.lessons_json, s.created_at, s.updated_at, "
+            "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
+            "       a.avatar_icon AS agent_avatar_icon "
+            "FROM training_sessions s "
+            "LEFT JOIN agent_configs a ON a.id = s.agent_id "
+            "WHERE s.id = ?",
             (session_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -267,6 +287,7 @@ async def update_training_session(
     result_notes: str | None = None,
     title: str | None = None,
     task_description: str | None = None,
+    lessons_json: str | None = None,
 ) -> bool:
     fields, values = [], []
     if status is not None:
@@ -277,6 +298,8 @@ async def update_training_session(
         fields.append("title = ?"); values.append(title)
     if task_description is not None:
         fields.append("task_description = ?"); values.append(task_description)
+    if lessons_json is not None:
+        fields.append("lessons_json = ?"); values.append(lessons_json)
     if not fields:
         return False
     fields.append("updated_at = datetime('now')")
@@ -777,6 +800,11 @@ async def _run_migrations(db) -> None:
         # Phòng ban — nhóm nhân viên AI, chuẩn bị cho tính năng họp theo phòng ban
         "ALTER TABLE agent_configs ADD COLUMN department_id INTEGER",
         "ALTER TABLE departments ADD COLUMN head_agent_id INTEGER",
+        # Phòng dạy AI gắn với đúng 1 nhân viên học viên (NULL = dạy chính Xanax,
+        # là toàn bộ phiên có từ trước). lessons_json giữ bản nháp bài học đã
+        # chưng cất, chờ Papa duyệt rồi mới ghi vào soul của nhân viên đó.
+        "ALTER TABLE training_sessions ADD COLUMN agent_id INTEGER",
+        "ALTER TABLE training_sessions ADD COLUMN lessons_json TEXT NOT NULL DEFAULT ''",
         # Biên bản nháp Xanax tự tổng hợp khi kết thúc họp — CEO xem/sửa rồi mới chốt
         # (decision_text/decided_at) qua endpoint finalize hiện có.
         "ALTER TABLE meetings ADD COLUMN draft_minutes TEXT NOT NULL DEFAULT ''",

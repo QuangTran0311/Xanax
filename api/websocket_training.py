@@ -34,6 +34,7 @@ from hub.database import (
     get_training_messages,
     get_training_session,
     update_training_session,
+    get_agent_config,
     list_agent_configs,
     list_skills,
     list_projects,
@@ -49,6 +50,71 @@ from hub.database import (
 
 logger = logging.getLogger("xanax.ws.training")
 router = APIRouter()
+
+
+# ── Buổi dạy có học viên ──────────────────────────────────────────────────────
+
+async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> str:
+    """Chính nhân viên học viên trả lời, bằng model và soul của nó.
+
+    Tách khỏi `_stream_agent` của phòng họp dù cùng ý tưởng, vì luật hai nơi
+    khác nhau: ở đây không có nhân viên khác để lẫn vai, không có định dạng
+    "[Tên]: " cần gỡ, và quan trọng nhất là học viên KHÔNG được cầm công cụ.
+
+    Không truyền `tools` và không phân tích [[XANAX:...]] cho học viên. Bộ công
+    cụ trong file này (save_note, create_work_item, trigger_workflow...) là
+    quyền của Xanax; đưa cho một học viên đang được dạy nghĩa là một câu dạy
+    thử có thể tạo việc thật hoặc chạy quy trình thật.
+    """
+    from core.agent_soul import read_soul, sync_agent_soul
+
+    persona = (agent.get("system_prompt") or "").strip() or (
+        f"Bạn là {agent.get('name')}, {agent.get('role') or 'nhân viên AI'}."
+    )
+    await sync_agent_soul(agent)
+    soul_content = read_soul(agent["id"])
+
+    system_prompt = "\n\n".join(filter(None, [
+        persona,
+        soul_content,
+        f"BỐI CẢNH: bạn LÀ {agent.get('name')} ({agent.get('role') or 'nhân viên AI'}), "
+        "đang trong một buổi học riêng. Người nói chuyện với bạn là Papa — người "
+        "trực tiếp dạy bạn. Hãy trả lời với tư cách chính bạn, ngôi thứ nhất.\n"
+        "- Papa dạy điều gì thì nói lại BẰNG LỜI CỦA BẠN để Papa biết bạn hiểu đúng "
+        "hay chưa; hiểu sai còn sửa được, gật đầu cho qua thì sai sẽ đi vào soul.\n"
+        "- Chỗ nào chưa rõ thì HỎI LẠI, đừng đoán. Đây là lúc để hỏi.\n"
+        "- KHÔNG bịa là mình đã làm hay đã chạy bất cứ thứ gì. Trong buổi học bạn "
+        "không có công cụ nào và không thực hiện việc thật.",
+    ]))
+
+    await _send(ws, {"type": "status", "status": "thinking"})
+
+    llm_messages = [{"role": "system", "content": system_prompt}]
+    for m in history:
+        llm_messages.append({"role": m["role"], "content": m["content"]})
+
+    try:
+        model_pool_ids: list[int] = json.loads(agent.get("model_pool_ids_json") or "[]")
+    except Exception:
+        model_pool_ids = []
+
+    full = ""
+    if model_pool_ids:
+        # Dùng đúng danh sách model ưu tiên đã cấu hình cho nhân viên, tự fallback
+        # khi model đầu hỏng — giống phòng họp và quy trình.
+        from core.model_pool_bridge import stream_from_agent_models
+        async for delta in stream_from_agent_models(model_pool_ids, llm_messages):
+            if ws.client_state != WebSocketState.CONNECTED:
+                break
+            full += delta
+            await _send(ws, {"type": "chunk", "content": delta})
+    else:
+        async for delta in hermes.stream_with_context(llm_messages):
+            if ws.client_state != WebSocketState.CONNECTED:
+                break
+            full += delta
+            await _send(ws, {"type": "chunk", "content": delta})
+    return full
 
 
 # ── Live DB context ───────────────────────────────────────────────────────────
@@ -538,6 +604,30 @@ async def websocket_training(websocket: WebSocket):
 
             # Persist user message
             await add_training_message(int(training_session_id), "user", message)
+
+            # Buổi dạy có học viên: chính nhân viên đó trả lời, bằng model và
+            # soul của nó. Không đi qua đường Xanax phía dưới, và đặc biệt không
+            # phân tích [[XANAX:...]] — học viên không được cầm công cụ.
+            if session.get("agent_id"):
+                agent = await get_agent_config(int(session["agent_id"]))
+                if not agent:
+                    await _send(websocket, {
+                        "type": "error",
+                        "message": "Học viên của buổi dạy này đã bị xoá khỏi danh sách nhân viên.",
+                    })
+                    continue
+                history = await get_training_messages(int(training_session_id))
+                try:
+                    reply = await _stream_student(websocket, agent, history)
+                    if reply.strip():
+                        await add_training_message(
+                            int(training_session_id), "assistant", reply.strip()
+                        )
+                    await _send(websocket, {"type": "done"})
+                except Exception as e:
+                    logger.exception("Student stream error for session %s", training_session_id)
+                    await _send(websocket, {"type": "error", "message": str(e)})
+                continue
 
             # Build context: SOUL.md + live DB snapshot → full history
             soul         = _read_soul()
