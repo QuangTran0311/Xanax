@@ -625,6 +625,23 @@ def _extract_trigger_markers(reply: str) -> tuple[str, list[dict]]:
     return cleaned, runs
 
 
+def _has_orchestrator_json(raw: str) -> bool:
+    """Model có trả đúng hợp đồng JSON không (dù chỉ là một phần).
+
+    Dùng để phân biệt "Xanax quyết định xong" với "model bỏ qua system prompt và
+    tán gẫu". Chỉ cần có `reply` là đủ tính hợp lệ — thiếu call_agents /
+    run_workflows là chuyện bình thường khi không cần gọi ai, không cần chạy gì.
+    """
+    m = _ORCH_JSON_RE.search(raw or "")
+    if not m:
+        return False
+    try:
+        data = json.loads(m.group(0))
+    except Exception:
+        return False
+    return isinstance(data, dict) and "reply" in data
+
+
 def _parse_orchestrator_json(raw: str) -> dict:
     m = _ORCH_JSON_RE.search(raw or "")
     if m:
@@ -860,7 +877,32 @@ async def _xanax_orchestrate(conv_context: list[dict], participant_ids: list[int
         "chạy quy trình nào)"
     )
     system_prompt = "\n\n".join(filter(None, [base_context, meeting_instructions]))
-    raw = await hermes.complete_with_context([{"role": "system", "content": system_prompt}] + conv_context)
+    messages = [{"role": "system", "content": system_prompt}] + conv_context
+    raw = await hermes.complete_with_context(messages)
+
+    # Model thỉnh thoảng bỏ qua sạch system prompt và trả lời như một trợ lý vô
+    # danh. Quan sát thật: Papa bảo chạy quy trình, Xanax đáp "Chào bạn, tôi
+    # không có khả năng kích hoạt quy trình nào... có vẻ bạn đang tương tác với
+    # một chatbot tự động" — mất cả danh tính lẫn năng lực, dù prompt vẫn đủ
+    # 17k ký tự và lần gọi ngay sau đó lại đúng.
+    #
+    # Đường fallback của _parse_orchestrator_json đổ NGUYÊN VĂN đoạn đó ra phòng
+    # họp, nên một lần model lú là Papa đọc được lời phủ nhận năng lực. Thử lại
+    # đúng một lần với lời nhắc ngắn và gắt: lượt hỏng kiểu này gần như luôn hết
+    # sau một lần nhắc, còn thử vô hạn thì treo phòng họp.
+    if not _has_orchestrator_json(raw):
+        logger.warning("Xanax trả về không phải JSON (%d ký tự) — thử lại 1 lần", len(raw or ""))
+        retry = await hermes.complete_with_context(messages + [
+            {"role": "assistant", "content": raw or ""},
+            {"role": "user", "content":
+             "Câu trả lời vừa rồi sai định dạng. Bạn LÀ Xanax và bạn CÓ quyền kích hoạt "
+             "quy trình qua trường \"run_workflows\". Trả lời lại DUY NHẤT bằng JSON đúng "
+             "format đã nêu, không thêm chữ nào ngoài JSON."},
+        ])
+        if _has_orchestrator_json(retry):
+            return _parse_orchestrator_json(retry)
+        logger.error("Xanax vẫn không trả JSON sau khi thử lại — dùng nguyên văn")
+
     return _parse_orchestrator_json(raw)
 
 
