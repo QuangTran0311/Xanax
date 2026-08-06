@@ -262,6 +262,13 @@ export async function deleteModel(id) {
   await loadModelPool();
 }
 
+// Ba nút trong khung chi tiết luôn thao tác trên model đang chọn. Trước đây
+// HTML viết openModelModal(currentModelId) — đọc thẳng biến toàn cục. Nay
+// currentModelId thuộc phạm vi module, nên gói lại thành hành động riêng.
+export function openCurrentModelModal() { openModelModal(currentModelId); }
+export function testCurrentModel() { return testModel(currentModelId); }
+export function deleteCurrentModel() { return deleteModel(currentModelId); }
+
 export async function testModel(id) {
   const btn = document.getElementById('mp-test-btn');
   if (!btn) return;

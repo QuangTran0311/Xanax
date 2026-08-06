@@ -53,6 +53,11 @@ function hideBenchmarkViews() {
   });
 }
 
+// Enter trong ô nhập = thêm model. Trước đây là onkeydown="if(...)addBenchModel()".
+export function benchModelInputKeydown(ev) {
+  if (ev.key === 'Enter') addBenchModel();
+}
+
 export function addBenchModel() {
   const inp = document.getElementById('bench-model-input');
   const m = inp.value.trim();

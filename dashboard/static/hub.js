@@ -1,65 +1,99 @@
 // Điểm vào của trang /hub — nạp bằng <script type="module">.
 //
-// Cầu `window.*` phía dưới tồn tại vì hub.html còn ~140 handler nội tuyến
-// (onclick="...") mà phạm vi module không nhìn thấy. Đây là bắc cầu tạm thời:
-// mỗi tab được chuyển sang event delegation thì xoá bớt tên khỏi đây, đến khi
-// danh sách rỗng thì xoá cả khối. KHÔNG thêm tên mới vào đây.
+// Hai việc: đăng ký hành động cho bộ điều phối sự kiện, rồi khởi động.
+//
+// hub.html không còn onclick="..." nào; mọi nút khai báo data-click="tên" và
+// bộ điều phối trong hub/actions.js tra tên đó trong sổ đăng ký dưới đây.
 
+import { register } from './hub/actions.js';
 import { cancelAgentForm, changeAgentWizardStep, checkDeptHeadPrompt, deleteAgent, deleteDepartmentConfirm, editDepartment, goAgentWizardStep, newAgent, openDepartmentModal, renderAgentList, resetDepartmentForm, saveAgent, saveDepartment, selectAgent, toggleAgentSkill, updateAgentPreview } from './hub/agents.js';
-import { deleteAssetItem, setAssetsFilter } from './hub/assets.js';
+import { deleteAssetItem, pickAssetsFile, setAssetsFilter } from './hub/assets.js';
 import { logout } from './hub/auth.js';
-import { addBenchModel, addTestCase, cancelBenchmark, createAndRunBenchmark, openBenchmark, removeBenchModel, removeTestCase, showBenchmarkCreate } from './hub/benchmark.js';
+import { addBenchModel, addTestCase, benchModelInputKeydown, cancelBenchmark, createAndRunBenchmark, openBenchmark, removeBenchModel, removeTestCase, showBenchmarkCreate } from './hub/benchmark.js';
 import { exportCostXlsx, loadCostTab, toggleCostDayRow, toggleCostModelRow, toggleTokenColumns } from './hub/cost.js';
 import { addAgentModel, init, moveAgentModel, removeAgentModel, selectAvatar, selectAvatarShape } from './hub/init.js';
 import { assignFromSuggestion, copyOutput, deleteCard, deleteKnowledgeDoc, deleteProject, openCardModal, openKnowledgeModal, openProjectModal, saveCard, saveOutputNotes, saveProject, setOutputPF, toggleOutputEdit } from './hub/knowledge.js';
 import { approveMeetingItems, confirmFinalizeMeeting, createMeeting, deleteMeeting, endMeeting, finalizeMeeting, handleMeetingInputChange, meetingInputKeydown, newMeeting, openMeeting, openMeetingProject, resolveMeetingApproval, sendMeetingMessage, toggleParticipantsDropdown } from './hub/meetings.js';
 import { _answerConfirm, closeModal } from './hub/modals.js';
-import { deleteModel, livePreviewLimits, openModelModal, saveModel, selectModel, switchModelModalTab, testModel, updateCliModelHints, updateNativeModelHints } from './hub/model-pool.js';
+import { deleteCurrentModel, livePreviewLimits, openCurrentModelModal, openModelModal, saveModel, selectModel, switchModelModalTab, testCurrentModel, updateCliModelHints, updateNativeModelHints } from './hub/model-pool.js';
 import { openOpsDetails, opsApprove, opsOpenFeedback, opsSaveFeedback } from './hub/ops.js';
-import { closeProjectDetail, filterProjectGrid, openProjectDetail, switchProjectSubTab } from './hub/projects.js';
+import { closeProjectDetail, filterProjectGrid, openCurrentProjectModal, openProjectDetail, switchProjectSubTab } from './hub/projects.js';
 import { cancelSkillForm, changeSkillWizardStep, chooseSkillType, deleteSkill, filterSkillsByType, goSkillWizardStep, newSkill, renderSkillList, saveSkill, selectSkill, testSkillConnection, toggleAllMcpTools, toggleMcpTool, toggleSkillSecret, updateBuiltinToolDescription, updateSkillImagePoolField } from './hub/skills.js';
 import { switchTab } from './hub/tabs.js';
 import { applyLang, applyTheme, loadSettings, saveAnimPref, saveSidebarPref, toggleSidebarIconMode, toggleTheme } from './hub/ui.js';
 import { clearSkillFile, handleSkillFileUpload } from './hub/upload.js';
+import './hub/actions.js';
 import './hub/api.js';
 import './hub/avatar.js';
 import './hub/icons.js';
 import './hub/overview.js';
 import './hub/utils.js';
 
-Object.assign(window, {
+// Hành động dùng bởi data-* trong hub.html.
+register({
   // agents
-  cancelAgentForm, changeAgentWizardStep, checkDeptHeadPrompt, deleteAgent, deleteDepartmentConfirm, editDepartment, goAgentWizardStep, newAgent, openDepartmentModal, renderAgentList, resetDepartmentForm, saveAgent, saveDepartment, selectAgent, toggleAgentSkill, updateAgentPreview,
+  cancelAgentForm, changeAgentWizardStep, checkDeptHeadPrompt, deleteAgent, goAgentWizardStep, newAgent, openDepartmentModal, renderAgentList, resetDepartmentForm, saveAgent, saveDepartment, updateAgentPreview,
   // assets
-  deleteAssetItem, setAssetsFilter,
+  pickAssetsFile,
   // auth
   logout,
   // benchmark
-  addBenchModel, addTestCase, cancelBenchmark, createAndRunBenchmark, openBenchmark, removeBenchModel, removeTestCase, showBenchmarkCreate,
+  addBenchModel, addTestCase, benchModelInputKeydown, cancelBenchmark, createAndRunBenchmark, showBenchmarkCreate,
   // cost
-  exportCostXlsx, loadCostTab, toggleCostDayRow, toggleCostModelRow, toggleTokenColumns,
+  exportCostXlsx, loadCostTab, toggleTokenColumns,
   // init
-  addAgentModel, moveAgentModel, removeAgentModel, selectAvatar, selectAvatarShape,
+  addAgentModel,
   // knowledge
-  assignFromSuggestion, copyOutput, deleteCard, deleteKnowledgeDoc, deleteProject, openCardModal, openKnowledgeModal, openProjectModal, saveCard, saveOutputNotes, saveProject, setOutputPF, toggleOutputEdit,
+  deleteCard, deleteProject, openProjectModal, saveCard, saveProject,
   // meetings
-  approveMeetingItems, confirmFinalizeMeeting, createMeeting, deleteMeeting, endMeeting, finalizeMeeting, handleMeetingInputChange, meetingInputKeydown, newMeeting, openMeeting, openMeetingProject, resolveMeetingApproval, sendMeetingMessage, toggleParticipantsDropdown,
+  confirmFinalizeMeeting, createMeeting, endMeeting, finalizeMeeting, handleMeetingInputChange, meetingInputKeydown, newMeeting, sendMeetingMessage, toggleParticipantsDropdown,
   // modals
   _answerConfirm, closeModal,
   // model-pool
-  deleteModel, livePreviewLimits, openModelModal, saveModel, selectModel, switchModelModalTab, testModel, updateCliModelHints, updateNativeModelHints,
+  deleteCurrentModel, livePreviewLimits, openCurrentModelModal, openModelModal, saveModel, switchModelModalTab, testCurrentModel, updateCliModelHints, updateNativeModelHints,
   // ops
-  openOpsDetails, opsApprove, opsOpenFeedback, opsSaveFeedback,
+  opsSaveFeedback,
   // projects
-  closeProjectDetail, filterProjectGrid, openProjectDetail, switchProjectSubTab,
+  closeProjectDetail, filterProjectGrid, openCurrentProjectModal, switchProjectSubTab,
   // skills
-  cancelSkillForm, changeSkillWizardStep, chooseSkillType, deleteSkill, filterSkillsByType, goSkillWizardStep, newSkill, renderSkillList, saveSkill, selectSkill, testSkillConnection, toggleAllMcpTools, toggleMcpTool, toggleSkillSecret, updateBuiltinToolDescription, updateSkillImagePoolField,
+  cancelSkillForm, changeSkillWizardStep, chooseSkillType, deleteSkill, goSkillWizardStep, newSkill, renderSkillList, saveSkill, testSkillConnection, toggleSkillSecret, updateBuiltinToolDescription, updateSkillImagePoolField,
   // tabs
   switchTab,
   // ui
   applyLang, applyTheme, saveAnimPref, saveSidebarPref, toggleSidebarIconMode, toggleTheme,
   // upload
   clearSkillFile, handleSkillFileUpload,
+});
+
+// Cầu tạm còn lại: 58 chỗ onclick="..." vẫn nằm trong template string của
+// các hàm render trong hub/*.js, và HTML sinh ra lúc chạy thì chỉ thấy phạm vi
+// toàn cục. Chuyển nốt các chỗ đó sang data-* sẽ xoá được cả khối này.
+// KHÔNG thêm tên mới vào đây.
+Object.assign(window, {
+  // agents
+  deleteDepartmentConfirm, editDepartment, selectAgent, toggleAgentSkill,
+  // assets
+  deleteAssetItem, setAssetsFilter,
+  // benchmark
+  addBenchModel, openBenchmark, removeBenchModel, removeTestCase,
+  // cost
+  toggleCostDayRow, toggleCostModelRow,
+  // init
+  moveAgentModel, removeAgentModel, selectAvatar, selectAvatarShape,
+  // knowledge
+  assignFromSuggestion, copyOutput, deleteKnowledgeDoc, openCardModal, openKnowledgeModal, saveOutputNotes, setOutputPF, toggleOutputEdit,
+  // meetings
+  approveMeetingItems, deleteMeeting, openMeeting, openMeetingProject, resolveMeetingApproval,
+  // model-pool
+  selectModel,
+  // ops
+  openOpsDetails, opsApprove, opsOpenFeedback,
+  // projects
+  openProjectDetail, switchProjectSubTab,
+  // skills
+  filterSkillsByType, selectSkill, toggleAllMcpTools, toggleMcpTool,
+  // tabs
+  switchTab,
 });
 
 // Boot

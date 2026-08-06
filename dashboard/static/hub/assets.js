@@ -89,6 +89,11 @@ async function uploadAssetFiles(fileList) {
   await loadAssets();
 }
 
+// Chữ "chọn file" trong vùng kéo-thả chỉ để mở hộp thoại chọn tệp của input ẩn.
+export function pickAssetsFile() {
+  document.getElementById('assets-file-input')?.click();
+}
+
 (function initAssetsDropzone() {
   document.addEventListener('DOMContentLoaded', () => {
     const zone = document.getElementById('assets-dropzone');

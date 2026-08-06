@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { icon } from './icons.js';
+import { openProjectModal } from './knowledge.js';
 import { meetings, renderMeetingList } from './meetings.js';
 import { opsRenderSubTab } from './ops.js';
 import { esc } from './utils.js';
@@ -8,6 +9,11 @@ import { esc } from './utils.js';
 export let projects = [];
 export let currentProjectId = null;
 export let currentProjectSubTab = 'results';
+
+// Nút "Sửa" trong đầu trang chi tiết dự án luôn sửa dự án đang mở. Trước đây
+// HTML viết openProjectModal(currentProjectId); currentProjectId nay là phạm
+// vi module nên gói lại thành hành động riêng.
+export function openCurrentProjectModal() { openProjectModal(currentProjectId); }
 
 // PROJECTS / KANBAN
 // ════════════════════════════════════════

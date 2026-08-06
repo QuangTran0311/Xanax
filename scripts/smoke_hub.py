@@ -62,24 +62,43 @@ async def main():
         # Module đã nạp chưa: cầu window.* phải có mặt
         bridged = await page.evaluate("typeof window.switchTab === 'function'")
         print(f"-- cầu window.switchTab: {'OK' if bridged else 'THIẾU'}")
-        # Mọi handler nội tuyến trong hub.html phải có mặt trên window, nếu không
-        # nút bấm sẽ chết lặng (ReferenceError chỉ nổ lúc người dùng click).
+        # 1. hub.html không được còn handler nội tuyến nào.
         import re as _re
         html = (ROOT / "dashboard" / "hub.html").read_text(encoding="utf-8")
-        wanted = sorted({nm for mt in _re.finditer(
-            r'on(?:click|change|input|submit|keydown|keyup|blur|focus)="([^"]*)"', html)
-            for nm in _re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", mt.group(1))})
-        missing_h = await page.evaluate(
-            "names => names.filter(n => typeof window[n] !== 'function')", wanted)
-        # bỏ qua phương thức DOM gọi trên this/biến (vd this.remove(), e.stopPropagation())
-        dom_ish = {"remove", "stopPropagation", "click", "getElementById",
-                   "replace", "stringify", "if", "preventDefault", "focus", "blur"}
-        missing_h = [m for m in missing_h if m not in dom_ish]
-        print(f"-- handler nội tuyến trong hub.html: {len(wanted)} tên, "
-              f"thiếu {len(missing_h)}")
-        if missing_h:
-            print("   THIẾU: " + ", ".join(missing_h))
-            errors.append("handler thiếu trên window: " + ", ".join(missing_h))
+        inline = _re.findall(
+            r'\bon(?:click|change|input|submit|keydown|keyup|blur|focus)="', html)
+        print(f"-- handler nội tuyến còn sót trong hub.html: {len(inline)}")
+        if inline:
+            errors.append(f"{len(inline)} handler nội tuyến chưa chuyển")
+
+        # 2. Mọi data-* trong HTML phải có trong sổ đăng ký, nếu không nút sẽ
+        #    chết lặng. Đối chiếu tên thay vì bấm thật — trong đó có nút xoá.
+        declared = sorted({m.group(2) for m in _re.finditer(
+            r'data-(click|change|input|keydown)="([^"]*)"', html)})
+        known = await page.evaluate(
+            "async () => (await import('/static/hub/actions.js')).registeredActions()")
+        missing_a = [d for d in declared if d not in known]
+        print(f"-- hành động data-* trong hub.html: {len(declared)} tên, "
+              f"đã đăng ký {len(known)}, thiếu {len(missing_a)}")
+        if missing_a:
+            print("   THIẾU: " + ", ".join(missing_a))
+            errors.append("hành động chưa đăng ký: " + ", ".join(missing_a))
+
+        # 3. Các onclick còn nằm trong template string của JS vẫn cần window.
+        js_names = set()
+        for f in sorted((ROOT / "dashboard" / "static" / "hub").glob("*.js")):
+            for m in _re.finditer(
+                    r'on(?:click|change|input|keydown)="([^"]*)"', f.read_text(encoding="utf-8")):
+                js_names |= set(_re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", m.group(1)))
+        js_names -= {"esc", "if", "remove", "replace", "stopPropagation", "stringify",
+                     "getElementById", "click", "preventDefault", "focus", "blur"}
+        missing_w = await page.evaluate(
+            "names => names.filter(n => typeof window[n] !== 'function')", sorted(js_names))
+        print(f"-- onclick trong template string JS: {len(js_names)} tên, "
+              f"thiếu trên window {len(missing_w)}")
+        if missing_w:
+            print("   THIẾU: " + ", ".join(missing_w))
+            errors.append("thiếu trên window: " + ", ".join(missing_w))
 
         for tab in TABS:
             before = len(errors)
@@ -90,6 +109,48 @@ async def main():
                 errors.append(f"[switchTab {tab}] {e}")
             new = len(errors) - before
             print(f"   tab {tab:11s} {'OK' if new == 0 else f'{new} LỖI'}")
+
+        # 4. Bấm thật vào vài nút để chứng minh uỷ quyền hoạt động end-to-end.
+        #    Chỉ chọn thao tác không phá dữ liệu, và có hiệu ứng quan sát được.
+        await page.evaluate("window.switchTab('home')")
+        await page.wait_for_timeout(400)
+
+        async def check(label, selector, probe, want):
+            try:
+                await page.click(selector, timeout=5000)
+                await page.wait_for_timeout(600)
+                got = await page.evaluate(probe)
+                ok = (got == want)
+                print(f"   {label:34s} {'OK' if ok else f'SAI (được {got!r}, cần {want!r})'}")
+                if not ok:
+                    errors.append(f"tương tác '{label}' không có hiệu lực")
+            except Exception as e:
+                print(f"   {label:34s} LỖI: {e}")
+                errors.append(f"tương tác '{label}': {e}")
+
+        print("-- bấm thật (uỷ quyền sự kiện):")
+        # nav-card ở trang chủ: data-click="switchTab" data-click-args='["agents"]'
+        await check("nav-card -> tab Nhân viên", '.nav-card[data-click-args=\'["agents"]\']',
+                    "document.querySelector('.tab-btn[data-tab=\"agents\"]')"
+                    ".classList.contains('active')", True)
+        # nút không đối số: newAgent() dọn trắng biểu mẫu, nên bẩn nó trước rồi
+        # kiểm tra đã sạch — chứng minh hàm thật sự chạy.
+        await page.evaluate("document.getElementById('agent-name').value = 'BẨN'")
+        await check("+ Thêm nhân viên AI", 'button[data-click="newAgent"]',
+                    "document.getElementById('agent-name').value", "")
+        # nút đổi giao diện: đối số rỗng, hiệu ứng trên thuộc tính của <html>/<body>
+        before = await page.evaluate("document.documentElement.getAttribute('data-theme')"
+                                     " || document.body.className")
+        await page.click('#theme-toggle-btn')
+        await page.wait_for_timeout(400)
+        after = await page.evaluate("document.documentElement.getAttribute('data-theme')"
+                                    " || document.body.className")
+        ok = before != after
+        print(f"   {'đổi giao diện sáng/tối':34s} {'OK' if ok else 'SAI (không đổi)'}")
+        if not ok:
+            errors.append("nút đổi giao diện không có hiệu lực")
+        else:
+            await page.click('#theme-toggle-btn')   # trả lại như cũ
 
         await browser.close()
 

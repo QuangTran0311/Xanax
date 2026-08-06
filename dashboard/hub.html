@@ -17,9 +17,9 @@
 <div class="topbar">
   <span class="topbar-logo"><span class="dot"></span>Xanax</span>
   <div class="topbar-user">
-    <button class="btn-theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Đổi giao diện sáng/tối"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 13.5A8.5 8.5 0 119.7 3.2 6.8 6.8 0 0020 13.5z"/></svg></button>
+    <button class="btn-theme-toggle" id="theme-toggle-btn" data-click="toggleTheme" title="Đổi giao diện sáng/tối"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 13.5A8.5 8.5 0 119.7 3.2 6.8 6.8 0 0020 13.5z"/></svg></button>
     <span id="topbar-user-name">—</span>
-    <button class="btn-logout" onclick="logout()" data-i18n="topbar.logout">Logout</button>
+    <button class="btn-logout" data-click="logout" data-i18n="topbar.logout">Logout</button>
   </div>
 </div>
 
@@ -28,60 +28,60 @@
 
   <!-- Sidebar -->
   <aside class="hub-sidebar">
-    <button class="tab-btn" data-tab="home" onclick="switchTab('home')" data-i18n-title="nav.home.title" title="Tổng quan">
+    <button class="tab-btn" data-tab="home" data-click="switchTab" data-click-args='["home"]' data-i18n-title="nav.home.title" title="Tổng quan">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11L12 4l8 7" /><path d="M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9" /><rect x="10" y="14" width="4" height="6" rx="1" fill="currentColor" stroke="none"/></svg>
       <span class="tab-label" data-i18n="nav.home">TRANG CHỦ</span>
     </button>
     <div class="sidebar-divider"></div>
-    <button class="tab-btn" data-tab="agents" onclick="switchTab('agents')" data-i18n-title="nav.agents.title">
+    <button class="tab-btn" data-tab="agents" data-click="switchTab" data-click-args='["agents"]' data-i18n-title="nav.agents.title">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="14" height="12" rx="5" /><circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 16c.8.6 3.2.6 4 0" /><line x1="12" y1="7" x2="12" y2="4.5"/><circle cx="12" cy="4" r="1" fill="currentColor" stroke="none"/></svg>
       <span class="tab-label" data-i18n="nav.agents">TRỢ LÝ AI</span>
     </button>
-    <button class="tab-btn" data-tab="skills" onclick="switchTab('skills')" data-i18n-title="nav.skills.title">
+    <button class="tab-btn" data-tab="skills" data-click="switchTab" data-click-args='["skills"]' data-i18n-title="nav.skills.title">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="13" x2="20" y2="13"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="19" x2="20" y2="19"/><circle cx="7" cy="19" r="2" fill="currentColor" stroke="none"/></svg>
       <span class="tab-label" data-i18n="nav.skills">CÔNG CỤ</span>
     </button>
     <div class="sidebar-divider"></div>
-    <button class="tab-btn" data-tab="tasks" onclick="switchTab('tasks')" data-i18n-title="nav.tasks.title" title="Dự án">
+    <button class="tab-btn" data-tab="tasks" data-click="switchTab" data-click-args='["tasks"]' data-i18n-title="nav.tasks.title" title="Dự án">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>
       <span class="tab-label" data-i18n="nav.tasks">CÔNG VIỆC</span>
     </button>
-    <button class="tab-btn" data-tab="meeting" onclick="switchTab('meeting')" data-i18n-title="nav.meeting.title">
+    <button class="tab-btn" data-tab="meeting" data-click="switchTab" data-click-args='["meeting"]' data-i18n-title="nav.meeting.title">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15 20c0-2.5 1.8-4.5 4-4.8"/></svg>
       <span class="tab-label" data-i18n="nav.meeting">PHÒNG HỌP</span>
     </button>
     <div class="sidebar-divider"></div>
-    <button class="tab-btn" data-tab="train" onclick="switchTab('train')" data-i18n-title="nav.train.title">
+    <button class="tab-btn" data-tab="train" data-click="switchTab" data-click-args='["train"]' data-i18n-title="nav.train.title">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5l9 4-9 4-9-4 9-4z"/><path d="M6 11v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4"/></svg>
       <span class="tab-label" data-i18n="nav.train">DẠY AI</span>
     </button>
-    <button class="tab-btn" data-tab="company-runner" onclick="switchTab('company-runner')" data-i18n-title="nav.company_runner.title" title="Quy trình">
+    <button class="tab-btn" data-tab="company-runner" data-click="switchTab" data-click-args='["company-runner"]' data-i18n-title="nav.company_runner.title" title="Quy trình">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="2" fill="currentColor" stroke="none"/><path d="M7 6h10"/><path d="M12 8v6"/></svg>
       <span class="tab-label" data-i18n="nav.company_runner">QUY TRÌNH</span>
     </button>
-    <button class="tab-btn" data-tab="auto-runner" onclick="switchTab('auto-runner')" data-i18n-title="nav.auto_runner.title" title="Tác vụ tự động">
+    <button class="tab-btn" data-tab="auto-runner" data-click="switchTab" data-click-args='["auto-runner"]' data-i18n-title="nav.auto_runner.title" title="Tác vụ tự động">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/></svg>
       <span class="tab-label" data-i18n="nav.auto_runner">TÁC VỤ TỰ ĐỘNG</span>
     </button>
-    <button class="tab-btn" data-tab="assets" onclick="switchTab('assets')" data-i18n-title="nav.assets.title" title="Tài sản">
+    <button class="tab-btn" data-tab="assets" data-click="switchTab" data-click-args='["assets"]' data-i18n-title="nav.assets.title" title="Tài sản">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5L12 12l8-4.5"/><path d="M12 12v9"/></svg>
       <span class="tab-label" data-i18n="nav.assets">TÀI SẢN</span>
     </button>
-    <button class="tab-btn" data-tab="model" onclick="switchTab('model')" data-i18n-title="nav.bench.title" title="Model Pool">
+    <button class="tab-btn" data-tab="model" data-click="switchTab" data-click-args='["model"]' data-i18n-title="nav.bench.title" title="Model Pool">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4a3 3 0 00-3 3v1a3 3 0 000 6v1a3 3 0 003 3M15 4a3 3 0 013 3v1a3 3 0 010 6v1a3 3 0 01-3 3M9 4v16M15 4v16"/></svg>
       <span class="tab-label" data-i18n="nav.bench">BỘ NÃO AI</span>
     </button>
-    <button class="tab-btn" data-tab="cost" onclick="switchTab('cost')" data-i18n-title="nav.cost.title" title="Chi phí">
+    <button class="tab-btn" data-tab="cost" data-click="switchTab" data-click-args='["cost"]' data-i18n-title="nav.cost.title" title="Chi phí">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 010 3h-3a1.5 1.5 0 000 3h4.5"/></svg>
       <span class="tab-label" data-i18n="nav.cost">CHI PHÍ</span>
     </button>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-divider"></div>
-    <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')" data-i18n-title="nav.config.title">
+    <button class="tab-btn" data-tab="settings" data-click="switchTab" data-click-args='["settings"]' data-i18n-title="nav.config.title">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M21 12h-3M6 12H3M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M18.4 18.4l-2.1-2.1M7.7 7.7L5.6 5.6"/></svg>
       <span class="tab-label" data-i18n="nav.config">THIẾT LẬP</span>
     </button>
-    <button class="sidebar-collapse-hint" id="sidebar-icon-mode-toggle" onclick="toggleSidebarIconMode()" title="Thu gọn / mở rộng thanh bên">
+    <button class="sidebar-collapse-hint" id="sidebar-icon-mode-toggle" data-click="toggleSidebarIconMode" title="Thu gọn / mở rộng thanh bên">
       <svg class="collapse-arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       <span class="collapse-hint-text">nhấn để thu gọn</span>
     </button>
@@ -99,15 +99,15 @@
           <div class="home-quick-access">
             <div class="overview-section-title">Truy cập nhanh</div>
             <div class="nav-cards">
-              <div class="nav-card" onclick="switchTab('agents')"><div class="nav-card-icon-wrap" style="background:var(--mint);color:var(--mint-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="14" height="12" rx="5"/><circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Nhân viên AI</div></div>
-              <div class="nav-card" onclick="switchTab('skills')"><div class="nav-card-icon-wrap" style="background:var(--gold-soft);color:var(--gold);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Kỹ năng</div></div>
-              <div class="nav-card" onclick="switchTab('tasks')"><div class="nav-card-icon-wrap" style="background:var(--sky);color:var(--sky-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg></div><div class="nav-card-name">Dự án</div></div>
-              <div class="nav-card" onclick="switchTab('meeting')"><div class="nav-card-icon-wrap" style="background:var(--lavender);color:var(--lavender-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg></div><div class="nav-card-name">Cuộc họp</div></div>
-              <div class="nav-card" onclick="switchTab('train')"><div class="nav-card-icon-wrap" style="background:var(--peach);color:var(--peach-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5l9 4-9 4-9-4 9-4z"/><path d="M6 11v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4"/></svg></div><div class="nav-card-name">Huấn luyện</div></div>
-              <div class="nav-card" onclick="switchTab('company-runner')"><div class="nav-card-icon-wrap" style="background:var(--sky);color:var(--sky-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="2" fill="currentColor" stroke="none"/><path d="M7 6h10M12 8v6"/></svg></div><div class="nav-card-name">Quy trình</div></div>
-              <div class="nav-card" onclick="switchTab('auto-runner')"><div class="nav-card-icon-wrap" style="background:var(--gold-soft);color:var(--gold);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Tác vụ tự động</div></div>
-              <div class="nav-card" onclick="switchTab('assets')"><div class="nav-card-icon-wrap" style="background:var(--mint);color:var(--mint-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg></div><div class="nav-card-name">Tài sản</div></div>
-              <div class="nav-card" onclick="switchTab('settings')"><div class="nav-card-icon-wrap" style="background:var(--bg3);color:var(--ink-soft);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M21 12h-3M6 12H3"/></svg></div><div class="nav-card-name">Cài đặt</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["agents"]'><div class="nav-card-icon-wrap" style="background:var(--mint);color:var(--mint-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="14" height="12" rx="5"/><circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Nhân viên AI</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["skills"]'><div class="nav-card-icon-wrap" style="background:var(--gold-soft);color:var(--gold);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Kỹ năng</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["tasks"]'><div class="nav-card-icon-wrap" style="background:var(--sky);color:var(--sky-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg></div><div class="nav-card-name">Dự án</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["meeting"]'><div class="nav-card-icon-wrap" style="background:var(--lavender);color:var(--lavender-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg></div><div class="nav-card-name">Cuộc họp</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["train"]'><div class="nav-card-icon-wrap" style="background:var(--peach);color:var(--peach-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5l9 4-9 4-9-4 9-4z"/><path d="M6 11v4c0 1.5 2.7 3 6 3s6-1.5 6-3v-4"/></svg></div><div class="nav-card-name">Huấn luyện</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["company-runner"]'><div class="nav-card-icon-wrap" style="background:var(--sky);color:var(--sky-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="2" fill="currentColor" stroke="none"/><path d="M7 6h10M12 8v6"/></svg></div><div class="nav-card-name">Quy trình</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["auto-runner"]'><div class="nav-card-icon-wrap" style="background:var(--gold-soft);color:var(--gold);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 3L6 14h5l-1 7 7-11h-5l1-7z" fill="currentColor" stroke="none"/></svg></div><div class="nav-card-name">Tác vụ tự động</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["assets"]'><div class="nav-card-icon-wrap" style="background:var(--mint);color:var(--mint-ink);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg></div><div class="nav-card-name">Tài sản</div></div>
+              <div class="nav-card" data-click="switchTab" data-click-args='["settings"]'><div class="nav-card-icon-wrap" style="background:var(--bg3);color:var(--ink-soft);"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M21 12h-3M6 12H3"/></svg></div><div class="nav-card-name">Cài đặt</div></div>
             </div>
           </div>
         </div>
@@ -150,19 +150,19 @@
             </div>
           </div>
           <div class="mini-stats" id="home-mini-stats">
-            <div class="mini-stat" onclick="switchTab('company-runner')">
+            <div class="mini-stat" data-click="switchTab" data-click-args='["company-runner"]'>
               <span class="mini-stat-icon" id="ms-icon-wf"></span>
               <div><div class="mini-stat-label">Quy trình</div><div class="mini-stat-value" id="ms-workflows">—</div></div>
             </div>
-            <div class="mini-stat" onclick="switchTab('auto-runner')">
+            <div class="mini-stat" data-click="switchTab" data-click-args='["auto-runner"]'>
               <span class="mini-stat-icon" id="ms-icon-auto"></span>
               <div><div class="mini-stat-label">Tác vụ tự động</div><div class="mini-stat-value" id="ms-automations">—</div></div>
             </div>
-            <div class="mini-stat" onclick="switchTab('meeting')">
+            <div class="mini-stat" data-click="switchTab" data-click-args='["meeting"]'>
               <span class="mini-stat-icon" id="ms-icon-meet"></span>
               <div><div class="mini-stat-label">Cuộc họp</div><div class="mini-stat-value" id="ms-meetings">—</div></div>
             </div>
-            <div class="mini-stat" onclick="switchTab('skills')">
+            <div class="mini-stat" data-click="switchTab" data-click-args='["skills"]'>
               <span class="mini-stat-icon" id="ms-icon-tool"></span>
               <div><div class="mini-stat-label">Công cụ</div><div class="mini-stat-value" id="ms-tools">—</div></div>
             </div>
@@ -211,9 +211,9 @@
         <div class="agent-toolbar">
           <div class="agent-toolbar-heading"><div class="panel-title">Nhân viên AI</div><div class="panel-subtitle" id="agents-count">0 nhân viên</div></div>
           <div class="agent-toolbar-actions">
-            <input class="form-input agent-search" id="agent-search" placeholder="Tìm theo tên hoặc vai trò..." oninput="renderAgentList()">
-            <button class="btn btn-ghost btn-sm" onclick="openDepartmentModal()" title="Quản lý phòng ban"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg> Phòng ban</button>
-            <button class="btn btn-primary btn-sm" onclick="newAgent()">+ Thêm nhân viên AI</button>
+            <input class="form-input agent-search" id="agent-search" placeholder="Tìm theo tên hoặc vai trò..." data-input="renderAgentList">
+            <button class="btn btn-ghost btn-sm" data-click="openDepartmentModal" title="Quản lý phòng ban"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="3" y1="13" x2="21" y2="13"/></svg> Phòng ban</button>
+            <button class="btn btn-primary btn-sm" data-click="newAgent">+ Thêm nhân viên AI</button>
           </div>
         </div>
         <div id="agent-dept-filter"></div>
@@ -224,16 +224,16 @@
           <div class="panel-header">
             <div><div class="panel-title" id="agent-form-title">New Agent</div></div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-danger btn-sm" id="agent-delete-btn" onclick="deleteAgent()" style="display:none;" data-i18n="btn.delete">Delete</button>
-              <button class="btn btn-ghost btn-sm" onclick="cancelAgentForm()" data-i18n="btn.cancel">Cancel</button>
+              <button class="btn btn-danger btn-sm" id="agent-delete-btn" data-click="deleteAgent" style="display:none;" data-i18n="btn.delete">Delete</button>
+              <button class="btn btn-ghost btn-sm" data-click="cancelAgentForm" data-i18n="btn.cancel">Cancel</button>
             </div>
           </div>
           <div class="agent-wizard-steps" id="agent-wizard-steps">
-            <div class="agent-wizard-tab active" onclick="goAgentWizardStep(1)"><span>1</span>Thông tin</div>
-            <div class="agent-wizard-tab" onclick="goAgentWizardStep(2)"><span>2</span>Model xử lý</div>
-            <div class="agent-wizard-tab" onclick="goAgentWizardStep(3)"><span>3</span>System Prompt</div>
-            <div class="agent-wizard-tab" onclick="goAgentWizardStep(4)"><span>4</span>Kỹ năng</div>
-            <div class="agent-wizard-tab" onclick="goAgentWizardStep(5)"><span>5</span>Xem lại</div>
+            <div class="agent-wizard-tab active" data-click="goAgentWizardStep" data-click-args='[1]'><span>1</span>Thông tin</div>
+            <div class="agent-wizard-tab" data-click="goAgentWizardStep" data-click-args='[2]'><span>2</span>Model xử lý</div>
+            <div class="agent-wizard-tab" data-click="goAgentWizardStep" data-click-args='[3]'><span>3</span>System Prompt</div>
+            <div class="agent-wizard-tab" data-click="goAgentWizardStep" data-click-args='[4]'><span>4</span>Kỹ năng</div>
+            <div class="agent-wizard-tab" data-click="goAgentWizardStep" data-click-args='[5]'><span>5</span>Xem lại</div>
           </div>
           <div class="agent-form">
             <input type="hidden" id="agent-id">
@@ -248,15 +248,15 @@
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="agents.form.name">Name</label>
-              <input class="form-input" id="agent-name" placeholder="e.g. Atlas" data-i18n-ph="ph.agent.name" oninput="updateAgentPreview()">
+              <input class="form-input" id="agent-name" placeholder="e.g. Atlas" data-i18n-ph="ph.agent.name" data-input="updateAgentPreview">
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="agents.form.role">Role / Title</label>
-              <input class="form-input" id="agent-role" placeholder="e.g. Software Engineer" data-i18n-ph="ph.agent.role" oninput="updateAgentPreview()">
+              <input class="form-input" id="agent-role" placeholder="e.g. Software Engineer" data-i18n-ph="ph.agent.role" data-input="updateAgentPreview">
             </div>
             <div class="form-group">
               <label class="form-label">Phòng ban</label>
-              <select class="form-select" id="agent-department" onchange="checkDeptHeadPrompt()">
+              <select class="form-select" id="agent-department" data-change="checkDeptHeadPrompt">
                 <option value="">— Chưa gán phòng ban —</option>
               </select>
               <label id="agent-set-head-prompt" style="display:none;margin-top:8px;font-size:12px;color:var(--muted);align-items:center;gap:6px;cursor:pointer;">
@@ -274,14 +274,14 @@
             <div class="form-group">
               <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
                 <span data-i18n="agents.form.model">Model xử lý (ưu tiên, tối đa 5)</span>
-                <a href="#" onclick="switchTab('model');return false;" style="font-size:11px;color:var(--cyan);text-decoration:none;">+ Quản lý pool</a>
+                <a href="#" data-click="switchTab" data-click-args='["model"]' style="font-size:11px;color:var(--cyan);text-decoration:none;">+ Quản lý pool</a>
               </label>
               <div id="agent-model-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px;"></div>
-              <select class="form-input" id="agent-model-add" style="cursor:pointer;" onchange="addAgentModel(this.value)">
+              <select class="form-input" id="agent-model-add" style="cursor:pointer;" data-change="addAgentModel" data-change-args='["$value"]'>
                 <option value="">+ Thêm model vào danh sách ưu tiên...</option>
               </select>
               <div id="agent-model-empty-hint" style="display:none;font-size:11px;color:var(--muted);margin-top:4px;">
-                Chưa có model trong pool. <a href="#" onclick="switchTab('model');return false;" style="color:var(--cyan);">Thêm model</a>
+                Chưa có model trong pool. <a href="#" data-click="switchTab" data-click-args='["model"]' style="color:var(--cyan);">Thêm model</a>
               </div>
               <div style="font-size:11px;color:var(--muted);margin-top:4px;">Nếu model đầu tiên gặp sự cố (hết quota, lỗi kết nối...), hệ thống tự chuyển sang model kế tiếp theo đúng thứ tự này.</div>
             </div>
@@ -306,10 +306,10 @@
             </div>
           </div>
           <div class="agent-wizard-footer">
-            <button class="btn btn-ghost btn-sm" id="agent-wizard-back" onclick="changeAgentWizardStep(-1)">← Quay lại</button>
+            <button class="btn btn-ghost btn-sm" id="agent-wizard-back" data-click="changeAgentWizardStep" data-click-args='[-1]'>← Quay lại</button>
             <div style="flex:1;"></div>
-            <button class="btn btn-primary btn-sm" id="agent-wizard-next" onclick="changeAgentWizardStep(1)">Tiếp theo →</button>
-            <button class="btn btn-primary btn-sm" id="agent-wizard-save" onclick="saveAgent()" style="display:none;">Lưu nhân viên AI</button>
+            <button class="btn btn-primary btn-sm" id="agent-wizard-next" data-click="changeAgentWizardStep" data-click-args='[1]'>Tiếp theo →</button>
+            <button class="btn btn-primary btn-sm" id="agent-wizard-save" data-click="saveAgent" style="display:none;">Lưu nhân viên AI</button>
           </div>
         </div>
       </div>
@@ -321,8 +321,8 @@
         <div class="skill-toolbar">
           <div class="skill-toolbar-heading"><div class="panel-title">Công cụ / Kỹ năng</div><div class="panel-subtitle" id="skills-count">0 kỹ năng</div></div>
           <div class="skill-toolbar-actions">
-            <input class="form-input skill-search" id="skill-search" placeholder="Tìm theo tên hoặc mô tả..." oninput="renderSkillList()">
-            <button class="btn btn-primary btn-sm" onclick="newSkill()">+ Thêm kỹ năng</button>
+            <input class="form-input skill-search" id="skill-search" placeholder="Tìm theo tên hoặc mô tả..." data-input="renderSkillList">
+            <button class="btn btn-primary btn-sm" data-click="newSkill">+ Thêm kỹ năng</button>
           </div>
         </div>
         <div class="skill-type-filter" id="skill-type-filter"></div>
@@ -333,14 +333,14 @@
           <div class="panel-header">
             <div><div class="panel-title" id="skill-form-title">New Skill</div></div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-danger btn-sm" id="skill-delete-btn" onclick="deleteSkill()" style="display:none;">Xoá</button>
-              <button class="btn btn-ghost btn-sm" onclick="cancelSkillForm()">Huỷ</button>
+              <button class="btn btn-danger btn-sm" id="skill-delete-btn" data-click="deleteSkill" style="display:none;">Xoá</button>
+              <button class="btn btn-ghost btn-sm" data-click="cancelSkillForm">Huỷ</button>
             </div>
           </div>
           <div class="skill-wizard-steps">
-            <div class="skill-wizard-tab active" onclick="goSkillWizardStep(1)"><span>1</span>Thông tin</div>
-            <div class="skill-wizard-tab" onclick="goSkillWizardStep(2)"><span>2</span>Kết nối & cấu hình</div>
-            <div class="skill-wizard-tab" onclick="goSkillWizardStep(3)"><span>3</span>Xem lại</div>
+            <div class="skill-wizard-tab active" data-click="goSkillWizardStep" data-click-args='[1]'><span>1</span>Thông tin</div>
+            <div class="skill-wizard-tab" data-click="goSkillWizardStep" data-click-args='[2]'><span>2</span>Kết nối & cấu hình</div>
+            <div class="skill-wizard-tab" data-click="goSkillWizardStep" data-click-args='[3]'><span>3</span>Xem lại</div>
           </div>
           <div class="skill-form">
             <input type="hidden" id="skill-id">
@@ -348,7 +348,7 @@
             <div class="skill-step-heading">Thông tin cơ bản</div>
             <div class="form-group">
               <label class="form-label" data-i18n="skills.form.name">Skill Name</label>
-              <input class="form-input" id="skill-name" placeholder="e.g. web_search" data-i18n-ph="ph.skill.name" oninput="updateSkillImagePoolField()">
+              <input class="form-input" id="skill-name" placeholder="e.g. web_search" data-i18n-ph="ph.skill.name" data-input="updateSkillImagePoolField">
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="skills.form.desc">Description</label>
@@ -359,25 +359,25 @@
             <div class="skill-step-heading">Loại kết nối & Cấu hình</div>
             <input type="hidden" id="skill-type">
             <div class="skill-type-cards">
-              <div class="skill-type-option" data-skill-type="builtin" onclick="chooseSkillType('builtin')"><div class="skill-type-option-title">Có sẵn trong hệ thống <span class="skill-type-badge skill-type-builtin">builtin</span></div><div class="skill-type-option-description">Gọi kỹ năng hệ thống qua mã định danh.</div></div>
-              <div class="skill-type-option" data-skill-type="api" onclick="chooseSkillType('api')"><div class="skill-type-option-title">Dịch vụ ngoài <span class="skill-type-badge skill-type-api">API</span></div><div class="skill-type-option-description">Kết nối endpoint HTTP và thông tin xác thực.</div></div>
-              <div class="skill-type-option" data-skill-type="mcp" onclick="chooseSkillType('mcp')"><div class="skill-type-option-title">Kết nối nâng cao <span class="skill-type-badge skill-type-mcp">MCP</span></div><div class="skill-type-option-description">Kết nối MCP server qua stdio, HTTP hoặc SSE.</div></div>
-              <div class="skill-type-option" data-skill-type="custom" onclick="chooseSkillType('custom')"><div class="skill-type-option-title">Tự viết mã riêng <span class="skill-type-badge skill-type-custom">custom</span></div><div class="skill-type-option-description">Tải tệp và sử dụng cấu hình JSON tự do.</div></div>
+              <div class="skill-type-option" data-skill-type="builtin" data-click="chooseSkillType" data-click-args='["builtin"]'><div class="skill-type-option-title">Có sẵn trong hệ thống <span class="skill-type-badge skill-type-builtin">builtin</span></div><div class="skill-type-option-description">Gọi kỹ năng hệ thống qua mã định danh.</div></div>
+              <div class="skill-type-option" data-skill-type="api" data-click="chooseSkillType" data-click-args='["api"]'><div class="skill-type-option-title">Dịch vụ ngoài <span class="skill-type-badge skill-type-api">API</span></div><div class="skill-type-option-description">Kết nối endpoint HTTP và thông tin xác thực.</div></div>
+              <div class="skill-type-option" data-skill-type="mcp" data-click="chooseSkillType" data-click-args='["mcp"]'><div class="skill-type-option-title">Kết nối nâng cao <span class="skill-type-badge skill-type-mcp">MCP</span></div><div class="skill-type-option-description">Kết nối MCP server qua stdio, HTTP hoặc SSE.</div></div>
+              <div class="skill-type-option" data-skill-type="custom" data-click="chooseSkillType" data-click-args='["custom"]'><div class="skill-type-option-title">Tự viết mã riêng <span class="skill-type-badge skill-type-custom">custom</span></div><div class="skill-type-option-description">Tải tệp và sử dụng cấu hình JSON tự do.</div></div>
             </div>
             <div class="skill-config-panel" data-config-type="builtin">
-              <div class="form-group"><label class="form-label">Công cụ hệ thống</label><select class="form-select" id="skill-builtin-tool" onchange="updateBuiltinToolDescription()"><option value="">— Chọn công cụ —</option></select><div id="skill-builtin-tool-description" style="margin-top:6px;color:var(--muted);font-size:11px;"></div></div>
+              <div class="form-group"><label class="form-label">Công cụ hệ thống</label><select class="form-select" id="skill-builtin-tool" data-change="updateBuiltinToolDescription"><option value="">— Chọn công cụ —</option></select><div id="skill-builtin-tool-description" style="margin-top:6px;color:var(--muted);font-size:11px;"></div></div>
               <div class="form-group" id="skill-builtin-legacy-wrap" style="display:none;"><label class="form-label">Dữ liệu cấu hình cũ</label><textarea class="form-textarea" id="skill-builtin-legacy" rows="5"></textarea></div>
             </div>
             <div class="skill-config-panel" data-config-type="api">
               <div class="form-group"><label class="form-label">Endpoint URL</label><input class="form-input" id="skill-api-endpoint" placeholder="https://api.example.com/v1/action"></div>
               <div class="form-group"><label class="form-label">Method</label><select class="form-select" id="skill-api-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
-              <div class="form-group"><label class="form-label">API Key</label><div class="skill-password-wrap"><input type="password" class="form-input" id="skill-api-key"><button type="button" class="skill-password-toggle" onclick="toggleSkillSecret('skill-api-key')" aria-label="Hiện/ẩn API key">◉</button></div></div>
+              <div class="form-group"><label class="form-label">API Key</label><div class="skill-password-wrap"><input type="password" class="form-input" id="skill-api-key"><button type="button" class="skill-password-toggle" data-click="toggleSkillSecret" data-click-args='["skill-api-key"]' aria-label="Hiện/ẩn API key">◉</button></div></div>
               <details><summary style="cursor:pointer;color:var(--accent);font-size:12px;font-weight:600;">Nâng cao</summary><div class="form-group" style="margin-top:10px;"><label class="form-label">Tuỳ chọn JSON bổ sung</label><textarea class="form-textarea" id="skill-api-extra" rows="6" placeholder='{"timeout": 30, "headers": {}}'></textarea></div></details>
             </div>
             <div class="skill-config-panel" data-config-type="mcp">
               <div class="form-group"><label class="form-label">Địa chỉ / lệnh khởi chạy MCP server</label><input class="form-input" id="skill-mcp-target" placeholder="npx my-mcp-server hoặc https://mcp.example.com"></div>
               <div class="form-group"><label class="form-label">Transport</label><select class="form-select" id="skill-mcp-transport"><option value="stdio">stdio</option><option value="http">http</option><option value="sse">sse</option></select></div>
-              <div class="form-group"><label class="form-label">Token <span style="color:var(--muted);font-weight:400;">(không bắt buộc)</span></label><div class="skill-password-wrap"><input type="password" class="form-input" id="skill-mcp-token"><button type="button" class="skill-password-toggle" onclick="toggleSkillSecret('skill-mcp-token')" aria-label="Hiện/ẩn token">◉</button></div></div>
+              <div class="form-group"><label class="form-label">Token <span style="color:var(--muted);font-weight:400;">(không bắt buộc)</span></label><div class="skill-password-wrap"><input type="password" class="form-input" id="skill-mcp-token"><button type="button" class="skill-password-toggle" data-click="toggleSkillSecret" data-click-args='["skill-mcp-token"]' aria-label="Hiện/ẩn token">◉</button></div></div>
               <div class="form-group" id="skill-mcp-legacy-wrap" style="display:none;"><label class="form-label">Dữ liệu cấu hình cũ</label><textarea class="form-textarea" id="skill-mcp-legacy" rows="5"></textarea></div>
             </div>
             <div class="skill-config-panel" data-config-type="custom">
@@ -388,7 +388,7 @@
                 <div class="form-group">
                   <label class="form-label" data-i18n="skills.form.upload">Import from File</label>
                   <div class="upload-zone" id="skill-upload-zone">
-                    <input type="file" id="skill-file-input" accept=".json,.md,.txt,.yaml,.yml" onchange="handleSkillFileUpload(event)">
+                    <input type="file" id="skill-file-input" accept=".json,.md,.txt,.yaml,.yml" data-change="handleSkillFileUpload" data-change-args='["$event"]'>
                     <div class="upload-zone-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg></div>
                     <div class="upload-zone-text"><strong data-i18n="skills.form.upload_strong">Click to upload</strong> <span data-i18n="skills.form.upload_or">or drag & drop</span></div>
                     <div class="upload-zone-hint">.json · .md · .txt · .yaml · .yml</div>
@@ -396,7 +396,7 @@
                   <div class="upload-file-preview" id="skill-file-preview" style="display:none;">
                     <span class="file-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><line x1="9.5" y1="12" x2="14.5" y2="12"/><line x1="9.5" y1="15.5" x2="14.5" y2="15.5"/></svg></span>
                     <span class="file-name" id="skill-file-name"></span>
-                    <button class="file-remove" onclick="clearSkillFile()" title="Xoá file"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+                    <button class="file-remove" data-click="clearSkillFile" title="Xoá file"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
                   </div>
                 </div>
                 <div class="form-group">
@@ -406,7 +406,7 @@
               </div>
             <div class="skill-conn-test" id="skill-conn-test" style="display:none;">
               <div class="skill-conn-test-bar">
-                <button type="button" class="btn btn-ghost btn-sm" id="skill-conn-btn" onclick="testSkillConnection()">Kiểm tra kết nối</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="skill-conn-btn" data-click="testSkillConnection">Kiểm tra kết nối</button>
                 <span class="skill-conn-hint">Thử kết nối trước khi lưu — với MCP sẽ liệt kê luôn các tool của server.</span>
               </div>
               <div class="skill-conn-result" id="skill-conn-result"></div>
@@ -419,10 +419,10 @@
             </div>
           </div>
           <div class="skill-wizard-footer">
-            <button class="btn btn-ghost btn-sm" id="skill-wizard-back" onclick="changeSkillWizardStep(-1)">← Quay lại</button>
+            <button class="btn btn-ghost btn-sm" id="skill-wizard-back" data-click="changeSkillWizardStep" data-click-args='[-1]'>← Quay lại</button>
             <div style="flex:1;"></div>
-            <button class="btn btn-primary btn-sm" id="skill-wizard-next" onclick="changeSkillWizardStep(1)">Tiếp theo →</button>
-            <button class="btn btn-primary btn-sm" id="skill-wizard-save" onclick="saveSkill()" style="display:none;">Lưu kỹ năng</button>
+            <button class="btn btn-primary btn-sm" id="skill-wizard-next" data-click="changeSkillWizardStep" data-click-args='[1]'>Tiếp theo →</button>
+            <button class="btn btn-primary btn-sm" id="skill-wizard-save" data-click="saveSkill" style="display:none;">Lưu kỹ năng</button>
           </div>
         </div>
       </div>
@@ -436,8 +436,8 @@
       <div id="proj-grid-view" class="proj-grid-view">
         <div class="proj-toolbar">
           <span class="proj-toolbar-title">Dự án</span>
-          <input class="form-input" id="proj-search" placeholder="Tìm dự án..." style="width:200px;padding:6px 10px;" oninput="filterProjectGrid()">
-          <button class="btn btn-primary btn-sm" onclick="openProjectModal()">+ Tạo dự án</button>
+          <input class="form-input" id="proj-search" placeholder="Tìm dự án..." style="width:200px;padding:6px 10px;" data-input="filterProjectGrid">
+          <button class="btn btn-primary btn-sm" data-click="openProjectModal">+ Tạo dự án</button>
         </div>
         <div class="proj-grid-wrap">
           <div class="proj-grid" id="proj-grid">
@@ -454,22 +454,22 @@
 
         <!-- Header -->
         <div class="proj-detail-header">
-          <span class="proj-breadcrumb" onclick="closeProjectDetail()">← Tất cả dự án</span>
+          <span class="proj-breadcrumb" data-click="closeProjectDetail">← Tất cả dự án</span>
           <div style="flex:1;min-width:0;">
             <div class="proj-detail-name" id="proj-detail-name"></div>
             <div class="proj-detail-desc" id="proj-detail-desc"></div>
           </div>
-          <button class="btn btn-ghost btn-sm" onclick="openProjectModal(currentProjectId)">Sửa</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteProject()">Xoá</button>
+          <button class="btn btn-ghost btn-sm" data-click="openCurrentProjectModal">Sửa</button>
+          <button class="btn btn-danger btn-sm" data-click="deleteProject">Xoá</button>
         </div>
 
         <!-- Sub-tab bar: AI Company Project Operations Dashboard -->
         <div class="proj-subtabs">
-          <div class="proj-subtab active" data-subtab="overview" onclick="switchProjectSubTab('overview')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11L12 4l8 7" /><path d="M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9" /></svg> Tổng quan</div>
-          <div class="proj-subtab" data-subtab="runs" onclick="switchProjectSubTab('runs')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3"/><path d="M18 4v4h-4M6 20v-4h4"/></svg> Lượt chạy</div>
-          <div class="proj-subtab" data-subtab="review" onclick="switchProjectSubTab('review')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l5 5L20 6"/></svg> Hàng chờ duyệt<span class="ops-badge-count" id="ops-review-count" style="display:none;"></span></div>
-          <div class="proj-subtab" data-subtab="kanban" onclick="switchProjectSubTab('kanban')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><line x1="9.5" y1="12" x2="14.5" y2="12"/><line x1="9.5" y1="15.5" x2="14.5" y2="15.5"/></svg> Kanban</div>
-          <div class="proj-subtab" data-subtab="history" onclick="switchProjectSubTab('history')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></svg> Lịch sử</div>
+          <div class="proj-subtab active" data-subtab="overview" data-click="switchProjectSubTab" data-click-args='["overview"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11L12 4l8 7" /><path d="M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9" /></svg> Tổng quan</div>
+          <div class="proj-subtab" data-subtab="runs" data-click="switchProjectSubTab" data-click-args='["runs"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3"/><path d="M18 4v4h-4M6 20v-4h4"/></svg> Lượt chạy</div>
+          <div class="proj-subtab" data-subtab="review" data-click="switchProjectSubTab" data-click-args='["review"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l5 5L20 6"/></svg> Hàng chờ duyệt<span class="ops-badge-count" id="ops-review-count" style="display:none;"></span></div>
+          <div class="proj-subtab" data-subtab="kanban" data-click="switchProjectSubTab" data-click-args='["kanban"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><line x1="9.5" y1="12" x2="14.5" y2="12"/><line x1="9.5" y1="15.5" x2="14.5" y2="15.5"/></svg> Kanban</div>
+          <div class="proj-subtab" data-subtab="history" data-click="switchProjectSubTab" data-click-args='["history"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></svg> Lịch sử</div>
         </div>
 
         <!-- Panel: Tổng quan -->
@@ -515,7 +515,7 @@
       <div class="panel-left">
         <div class="panel-header">
           <div><div class="panel-title" data-i18n="meeting.title">Meetings</div></div>
-          <button class="btn btn-primary btn-sm" onclick="newMeeting()" data-i18n="meeting.new">+ New</button>
+          <button class="btn btn-primary btn-sm" data-click="newMeeting" data-i18n="meeting.new">+ New</button>
         </div>
         <div class="panel-body" id="meetings-list"></div>
       </div>
@@ -528,14 +528,14 @@
           </div>
           <div class="participants-dropdown" id="participants-dropdown">
             <button class="btn btn-ghost btn-sm participants-toggle-btn" id="participants-toggle-btn"
-                    onclick="toggleParticipantsDropdown(event)"
+                    data-click="toggleParticipantsDropdown" data-click-args='["$event"]'
                     title="Xanax tự mời/mời ra nhân viên phù hợp với nội dung trao đổi">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8" r="3"/><path d="M2.5 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15 20c0-2.5 1.8-4.5 4-4.8"/></svg> <span id="participants-count">0</span> <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:12px;height:12px;"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div class="participants-dropdown-panel hidden" id="participants-dropdown-panel"></div>
           </div>
-          <button class="btn btn-primary btn-sm" id="meeting-finalize-btn" onclick="finalizeMeeting()" title="Chốt kế hoạch — cho phép Xanax tự động ra lệnh cho các quy trình liên quan"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5.5" y="11" width="13" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 018 0V11"/></svg> Chốt kế hoạch</button>
-          <button class="btn btn-danger btn-sm" id="meeting-end-btn" onclick="endMeeting()" data-i18n="meeting.end">End</button>
+          <button class="btn btn-primary btn-sm" id="meeting-finalize-btn" data-click="finalizeMeeting" title="Chốt kế hoạch — cho phép Xanax tự động ra lệnh cho các quy trình liên quan"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5.5" y="11" width="13" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 018 0V11"/></svg> Chốt kế hoạch</button>
+          <button class="btn btn-danger btn-sm" id="meeting-end-btn" data-click="endMeeting" data-i18n="meeting.end">End</button>
         </div>
         <div class="meeting-record-panel" id="meeting-record-panel"></div>
         <div style="display:flex;flex:1;overflow:hidden;">
@@ -544,8 +544,8 @@
             <div class="meeting-input-area" id="meeting-input-area" style="position:relative;">
               <div id="mention-dropdown" class="mention-dropdown hidden"></div>
               <textarea class="meeting-input" id="meeting-input" rows="2" placeholder="Nhập nội dung trao đổi... Gõ @ để gọi thẳng 1 nhân viên (Enter để gửi, Shift+Enter xuống dòng)" data-i18n-ph="ph.meeting.input"
-                oninput="handleMeetingInputChange(event)" onkeydown="meetingInputKeydown(event)"></textarea>
-              <button class="meeting-send-btn" onclick="sendMeetingMessage()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l16-8-6 16-3-6-7-2z"/></svg></button>
+                data-input="handleMeetingInputChange" data-input-args='["$event"]' data-keydown="meetingInputKeydown" data-keydown-args='["$event"]'></textarea>
+              <button class="meeting-send-btn" data-click="sendMeetingMessage"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12l16-8-6 16-3-6-7-2z"/></svg></button>
             </div>
           </div>
         </div>
@@ -563,7 +563,7 @@
       <div class="panel-left">
         <div class="panel-header">
           <div><div class="panel-title" data-i18n="bench.title">Benchmarks</div></div>
-          <button class="btn btn-primary btn-sm" onclick="showBenchmarkCreate()" data-i18n="bench.new">+ New</button>
+          <button class="btn btn-primary btn-sm" data-click="showBenchmarkCreate" data-i18n="bench.new">+ New</button>
         </div>
         <div class="panel-body" id="benchmarks-list"></div>
       </div>
@@ -572,8 +572,8 @@
           <div class="panel-header">
             <div class="panel-title" data-i18n="bench.create">New Benchmark</div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-ghost btn-sm" onclick="cancelBenchmark()" data-i18n="btn.cancel">Cancel</button>
-              <button class="btn btn-primary btn-sm" onclick="createAndRunBenchmark()" data-i18n="bench.run">Run Benchmark ▶</button>
+              <button class="btn btn-ghost btn-sm" data-click="cancelBenchmark" data-i18n="btn.cancel">Cancel</button>
+              <button class="btn btn-primary btn-sm" data-click="createAndRunBenchmark" data-i18n="bench.run">Run Benchmark ▶</button>
             </div>
           </div>
           <div class="benchmark-config">
@@ -588,15 +588,15 @@
             <div class="form-group">
               <label class="form-label" data-i18n="bench.form.models">Models to Test</label>
               <div style="display:flex;gap:6px;">
-                <input class="form-input" id="bench-model-input" placeholder="model name" data-i18n-ph="ph.bench.model" style="flex:1;" onkeydown="if(event.key==='Enter')addBenchModel()">
-                <button class="btn btn-ghost btn-sm" onclick="addBenchModel()" data-i18n="bench.form.add_model">Add</button>
+                <input class="form-input" id="bench-model-input" placeholder="model name" data-i18n-ph="ph.bench.model" style="flex:1;" data-keydown="benchModelInputKeydown" data-keydown-args='["$event"]'>
+                <button class="btn btn-ghost btn-sm" data-click="addBenchModel" data-i18n="bench.form.add_model">Add</button>
               </div>
               <div class="model-tag-list" id="bench-models-list"></div>
             </div>
             <div class="form-group">
               <label class="form-label" data-i18n="bench.form.cases">Test Cases</label>
               <div id="bench-cases-list"></div>
-              <button class="btn btn-ghost btn-sm" onclick="addTestCase()" style="margin-top:8px;width:100%;" data-i18n="bench.add_case">+ Add Test Case</button>
+              <button class="btn btn-ghost btn-sm" data-click="addTestCase" style="margin-top:8px;width:100%;" data-i18n="bench.add_case">+ Add Test Case</button>
             </div>
           </div>
         </div>
@@ -609,7 +609,7 @@
         <div id="benchmark-results-view" style="display:none;flex:1;overflow:hidden;flex-direction:column;">
           <div class="panel-header">
             <div><div class="panel-title" id="bench-result-title" data-i18n="bench.results">Results</div></div>
-            <button class="btn btn-primary btn-sm" onclick="showBenchmarkCreate()" data-i18n="bench.new_bench">New Benchmark</button>
+            <button class="btn btn-primary btn-sm" data-click="showBenchmarkCreate" data-i18n="bench.new_bench">New Benchmark</button>
           </div>
           <div class="benchmark-results">
             <div class="recommendation-card" id="bench-recommendation" style="display:none;">
@@ -668,7 +668,7 @@
         <div id="assets-dropzone" class="assets-dropzone">
           <input type="file" id="assets-file-input" style="display:none" multiple />
           <div class="assets-dropzone-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:26px;height:26px;"><path d="M12 19V8"/><path d="M7.5 12L12 7.5 16.5 12"/><path d="M5 19.5h14"/></svg></div>
-          <div>Kéo thả file vào đây hoặc <span class="assets-dropzone-link" onclick="document.getElementById('assets-file-input').click()">chọn file</span></div>
+          <div>Kéo thả file vào đây hoặc <span class="assets-dropzone-link" data-click="pickAssetsFile">chọn file</span></div>
         </div>
 
         <div id="assets-filter-tabs" class="assets-filters"></div>
@@ -688,7 +688,7 @@
               <div class="panel-title">Model Pool</div>
               <div class="panel-subtitle" id="mp-count">0 models</div>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="openModelModal()">+ Thêm</button>
+            <button class="btn btn-primary btn-sm" data-click="openModelModal">+ Thêm</button>
           </div>
           <div class="panel-body" id="mp-list"></div>
         </div>
@@ -710,9 +710,9 @@
                   <div style="font-size:16px;font-weight:700;" id="mp-d-name"></div>
                   <div style="font-size:12px;color:var(--muted);margin-top:3px;" id="mp-d-meta"></div>
                 </div>
-                <button class="btn btn-ghost btn-sm" onclick="openModelModal(currentModelId)">Sửa</button>
-                <button class="btn btn-ghost btn-sm" id="mp-test-btn" onclick="testModel(currentModelId)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3v6M15 3v6"/><path d="M6.5 9h11v3a5.5 5.5 0 01-11 0V9z"/><path d="M12 17.5V21"/></svg> Kiểm tra kết nối</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteModel(currentModelId)">Xoá</button>
+                <button class="btn btn-ghost btn-sm" data-click="openCurrentModelModal">Sửa</button>
+                <button class="btn btn-ghost btn-sm" id="mp-test-btn" data-click="testCurrentModel"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3v6M15 3v6"/><path d="M6.5 9h11v3a5.5 5.5 0 01-11 0V9z"/><path d="M12 17.5V21"/></svg> Kiểm tra kết nối</button>
+                <button class="btn btn-danger btn-sm" data-click="deleteCurrentModel">Xoá</button>
               </div>
               <!-- Stats today -->
               <div class="mp-detail-title">Hôm nay</div>
@@ -754,15 +754,15 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin-right:12px;">
-            <input type="checkbox" id="cost-show-tokens" onchange="toggleTokenColumns(this.checked)" style="accent-color:var(--cyan);">
+            <input type="checkbox" id="cost-show-tokens" data-change="toggleTokenColumns" data-change-args='["$checked"]' style="accent-color:var(--cyan);">
             <span>Hiển thị Token (Kỹ thuật)</span>
           </label>
-          <select class="form-select" id="cost-period-select" onchange="loadCostTab()">
+          <select class="form-select" id="cost-period-select" data-change="loadCostTab">
             <option value="day">Theo ngày</option>
             <option value="week">Theo tuần</option>
             <option value="month">Theo tháng</option>
           </select>
-          <button class="btn btn-ghost btn-sm" onclick="exportCostXlsx()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v11"/><path d="M7.5 11L12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Xuất báo cáo .xlsx</button>
+          <button class="btn btn-ghost btn-sm" data-click="exportCostXlsx"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v11"/><path d="M7.5 11L12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Xuất báo cáo .xlsx</button>
         </div>
       </div>
 
@@ -810,7 +810,7 @@
           <div class="settings-section">
             <div class="settings-section-title" data-i18n="settings.appearance">Appearance</div>
             <div class="theme-cards">
-              <div class="theme-card theme-card-dark" id="theme-dark" onclick="applyTheme('dark')">
+              <div class="theme-card theme-card-dark" id="theme-dark" data-click="applyTheme" data-click-args='["dark"]'>
                 <div class="theme-card-preview">
                   <div class="tp-sidebar"></div>
                   <div class="tp-content"></div>
@@ -818,7 +818,7 @@
                 <div class="theme-card-label" data-i18n="settings.dark">Dark</div>
                 <div class="theme-card-sublabel">Ấm áp, dịu mắt buổi tối</div>
               </div>
-              <div class="theme-card theme-card-light" id="theme-light" onclick="applyTheme('light')">
+              <div class="theme-card theme-card-light" id="theme-light" data-click="applyTheme" data-click-args='["light"]'>
                 <div class="theme-card-preview">
                   <div class="tp-sidebar"></div>
                   <div class="tp-content"></div>
@@ -833,12 +833,12 @@
           <div class="settings-section">
             <div class="settings-section-title" data-i18n="settings.language">Language</div>
             <div class="lang-options">
-              <div class="lang-option" id="lang-en" onclick="applyLang('en')">
+              <div class="lang-option" id="lang-en" data-click="applyLang" data-click-args='["en"]'>
                 <div class="lang-option-flag">🇺🇸</div>
                 <div class="lang-option-name">English</div>
                 <div class="lang-option-sub">EN</div>
               </div>
-              <div class="lang-option" id="lang-vi" onclick="applyLang('vi')">
+              <div class="lang-option" id="lang-vi" data-click="applyLang" data-click-args='["vi"]'>
                 <div class="lang-option-flag">🇻🇳</div>
                 <div class="lang-option-name">Tiếng Việt</div>
                 <div class="lang-option-sub">VI</div>
@@ -855,7 +855,7 @@
                 <div class="settings-row-desc" data-i18n="settings.sidebar_desc">Pin sidebar or collapse for more space</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-sidebar-pin" onchange="saveSidebarPref(this.checked)">
+                <input type="checkbox" id="toggle-sidebar-pin" data-change="saveSidebarPref" data-change-args='["$checked"]'>
                 <span class="toggle-track"></span>
               </label>
             </div>
@@ -865,7 +865,7 @@
                 <div class="settings-row-desc" data-i18n="settings.animations_desc">Smooth transitions and effects</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" id="toggle-animations" checked onchange="saveAnimPref(this.checked)">
+                <input type="checkbox" id="toggle-animations" checked data-change="saveAnimPref" data-change-args='["$checked"]'>
                 <span class="toggle-track"></span>
               </label>
             </div>
@@ -886,7 +886,7 @@
                 <div class="settings-row-label" data-i18n="settings.session">Session</div>
                 <div class="settings-row-desc" id="settings-session-info">—</div>
               </div>
-              <button class="btn btn-danger btn-sm" onclick="logout()" data-i18n="topbar.logout">Logout</button>
+              <button class="btn btn-danger btn-sm" data-click="logout" data-i18n="topbar.logout">Logout</button>
             </div>
           </div>
 
@@ -903,13 +903,13 @@
 <!-- ── Model Pool Modal ── -->
 <div class="modal-overlay hidden" id="model-pool-modal">
   <div class="modal" style="max-width:520px;">
-    <button class="modal-close" onclick="closeModal('model-pool-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["model-pool-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" id="mp-modal-title">Thêm model</div>
     <input type="hidden" id="mp-modal-id">
     <div class="modal-subtabs">
-      <button type="button" class="modal-subtab-btn active" id="mp-subtab-btn-subscription" onclick="switchModelModalTab('subscription')">Qua Subscription (9router...)</button>
-      <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-native" onclick="switchModelModalTab('native')">Qua Provider API chính chủ</button>
-      <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-cli" onclick="switchModelModalTab('cli')">Qua CLI (gói thuê bao)</button>
+      <button type="button" class="modal-subtab-btn active" id="mp-subtab-btn-subscription" data-click="switchModelModalTab" data-click-args='["subscription"]'>Qua Subscription (9router...)</button>
+      <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-native" data-click="switchModelModalTab" data-click-args='["native"]'>Qua Provider API chính chủ</button>
+      <button type="button" class="modal-subtab-btn" id="mp-subtab-btn-cli" data-click="switchModelModalTab" data-click-args='["cli"]'>Qua CLI (gói thuê bao)</button>
     </div>
     <div class="form-group">
       <label class="form-label">Tên hiển thị *</label>
@@ -938,7 +938,7 @@
     <div id="mp-subtab-native" style="display:none;">
       <div class="form-group">
         <label class="form-label">Nhà cung cấp</label>
-        <select class="form-select" id="mp-modal-native-provider" onchange="updateNativeModelHints()">
+        <select class="form-select" id="mp-modal-native-provider" data-change="updateNativeModelHints">
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
           <option value="gemini">Google Gemini</option>
@@ -964,7 +964,7 @@
       </p>
       <div class="form-group">
         <label class="form-label">Engine</label>
-        <select class="form-select" id="mp-modal-cli-engine" onchange="updateCliModelHints()">
+        <select class="form-select" id="mp-modal-cli-engine" data-change="updateCliModelHints">
           <option value="claude_cli">Claude Code CLI (gói Claude)</option>
           <option value="codex_cli">Codex CLI (gói ChatGPT)</option>
         </select>
@@ -999,11 +999,11 @@
           </div>
           <div class="form-group">
             <label class="form-label" style="min-height:28px;">Giới hạn request/ngày</label>
-            <input class="form-input" id="mp-modal-max-req" type="number" min="0" placeholder="0 = không giới hạn" oninput="livePreviewLimits()">
+            <input class="form-input" id="mp-modal-max-req" type="number" min="0" placeholder="0 = không giới hạn" data-input="livePreviewLimits">
           </div>
           <div class="form-group">
             <label class="form-label" style="min-height:28px;">Giới hạn token/ngày</label>
-            <input class="form-input" id="mp-modal-max-tok" type="number" min="0" placeholder="0 = không giới hạn" oninput="livePreviewLimits()">
+            <input class="form-input" id="mp-modal-max-tok" type="number" min="0" placeholder="0 = không giới hạn" data-input="livePreviewLimits">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-top:8px;">
@@ -1030,15 +1030,15 @@
       </div>
     </details>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-      <button class="btn btn-ghost" onclick="closeModal('model-pool-modal')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveModel()">Lưu</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["model-pool-modal"]'>Huỷ</button>
+      <button class="btn btn-primary" data-click="saveModel">Lưu</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay hidden" id="project-modal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('project-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["project-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" id="project-modal-title" data-i18n="modal.project.new">New Project</div>
     <input type="hidden" id="project-modal-id">
     <div class="form-group">
@@ -1050,15 +1050,15 @@
       <textarea class="form-textarea" id="project-modal-desc" rows="3" placeholder="What are the goals of this project?" data-i18n-ph="ph.project.desc"></textarea>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('project-modal')" data-i18n="btn.cancel">Cancel</button>
-      <button class="btn btn-primary" onclick="saveProject()" data-i18n="btn.save">Save</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["project-modal"]' data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-primary" data-click="saveProject" data-i18n="btn.save">Save</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay hidden" id="card-modal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('card-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["card-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" id="card-modal-title" data-i18n="modal.card.title">Work Item</div>
     <input type="hidden" id="card-modal-id">
     <input type="hidden" id="card-modal-project">
@@ -1101,20 +1101,20 @@
       <div id="card-match-list" style="display:flex;flex-direction:column;gap:6px;"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="card-delete-btn" onclick="deleteCard()" style="display:none;" data-i18n="btn.delete">Delete</button>
-      <button class="btn btn-ghost" onclick="closeModal('card-modal')" data-i18n="btn.cancel">Cancel</button>
-      <button class="btn btn-primary" onclick="saveCard()" data-i18n="btn.save">Save</button>
+      <button class="btn btn-danger" id="card-delete-btn" data-click="deleteCard" style="display:none;" data-i18n="btn.delete">Delete</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["card-modal"]' data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-primary" data-click="saveCard" data-i18n="btn.save">Save</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay hidden" id="ops-details-modal">
   <div class="modal" style="width:520px;">
-    <button class="modal-close" onclick="closeModal('ops-details-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["ops-details-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" id="ops-details-title">Chi tiết lượt chạy</div>
     <div id="ops-details-body"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('ops-details-modal')">Đóng</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["ops-details-modal"]'>Đóng</button>
     </div>
   </div>
 </div>
@@ -1122,7 +1122,7 @@
 <!-- ── Department (Phòng ban) Modal ── -->
 <div class="modal-overlay hidden" id="department-modal">
   <div class="modal department-modal">
-    <button class="modal-close" onclick="closeModal('department-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["department-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title">Phòng ban</div>
     <div class="department-modal-body">
       <div class="department-list-column">
@@ -1154,8 +1154,8 @@
           </select>
         </div>
         <div class="department-form-actions">
-          <button class="btn btn-ghost" id="department-cancel-edit-btn" onclick="resetDepartmentForm()" style="display:none;">Huỷ sửa</button>
-          <button class="btn btn-primary" onclick="saveDepartment()">Lưu phòng ban</button>
+          <button class="btn btn-ghost" id="department-cancel-edit-btn" data-click="resetDepartmentForm" style="display:none;">Huỷ sửa</button>
+          <button class="btn btn-primary" data-click="saveDepartment">Lưu phòng ban</button>
         </div>
       </div>
     </div>
@@ -1165,7 +1165,7 @@
 <!-- ── Meeting Finalize (Chốt biên bản) Modal ── -->
 <div class="modal-overlay hidden" id="finalize-modal">
   <div class="modal" style="width:560px;">
-    <button class="modal-close" onclick="closeModal('finalize-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["finalize-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title">Biên bản cuộc họp</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
       Xanax đã tự tổng hợp nội dung họp thành biên bản nháp bên dưới. Xem lại, chỉnh sửa nếu cần, rồi bấm
@@ -1175,15 +1175,15 @@
       <textarea class="form-textarea" id="finalize-modal-text" rows="12" placeholder="Nội dung biên bản..."></textarea>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('finalize-modal')">Để sau</button>
-      <button class="btn btn-primary" onclick="confirmFinalizeMeeting()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5.5" y="11" width="13" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 018 0V11"/></svg> Chốt biên bản</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["finalize-modal"]'>Để sau</button>
+      <button class="btn btn-primary" data-click="confirmFinalizeMeeting"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5.5" y="11" width="13" height="9" rx="2"/><path d="M8 11V7.5a4 4 0 018 0V11"/></svg> Chốt biên bản</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay hidden" id="ops-feedback-modal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('ops-feedback-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["ops-feedback-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" id="ops-feedback-title">Phản hồi</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="ops-feedback-run-name"></div>
     <div class="form-group">
@@ -1191,8 +1191,8 @@
       <textarea class="form-textarea" id="ops-feedback-text" rows="4" placeholder="Vì sao kết quả này không đạt / cần chỉnh sửa gì..."></textarea>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('ops-feedback-modal')">Huỷ</button>
-      <button class="btn btn-primary" onclick="opsSaveFeedback()">Lưu phản hồi</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["ops-feedback-modal"]'>Huỷ</button>
+      <button class="btn btn-primary" data-click="opsSaveFeedback">Lưu phản hồi</button>
     </div>
   </div>
 </div>
@@ -1202,8 +1202,8 @@
     <div class="modal-title" id="confirm-modal-title">Xác nhận</div>
     <div id="confirm-modal-body" style="font-size:13px;color:var(--muted);line-height:1.6;"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="_answerConfirm(false)">Huỷ</button>
-      <button class="btn btn-danger" id="confirm-modal-ok" onclick="_answerConfirm(true)">Xoá</button>
+      <button class="btn btn-ghost" data-click="_answerConfirm" data-click-args='[false]'>Huỷ</button>
+      <button class="btn btn-danger" id="confirm-modal-ok" data-click="_answerConfirm" data-click-args='[true]'>Xoá</button>
     </div>
   </div>
 </div>
@@ -1212,18 +1212,18 @@
 
 <div class="modal-overlay hidden" id="alert-modal">
   <div class="modal" style="width:580px;">
-    <button class="modal-close" onclick="closeModal('alert-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["alert-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" data-i18n="modal.alerts.title">Công việc chưa phân công</div>
     <div id="alert-modal-body" style="display:flex;flex-direction:column;gap:10px;"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('alert-modal')" data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["alert-modal"]' data-i18n="btn.cancel">Cancel</button>
     </div>
   </div>
 </div>
 
 <div class="modal-overlay hidden" id="meeting-modal">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('meeting-modal')"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+    <button class="modal-close" data-click="closeModal" data-click-args='["meeting-modal"]'><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
     <div class="modal-title" data-i18n="modal.meeting.title">New Meeting</div>
     <div class="form-group">
       <label class="form-label" data-i18n="modal.meeting.title_field">Meeting Title</label>
@@ -1242,8 +1242,8 @@
       Xanax sẽ tự điều phối, gọi đúng người liên quan ra trả lời trong lúc họp.
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('meeting-modal')" data-i18n="btn.cancel">Cancel</button>
-      <button class="btn btn-primary" onclick="createMeeting()" data-i18n="modal.meeting.start">Start Meeting</button>
+      <button class="btn btn-ghost" data-click="closeModal" data-click-args='["meeting-modal"]' data-i18n="btn.cancel">Cancel</button>
+      <button class="btn btn-primary" data-click="createMeeting" data-i18n="modal.meeting.start">Start Meeting</button>
     </div>
   </div>
 </div>
