@@ -82,15 +82,21 @@ async function selectSession(id) {
   notesEl.value = session.result_notes;
   notesEl.classList.toggle('has-content', !!session.result_notes);
   renderBadge(session.status);
-  const isDone = session.status === 'pass' || session.status === 'fail';
-  document.querySelector('.btn-pass').disabled = isDone;
-  document.querySelector('.btn-fail').disabled = isDone;
-  document.getElementById('btn-feedback').disabled = isDone;
+  // Phòng ĐÓNG hay chưa là chuyện khác với kết quả đánh giá. Bấm Hài lòng /
+  // Cần cải thiện chỉ ghi verdict và dựng bản nháp đúc kết; phòng vẫn mở để
+  // sửa. Chỉ nút "Lưu bài học kinh nghiệm" mới đóng.
+  const isClosed = !!session.closed;
+  document.querySelector('.btn-pass').disabled = isClosed;
+  document.querySelector('.btn-fail').disabled = isClosed;
+  document.getElementById('btn-feedback').disabled = isClosed;
+  document.getElementById('btn-refine').disabled = isClosed;
+  document.getElementById('info-notes').readOnly = isClosed;
+  document.getElementById('btn-reopen').style.display = isClosed ? '' : 'none';
 
   // Chat area
   document.getElementById('chat-empty').style.display   = 'none';
   document.getElementById('chat-messages').style.display = 'flex';
-  document.getElementById('chat-input-area').style.display = isDone ? 'none' : 'block';
+  document.getElementById('chat-input-area').style.display = isClosed ? 'none' : 'block';
 
   renderStudentBar(session);
 
@@ -110,93 +116,7 @@ function renderStudentBar(session) {
   currentStudent = session.agent_id
     ? { id: session.agent_id, name: session.agent_name || `#${session.agent_id}` }
     : null;
-  const btn = document.getElementById('btn-end-lesson');
-  // Phiên dạy chính Xanax không có soul nhân viên nào để ghi vào.
-  if (btn) btn.style.display = currentStudent ? '' : 'none';
-}
-
-async function endLesson() {
-  if (!currentSessionId || !currentStudent) return;
-  const btn = document.getElementById('btn-end-lesson');
-  const label = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Đang đọc lại buổi học...';
-  try {
-    const res = await fetch(`/api/training/sessions/${currentSessionId}/distill`, {
-      method: 'POST',
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      toast(err.detail || 'Không chưng cất được buổi học', 'error');
-      return;
-    }
-    const data = await res.json();
-    openLessons(data.lessons || []);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = label;
-  }
-}
-
-function openLessons(lessons) {
-  if (!currentStudent) return;   // không có học viên thì không có soul nào để ghi
-  document.getElementById('lessons-intro').textContent = lessons.length
-    ? `${lessons.length} bài học rút ra cho ${currentStudent.name}. Xem lại và sửa trước khi ghi — soul ảnh hưởng mọi lần ${currentStudent.name} làm việc sau này.`
-    : `Chưa rút được bài học rõ ràng nào từ buổi này. Bạn có thể tự thêm, hoặc để sau.`;
-  const list = document.getElementById('lessons-list');
-  list.innerHTML = '';
-  lessons.forEach(x => addLessonRow(x));
-  if (!lessons.length) addLessonRow('');
-  document.getElementById('lessons-overlay').classList.add('visible');
-}
-
-function addLessonRow(text) {
-  const row = document.createElement('div');
-  row.className = 'lesson-row';
-  const ta = document.createElement('textarea');
-  ta.className = 'lesson-input';
-  ta.rows = 2;
-  ta.value = text || '';
-  ta.placeholder = 'Một bài học ngắn, đọc riêng vẫn hiểu...';
-  const del = document.createElement('button');
-  del.className = 'lesson-remove';
-  del.textContent = '×';
-  del.title = 'Bỏ bài học này';
-  del.onclick = () => row.remove();
-  row.append(ta, del);
-  document.getElementById('lessons-list').appendChild(row);
-}
-
-function closeLessons() {
-  document.getElementById('lessons-overlay').classList.remove('visible');
-}
-
-async function saveLessons() {
-  const lessons = [...document.querySelectorAll('.lesson-input')]
-    .map(x => x.value.trim()).filter(Boolean);
-  const btn = document.getElementById('lessons-save-btn');
-  btn.disabled = true;
-  try {
-    const res = await fetch(`/api/training/sessions/${currentSessionId}/lessons`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lessons }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      toast(err.detail || 'Không ghi được vào soul', 'error');
-      return;
-    }
-    const data = await res.json();
-    closeLessons();
-    await loadSessions();
-    await selectSession(currentSessionId);
-    toast(data.written
-      ? `Đã ghi ${data.written} bài học vào soul của ${data.agent_name}`
-      : 'Đã kết thúc buổi học, không ghi bài học nào', 'success');
-  } finally {
-    btn.disabled = false;
-  }
+  renderCloseHint();
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -401,13 +321,31 @@ async function setStatus(status) {
   });
   if (!res.ok) return;
 
-  document.querySelector('.btn-pass').disabled = true;
-  document.querySelector('.btn-fail').disabled = true;
-  document.getElementById('btn-feedback').disabled = true;
-  document.getElementById('chat-input-area').style.display = 'none';
-
+  // KHÔNG đóng phòng ở đây: chat vẫn mở, hai nút vẫn bấm được để đổi kết quả.
+  // Việc duy nhất còn lại là dựng BẢN NHÁP đúc kết cho Papa sửa.
   renderBadge(status);
   await loadSessions();
+  renderCloseHint();
+
+  if (currentStudent) {
+    // Buổi dạy có học viên: đúc kết bằng /distill rồi đổ vào ô cho Papa sửa.
+    // Không dùng đường summarise của WS vì đường đó ghi thẳng SOUL.md của
+    // Xanax — sai sổ, đây là bài học của nhân viên.
+    showNotesSpinner(true);
+    try {
+      const r = await fetch(`/api/training/sessions/${currentSessionId}/distill`, { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) { toast(d.detail || 'Không đúc kết được', 'error'); return; }
+      const lessons = d.lessons || [];
+      updateNotes(lessons.map(x => `- ${x}`).join('\n'), 'draft');
+      toast(lessons.length
+        ? `Đã đúc kết ${lessons.length} bài học — sửa lại rồi bấm "Lưu bài học kinh nghiệm"`
+        : 'Chưa rút được bài học nào — bạn có thể tự viết vào ô đúc kết', 'success');
+    } finally {
+      showNotesSpinner(false);
+    }
+    return;
+  }
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     showNotesSpinner(true);
@@ -417,6 +355,48 @@ async function setStatus(status) {
   } else {
     toast(status === 'pass' ? 'Đã đánh dấu Đạt' : 'Đã đánh dấu Không đạt', status === 'pass' ? 'success' : 'error');
   }
+}
+
+// ── Đóng / mở lại buổi học ───────────────────────────────────────────────────
+
+function renderCloseHint() {
+  const el = document.getElementById('close-hint');
+  if (!el) return;
+  el.textContent = currentStudent
+    ? `Sửa xong phần đúc kết rồi bấm nút dưới — mỗi dòng thành một bài học trong soul của ${currentStudent.name}, và buổi học mới đóng.`
+    : 'Sửa xong phần đúc kết rồi bấm nút dưới để chốt và đóng buổi học.';
+}
+
+async function closeLesson() {
+  if (!currentSessionId) return;
+  const notes = document.getElementById('info-notes').value;
+  const btn = document.getElementById('btn-feedback');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/training/sessions/${currentSessionId}/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || 'Không đóng được buổi học', 'error'); return; }
+    await loadSessions();
+    await selectSession(currentSessionId);
+    toast(d.written
+      ? `Đã ghi ${d.written} bài học vào soul của ${d.agent_name} — buổi học đã đóng`
+      : 'Đã đóng buổi học', 'success');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function reopenLesson() {
+  if (!currentSessionId) return;
+  const r = await fetch(`/api/training/sessions/${currentSessionId}/reopen`, { method: 'POST' });
+  if (!r.ok) { toast('Không mở lại được', 'error'); return; }
+  await loadSessions();
+  await selectSession(currentSessionId);
+  toast('Đã mở lại buổi học', 'success');
 }
 
 function showNotesSpinner(visible) {
@@ -429,12 +409,14 @@ function updateNotes(content, verdict) {
   el.value = content;
   el.classList.add('has-content');
 
+  // 'draft' = bản nháp cho buổi dạy có học viên; toast do bên gọi tự lo.
+  if (verdict === 'draft') return;
   if (verdict === 'pass') {
-    toast('Đã đúc kết xong — SOUL.md đã cập nhật', 'success');
+    toast('Đã đúc kết xong — sửa lại nếu cần rồi bấm "Lưu bài học kinh nghiệm"', 'success');
   } else if (verdict === 'fail') {
-    toast('Đã phân tích xong — bấm "Góp ý hoặc đúc kết ngay" để lưu vào SOUL.md', 'error');
+    toast('Đã phân tích xong — sửa lại nếu cần rồi bấm "Lưu bài học kinh nghiệm"', 'error');
   } else {
-    toast('Đã đúc kết từ góp ý — SOUL.md đã cập nhật', 'success');
+    toast('Đã đúc kết lại từ góp ý — kiểm tra rồi bấm "Lưu bài học kinh nghiệm"', 'success');
   }
 }
 

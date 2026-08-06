@@ -117,16 +117,24 @@
           Bài học ghi nhớ (Đúc kết)
           <span id="notes-spinner" style="display:none;width:10px;height:10px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin 0.8s linear infinite;"></span>
         </div>
-        <textarea class="notes-edit" id="info-notes" readonly style="min-height:220px;"
-                  placeholder="Khi bạn hài lòng và bấm 'Hài lòng', AI sẽ tự đúc kết kinh nghiệm làm việc để áp dụng cho những lần sau. Nếu bấm 'Cần cải thiện', hãy nhập góp ý cụ thể để trợ lý AI ghi nhớ và rút kinh nghiệm..."></textarea>
+        <!-- SỬA ĐƯỢC: đây là bản nháp do model viết, Papa phải đọc và sửa
+             trước khi nó vào soul. Lưu lại mỗi khi rời ô. -->
+        <textarea class="notes-edit" id="info-notes" style="min-height:220px;"
+                  onblur="saveField('result_notes', this.value)"
+                  placeholder="Bấm 'Hài lòng' hoặc 'Cần cải thiện' để AI đúc kết bản nháp vào đây. Sửa thoải mái — mỗi dòng là một bài học. Xong thì bấm 'Lưu bài học kinh nghiệm' để chốt và đóng buổi học."></textarea>
       </div>
 
-      <button class="btn-feedback visible" id="btn-feedback" onclick="openFeedbackPopup()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8V4"/><rect x="8" y="14" width="8" height="6"/></svg> Lưu bài học kinh nghiệm</button>
+      <div class="field-hint" id="close-hint"></div>
 
-      <!-- Chỉ hiện với phiên CÓ học viên (xem renderStudentBar): phiên dạy chính
-           Xanax không có soul nhân viên nào để ghi vào. -->
-      <button class="btn-feedback" id="btn-end-lesson" style="display:none;"
-              onclick="endLesson()">Kết thúc buổi học → ghi vào soul học viên</button>
+      <!-- CHỈ nút này mới đóng buổi học. Đạt / Cần cải thiện phía trên chỉ ghi
+           kết quả đánh giá và dựng bản nháp đúc kết. -->
+      <button class="btn-feedback visible" id="btn-feedback" onclick="closeLesson()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px;"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8V4"/><rect x="8" y="14" width="8" height="6"/></svg> Lưu bài học kinh nghiệm</button>
+
+      <button class="btn-reopen" id="btn-reopen" style="display:none;"
+              onclick="reopenLesson()">Mở lại buổi học để sửa tiếp</button>
+
+      <button class="btn-refine" id="btn-refine" onclick="openFeedbackPopup()">
+        Nhờ AI đúc kết lại từ góp ý</button>
 
       <div class="info-divider"></div>
 
@@ -186,25 +194,6 @@
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeNewSession()">Huỷ</button>
       <button class="btn-create" onclick="createSession()">Tạo phiên</button>
-    </div>
-  </div>
-</div>
-
-<!-- Duyệt bài học trước khi ghi vào soul học viên.
-     Có bước này vì soul ảnh hưởng MỌI lần nhân viên làm việc sau đó: một bản
-     tóm sai sẽ âm thầm dạy sai mãi, mà không ai lần ra nó từ đâu. -->
-<div class="modal-overlay" id="lessons-overlay">
-  <div class="modal modal-lessons">
-    <h3>Kết thúc buổi học — duyệt bài học</h3>
-    <div class="field-hint" id="lessons-intro"></div>
-    <div id="lessons-list"></div>
-    <button class="btn-add-lesson" onclick="addLessonRow('')">+ Thêm bài học</button>
-    <div class="field-hint">
-      Sửa thoải mái trước khi ghi. Bỏ trống hết = không ghi gì vào soul.
-    </div>
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeLessons()">Để sau</button>
-      <button class="btn-create" id="lessons-save-btn" onclick="saveLessons()">Ghi vào soul</button>
     </div>
   </div>
 </div>

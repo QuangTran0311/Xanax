@@ -61,6 +61,11 @@ async def init_db() -> None:
                 -- Giữ trong DB thay vì chỉ trong RAM để đóng trình duyệt giữa
                 -- chừng không mất bản nháp.
                 lessons_json     TEXT    NOT NULL DEFAULT '',
+                -- Phòng dạy đã đóng chưa. TÁCH khỏi `status`: status là kết quả
+                -- đánh giá (đạt / cần cải thiện), còn đây là "buổi học kết thúc".
+                -- Gộp hai thứ khiến bấm Đạt là đóng phòng ngay, không kịp sửa
+                -- phần đúc kết. Chỉ nút "Lưu bài học kinh nghiệm" mới đóng.
+                closed           INTEGER NOT NULL DEFAULT 0,
                 created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
             )
@@ -250,7 +255,7 @@ async def list_training_sessions() -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
-            "       s.agent_id, s.lessons_json, s.created_at, s.updated_at, "
+            "       s.agent_id, s.lessons_json, s.closed, s.created_at, s.updated_at, "
             "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
             "       a.avatar_icon AS agent_avatar_icon "
             "FROM training_sessions s "
@@ -266,7 +271,7 @@ async def get_training_session(session_id: int) -> dict | None:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
-            "       s.agent_id, s.lessons_json, s.created_at, s.updated_at, "
+            "       s.agent_id, s.lessons_json, s.closed, s.created_at, s.updated_at, "
             "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
             "       a.avatar_icon AS agent_avatar_icon "
             "FROM training_sessions s "
@@ -288,6 +293,7 @@ async def update_training_session(
     title: str | None = None,
     task_description: str | None = None,
     lessons_json: str | None = None,
+    closed: bool | None = None,
 ) -> bool:
     fields, values = [], []
     if status is not None:
@@ -300,6 +306,8 @@ async def update_training_session(
         fields.append("task_description = ?"); values.append(task_description)
     if lessons_json is not None:
         fields.append("lessons_json = ?"); values.append(lessons_json)
+    if closed is not None:
+        fields.append("closed = ?"); values.append(1 if closed else 0)
     if not fields:
         return False
     fields.append("updated_at = datetime('now')")
@@ -805,6 +813,7 @@ async def _run_migrations(db) -> None:
         # chưng cất, chờ Papa duyệt rồi mới ghi vào soul của nhân viên đó.
         "ALTER TABLE training_sessions ADD COLUMN agent_id INTEGER",
         "ALTER TABLE training_sessions ADD COLUMN lessons_json TEXT NOT NULL DEFAULT ''",
+        # (cột `closed` được thêm trong _backfill_closed_sessions, xem lý do ở đó)
         # Biên bản nháp Xanax tự tổng hợp khi kết thúc họp — CEO xem/sửa rồi mới chốt
         # (decision_text/decided_at) qua endpoint finalize hiện có.
         "ALTER TABLE meetings ADD COLUMN draft_minutes TEXT NOT NULL DEFAULT ''",
@@ -829,8 +838,38 @@ async def _run_migrations(db) -> None:
         except Exception:
             pass  # column already dropped (hoặc SQLite < 3.35)
 
+    await _backfill_closed_sessions(db)
+
     await _backfill_slugs(db, "projects", fallback="du-an")
     await _backfill_slugs(db, "workflow_tasks", fallback="quy-trinh")
+
+
+async def _backfill_closed_sessions(db) -> None:
+    """Thêm cột `closed` cho training_sessions và backfill ĐÚNG MỘT LẦN.
+
+    Không để chung với danh sách ALTER phía trên vì vòng lặp đó chạy lại mỗi
+    lần khởi động và nuốt lỗi. Một câu `UPDATE ... SET closed = 1 WHERE status
+    IN ('pass','fail')` đặt ở đó sẽ đóng lại đúng những phiên Papa vừa mở ra
+    sửa — hỏng âm thầm, và chỉ lộ ra sau lần restart kế tiếp.
+
+    Ở đây điều kiện chạy là "cột chưa tồn tại", nên backfill gắn liền với lần
+    tạo cột và không bao giờ lặp lại.
+    """
+    async with db.execute("PRAGMA table_info(training_sessions)") as cur:
+        cols = {r[1] for r in await cur.fetchall()}
+    if "closed" in cols:
+        return
+
+    await db.execute(
+        "ALTER TABLE training_sessions ADD COLUMN closed INTEGER NOT NULL DEFAULT 0"
+    )
+    # Phiên cũ đã có kết quả đánh giá thì theo luật cũ là đã đóng — giữ nguyên
+    # vẻ ngoài của chúng thay vì bỗng dưng mở lại hết.
+    await db.execute(
+        "UPDATE training_sessions SET closed = 1 WHERE status IN ('pass', 'fail')"
+    )
+    await db.commit()
+    logger.info("training_sessions: đã thêm cột `closed` và backfill phiên cũ")
 
 
 async def _backfill_slugs(db, table: str, *, fallback: str) -> None:

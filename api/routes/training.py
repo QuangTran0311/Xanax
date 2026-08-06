@@ -147,9 +147,10 @@ def _parse_lessons(raw: str) -> list[str]:
     return [str(x).strip() for x in lessons if str(x).strip()]
 
 
-class SaveLessonsRequest(BaseModel):
-    # Danh sách Papa đã xem và sửa. Gửi mảng rỗng = không ghi gì vào soul.
-    lessons: list[str]
+class CloseSessionRequest(BaseModel):
+    # Phần đúc kết Papa đã sửa trong ô "Bài học ghi nhớ". Mỗi dòng là một bài
+    # học; gửi chuỗi rỗng = đóng phòng mà không ghi gì vào soul.
+    notes: str = ""
 
 
 @router.post("/sessions/{session_id}/distill")
@@ -188,33 +189,67 @@ async def distill_lessons(session_id: int):
     return {"lessons": lessons, "agent_name": agent["name"], "agent_id": agent["id"]}
 
 
-@router.post("/sessions/{session_id}/lessons")
-async def save_lessons(session_id: int, req: SaveLessonsRequest):
-    """Ghi bài học Papa ĐÃ DUYỆT vào soul của học viên, rồi đóng buổi dạy."""
+def _lessons_from_notes(notes: str) -> list[str]:
+    """Tách phần đúc kết Papa đã sửa thành từng bài học, mỗi dòng một bài.
+
+    Bỏ dấu đầu dòng ("- ", "• ", "1. ") vì `append_lessons` tự thêm lại; không
+    bỏ thì soul ra "- - Bài học".
+    """
+    out = []
+    for line in (notes or "").splitlines():
+        line = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line).strip()
+        if line:
+            out.append(line)
+    return out
+
+
+@router.post("/sessions/{session_id}/close")
+async def close_session(session_id: int, req: CloseSessionRequest):
+    """Đóng buổi dạy — và CHỈ ở đây phòng mới đóng.
+
+    Bấm Đạt / Cần cải thiện trước đó chỉ ghi kết quả đánh giá và dựng bản nháp
+    đúc kết; phòng vẫn mở để Papa sửa phần đúc kết. Gộp hai việc lại (như bản
+    cũ) khiến bấm Đạt là phòng đóng ngay, bản nháp do model viết đi thẳng vào
+    soul mà Papa chưa kịp đọc.
+    """
     session = await get_training_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if not session.get("agent_id"):
-        raise HTTPException(status_code=400, detail="Buổi dạy này không có học viên")
-    agent = await get_agent_config(int(session["agent_id"]))
-    if not agent:
-        raise HTTPException(status_code=400, detail="Học viên đã bị xoá khỏi danh sách nhân viên")
 
-    lessons = [str(x).strip() for x in (req.lessons or []) if str(x).strip()]
+    notes = (req.notes or "").strip()
+    written, agent_name = 0, None
 
-    from core.agent_soul import append_lessons
-    written = append_lessons(
-        agent["id"], agent["name"], session.get("title") or "",
-        lessons, taught_at=(session.get("updated_at") or "")[:16],
-    )
+    if session.get("agent_id"):
+        agent = await get_agent_config(int(session["agent_id"]))
+        if not agent:
+            raise HTTPException(status_code=400,
+                                detail="Học viên đã bị xoá khỏi danh sách nhân viên")
+        agent_name = agent["name"]
+        lessons = _lessons_from_notes(notes)
+        from core.agent_soul import append_lessons
+        written = append_lessons(
+            agent["id"], agent["name"], session.get("title") or "",
+            lessons, taught_at=(session.get("updated_at") or "")[:16],
+        )
+
     await update_training_session(
         session_id,
-        status="done",
-        lessons_json=json.dumps(lessons, ensure_ascii=False),
-        result_notes="\n".join(f"- {x}" for x in lessons),
+        result_notes=notes,
+        lessons_json=json.dumps(_lessons_from_notes(notes), ensure_ascii=False),
+        closed=True,
     )
-    logger.info("Buổi dạy %s: ghi %d bài học vào soul nhân viên %s", session_id, written, agent["id"])
-    return {"ok": True, "written": written, "agent_name": agent["name"]}
+    logger.info("Đóng buổi dạy %s: ghi %d bài học vào soul %s",
+                session_id, written, agent_name or "(dạy Xanax)")
+    return {"ok": True, "written": written, "agent_name": agent_name}
+
+
+@router.post("/sessions/{session_id}/reopen")
+async def reopen_session(session_id: int):
+    """Mở lại buổi dạy đã đóng để dạy tiếp / sửa lại đúc kết."""
+    if not await get_training_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    await update_training_session(session_id, closed=False)
+    return await get_training_session(session_id)
 
 
 # ── SOUL.md ────────────────────────────────────────────────────────────────

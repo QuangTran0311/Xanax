@@ -132,3 +132,44 @@ def test_ghi_kem_ten_buoi_day_de_lan_lai_nguon_goc(soul_dir):
     text = read_soul(3)
     assert "Dạy cách đặt tiêu đề" in text
     assert "2026-08-07" in text
+
+
+# ── Tách phần đúc kết Papa đã sửa thành từng bài học ─────────────────────────
+#
+# Phòng chỉ đóng khi Papa bấm "Lưu bài học kinh nghiệm"; bấm Đạt / Cần cải thiện
+# trước đó chỉ dựng bản nháp. Nội dung ghi vào soul là thứ Papa gõ trong ô, nên
+# việc tách dòng phải chịu được mọi kiểu Papa viết tay.
+
+
+def test_moi_dong_la_mot_bai_hoc():
+    from api.routes.training import _lessons_from_notes
+
+    assert _lessons_from_notes("Bài A\nBài B") == ["Bài A", "Bài B"]
+
+
+def test_bo_dau_dau_dong_de_soul_khong_bi_hai_gach():
+    """append_lessons tự thêm '- ', không bỏ thì soul ra '- - Bài học'."""
+    from api.routes.training import _lessons_from_notes
+
+    notes = "- Bài A\n* Bài B\n• Bài C\n1. Bài D\n2) Bài E"
+    assert _lessons_from_notes(notes) == ["Bài A", "Bài B", "Bài C", "Bài D", "Bài E"]
+
+
+def test_bo_dong_trong_va_khoang_trang_thua():
+    from api.routes.training import _lessons_from_notes
+
+    assert _lessons_from_notes("  Bài A  \n\n   \n-   \nBài B\n") == ["Bài A", "Bài B"]
+
+
+def test_o_duc_ket_de_trong_thi_khong_ghi_gi():
+    from api.routes.training import _lessons_from_notes
+
+    assert _lessons_from_notes("") == []
+    assert _lessons_from_notes("   \n\n  ") == []
+
+
+def test_dau_gach_giua_cau_khong_bi_cat():
+    """Chỉ dấu ĐẦU DÒNG mới là bullet; gạch trong câu là nội dung."""
+    from api.routes.training import _lessons_from_notes
+
+    assert _lessons_from_notes("Xưng hô - phải linh hoạt") == ["Xưng hô - phải linh hoạt"]
