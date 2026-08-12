@@ -58,15 +58,16 @@ phase** rằng kiểm mắt đã được hoãn theo chỉ đạo — để lầ
   File CSS trong repo này cố tình viết dòng dài; format lại sẽ tạo diff hàng nghìn dòng và
   che mất thay đổi thật.
 
-### 0.3. Ba màu KHÔNG được token hoá — để nguyên hex
+### 0.3. Bốn màu KHÔNG được token hoá — để nguyên hex
 
-Có ba nhóm mã hex trông "cần dọn" nhưng thực ra là **cố ý**. Đụng vào là hỏng:
+Có bốn nhóm mã hex trông "cần dọn" nhưng thực ra là **cố ý**. Đụng vào là hỏng:
 
 | Nhóm | Vị trí | Vì sao phải giữ |
 |---|---|---|
 | Chữ/nền trong sidebar | `HubPage.module.css` các luật `.sidebar`, `.brand`, `.brand small`, `.navItem`, `.navItem:hover`, `.navActive`, `.sidebarHealth*`, `.collapseButton*` — gồm `#f2f6f4 #91aaa2 #a9bbb5 #dff8ec #8da79e #9fb1ab #fff #52d6a0 #d7a95e` | Sidebar **luôn** nền tối ở cả hai theme (`--sidebar` là `#06110f` ở tối và `#12382d` ở sáng). Chữ ở đây phải cố định sáng. Đổi sang `var(--text)` là chữ đen trên nền xanh đậm ở theme Sáng. |
 | Ô xem trước theme | `.themePreviewLight`, `.themePreviewDark` (`#f4eee6 #fff #221e1a #2c2721`) | Đây là **mẫu màu minh hoạ** trong trang Cài đặt. Chúng phải trông giống theme mà chúng đại diện, bất kể theme đang bật. |
 | Icon trên node | `TaskrunnerPage.module.css` `.flow-node .node-icon`, `.pick-node-item .node-icon`, `.inspector-header .node-icon`, `.se-card-icon`, `.editor-logo`, `.flow-node.node-running::before` (`#fff`) | Nền của các phần tử này do inline style đặt theo loại node, luôn là màu đậm bão hoà. |
+| Chữ nút đăng nhập | `LoginPage.module.css` `.submit-btn` (`#fff`) | Quyết định của người dùng ngày **2026-08-13**, sau khi đã được cho biết chữ trắng trên nền accent ở theme tối chỉ đạt **1.83:1**, dưới ngưỡng WCAG AA **4.5:1**. Người dùng ưu tiên hình thức ở trang đăng nhập và chấp nhận đánh đổi này. Phase sau quét chữ trắng trên nền màu sẽ thấy chỗ này: phải **BỎ QUA**, không “sửa” về token. |
 
 ### 0.3-bis. ⚠ SỐ DÒNG TRONG TÀI LIỆU NÀY LÀ THAM KHẢO, KHÔNG PHẢI ĐỊA CHỈ
 
@@ -1002,6 +1003,9 @@ Với mỗi dòng dưới đây, **chỉ đổi giá trị của `color`**, khô
 | 131-135 | `.submit-btn` | `var(--accent)` | `#fff` | `var(--on-accent)` |
 | 140-141 | `.spinner` | — | `rgba(255,255,255,.35)` và `#fff` | xem dưới |
 
+> **Ngoại lệ sau Phase 4 (quyết định người dùng 2026-08-13):** dòng `.submit-btn`
+> trong bảng trên đã được đổi lại thành `#fff`; không áp lại `var(--on-accent)`. Xem mục 0.3.
+
 `.spinner` đã xác nhận nằm **bên trong** `.submit-btn` (`LoginPage.tsx:209`, hiện lúc
 `loading`). Nó có **hai** giá trị trắng, phải đổi **cả hai**:
 
@@ -1056,8 +1060,8 @@ gần như y hệt `#04141a` — thay đổi hình ảnh gần bằng không, m�
 
 ## 4.5. Không được làm
 
-- **Không** đổi `#fff` ở nhóm sidebar, ô xem trước theme, hay icon node —
-  xem **mục 0.3**. Đó là 3 nhóm bất khả xâm phạm.
+- **Không** đổi `#fff` ở nhóm sidebar, ô xem trước theme, icon node, hay chữ nút đăng nhập —
+  xem **mục 0.3**. Đó là 4 nhóm bất khả xâm phạm.
 - **Không** đổi giá trị của `--accent`, `--danger` hay bất kỳ màu nền nào.
   Phase này chỉ đổi **màu chữ đặt trên** nền.
 
@@ -1067,8 +1071,8 @@ gần như y hệt `#04141a` — thay đổi hình ảnh gần bằng không, m�
 cd frontend
 
 # Quét lại đúng bằng script đã dùng khi khảo sát.
-# KỲ VỌNG: chỉ còn các dòng thuộc 3 nhóm miễn trừ ở mục 0.3, và KHÔNG dòng nào
-# có nền là var(--accent|cyan|blue|red|danger|info).
+# KỲ VỌNG: chỉ còn các dòng thuộc 4 nhóm miễn trừ ở mục 0.3. Riêng .submit-btn
+# của LoginPage có nền var(--accent) là ngoại lệ có chủ ý; phải BỎ QUA, không sửa về token.
 python - <<'PY'
 import re, os
 pat = re.compile(r'([^{}]*)\{([^{}]*)\}', re.S)
@@ -1095,7 +1099,7 @@ npm run typecheck && npm run build
 
 | Trang | Xem gì |
 |---|---|
-| `/login` | Nút "Đăng nhập" — chữ gần đen trên nền xanh. Bấm vào xem vòng xoay có thấy không. |
+| `/login` | Nút "Đăng nhập" — chữ trắng trên nền xanh ở cả theme Tối lẫn Sáng (ngoại lệ mục 0.3). Bấm vào xem vòng xoay có thấy không. |
 | `/hub/meeting` | Gõ một tin nhắn — bong bóng của bạn (bên phải, nền xanh) phải đọc được rõ. |
 | `/hub/train` | Nút `+` tạo phiên, nút gửi, avatar chữ "P" của bạn trong chat. |
 | `/hub/company-runner` | Mở một quy trình → nút "Lưu"; mở dialog → nút chính và nút xoá. |
@@ -1120,9 +1124,10 @@ nhưng 1ebe071 chỉ áp cho .primaryButton của Hub. Quét lại bằng parser
 Taskrunner có .wf-btn.primary dùng #04141a đúng ý đồ còn .modal-btn.primary
 dùng #fff — cùng một loại nút, hai cách xử lý. Nay cả hai dùng --on-accent.
 
-Chừa nguyên ba nhóm cố ý ghi cứng: chữ trong sidebar (sidebar luôn nền tối ở
-cả hai theme), ô xem trước theme trong Cài đặt, và icon trên node của trình
-soạn quy trình.
+Tại thời điểm chốt Phase 4, chừa nguyên ba nhóm cố ý ghi cứng: chữ trong sidebar
+(sidebar luôn nền tối ở cả hai theme), ô xem trước theme trong Cài đặt, và icon
+trên node của trình soạn quy trình. Ngày 2026-08-13, người dùng thêm `.submit-btn`
+của LoginPage thành nhóm miễn trừ thứ tư; xem mục 0.3 và không sửa nó về token.
 ```
 
 **DỪNG. Chờ duyệt.**
@@ -1994,7 +1999,7 @@ Console phải **0 lỗi** ở mọi tổ hợp.
 | Cột của `.workspace` (Dạy AI) | 1 (sập) | 3 |
 | `font:` shorthand không theo `--fs-scale` | 25 | 2 (ngoại lệ có chủ ý) |
 | Khai báo `font-size` có `--fs-scale` | 259 | 282 |
-| Chữ trắng trên nền màu | 11 | 0 ngoài 3 nhóm miễn trừ |
+| Chữ trắng trên nền màu | 11 | Thêm 1 dòng `.submit-btn` có nền `var(--accent)`; đây là nhóm miễn trừ thứ tư, không phải hồi quy cần sửa |
 | Hex bảng nâu-kem trong HubPage | 26 | 0 |
 | Media query trong WorkspacePage | 0 | 2 |
 | Khối `@media 720px` trong HubPage | 2 | 1 |

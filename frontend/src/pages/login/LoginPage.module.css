@@ -133,7 +133,7 @@
     .submit-btn {
       width: 100%; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
       background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm);
-      color: var(--on-accent); font: 700 14px 'Quicksand', sans-serif; font-size: calc(14px * var(--fs-scale)); letter-spacing: .04em;
+      color: #fff; font: 700 14px 'Quicksand', sans-serif; font-size: calc(14px * var(--fs-scale)); letter-spacing: .04em;
       cursor: pointer; transition: filter .2s, transform .2s;
     }
     .submit-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
