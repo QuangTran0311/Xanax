@@ -2,45 +2,194 @@
 
 Xanax là hệ thống quản lý **nhân viên AI như một công ty**: tuyển (tạo agent), giao việc, xếp thành quy trình nhiều bước, họp bàn, nghiệm thu kết quả, và theo dõi chi phí token.
 
-Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend và một SPA **React + TypeScript**. FastAPI phục vụ cả API, WebSocket và bản build frontend trên cùng cổng.
+Chạy hoàn toàn trên máy cá nhân (Windows). Hai nửa tách bạch:
 
-### Chạy production
+| | Thư mục | Công nghệ |
+|---|---|---|
+| **Backend** | `backend/` | FastAPI + SQLite + WebSocket |
+| **Frontend** | `frontend/` | React + TypeScript + Vite (SPA) |
+
+Khi chạy thật, **FastAPI phục vụ cả API, WebSocket và bản build frontend trên cùng một cổng** — một origin duy nhất, cookie đăng nhập không phải đi cross-origin, không cần CORS.
+
+---
+
+# Chạy dự án
+
+## 1. Cần có sẵn trên máy
+
+| | Kiểm bằng | Ghi chú |
+|---|---|---|
+| Python 3.11+ | `python --version` | |
+| Node.js 20+ | `node -v` | Chỉ cần khi **build** hoặc **sửa** frontend |
+| npm | `npm -v` | Đi kèm Node |
+
+Frontend chỉ cần Node lúc build. Sau khi đã có `frontend/dist/`, chạy hằng ngày **chỉ cần Python**.
+
+## 2. Cài lần đầu
+
+### Bước 1 — Python
+
+Máy này hiện **không có venv riêng trong dự án**. Xanax đang chạy chung venv với Hermes:
+
+```
+C:\Users\Quang\AppData\Local\hermes\hermes-agent\venv
+```
+
+Đó là chủ ý: Xanax đọc/ghi `SOUL.md` của Hermes và dùng chung một số phụ thuộc. Cứ giữ nguyên thì không phải cài gì thêm.
+
+Nếu muốn một venv riêng cho dự án:
 
 ```powershell
 cd D:\xanax\backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env        # sửa HUB_SECRET_KEY trước khi dùng thật
+```
 
+> Lưu ý: venv riêng sẽ **không có `playwright`**, nên `scripts/smoke_hub.py` không chạy được cho tới khi `pip install playwright` và `playwright install chromium`.
+
+### Bước 2 — File cấu hình
+
+```powershell
+cd D:\xanax\backend
+copy .env.example .env
+```
+
+Mở `backend\.env` và đặt ba giá trị trước khi dùng thật:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `HUB_SECRET_KEY` | Khoá ký của server. Đang là chuỗi placeholder |
+| `HUB_API_KEY` | Khoá cho đường `X-API-Key`. Đang là placeholder |
+| `XANAX_SECRET_KEY` | Khoá AES mã hoá `api_key`/`token` của skill |
+
+Sinh một khoá 32 byte:
+
+```powershell
+python -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+```
+
+> **⚠ Đừng đổi `XANAX_SECRET_KEY` khi đã có skill lưu token.** Mọi bí mật đã lưu đều mã hoá bằng khoá cũ; đổi khoá là **không giải mã lại được và không có đường khôi phục** — phải nhập tay lại toàn bộ. Khoá hiện dùng nằm ở `backend/.env` và `backend/data/.secret_key`, hai chỗ phải khớp nhau.
+
+### Bước 3 — Build frontend
+
+```powershell
 cd D:\xanax\frontend
 npm install
 npm run build
+```
 
+Sinh ra `frontend/dist/`. Backend tự tìm thấy thư mục này.
+
+## 3. Chạy hằng ngày
+
+```powershell
 cd D:\xanax\backend
 python main.py
 ```
 
-Mặc định: `http://localhost:8000` → đăng nhập → `/hub`. API docs tại `/api/docs`.
+Trình duyệt tự mở tới `http://localhost:8000`. Tắt tự mở bằng `set XANAX_NO_BROWSER=1`.
 
-### Chạy development
+| Địa chỉ | |
+|---|---|
+| `http://localhost:8000` | Giao diện — vào là ra trang đăng nhập |
+| `http://localhost:8000/api/docs` | Tài liệu API tự sinh |
+| `http://localhost:8000/api/health` | Kiểm tra server sống |
 
-Vite proxy `/api` và `/ws` tới FastAPI; chạy hai terminal:
+**Đăng nhập lần đầu:** chưa có user nào thì lúc khởi động server tự tạo `admin` / `xanax` và in ra màn hình. Đổi bằng `XANAX_ADMIN_USER` / `XANAX_ADMIN_PASS` trong `.env`.
+
+> Mọi phiên đăng nhập **bị xoá mỗi lần restart server**. Đăng nhập lại là bình thường, không phải lỗi.
+
+Dừng server: `Ctrl+C`.
+
+## 4. Chạy khi đang sửa giao diện
+
+Chỉ cần khi sửa code trong `frontend/src`. Mở **hai** cửa sổ PowerShell:
 
 ```powershell
-# Terminal 1
+# Cửa sổ 1 — backend
 cd D:\xanax\backend
 python main.py
+```
 
-# Terminal 2
+```powershell
+# Cửa sổ 2 — frontend, tự nạp lại khi lưu file
 cd D:\xanax\frontend
-npm install
 npm run dev
 ```
 
-Mở `http://localhost:5173/login`. Các route chính là `/hub`, `/workspace` và `/taskrunner`; không còn tiền tố tạm `/v2`.
+Mở `http://localhost:5173`. Vite proxy `/api` và `/ws` sang cổng 8000, nên cookie vẫn là same-origin và **không cần bật CORS**.
+
+> Nếu gặp 401 khắp nơi lúc dev thì lỗi ở proxy trong `frontend/vite.config.ts`, **không phải** ở cookie. Đừng "sửa" bằng cách mở CORS hay đổi `SameSite`.
+
+Sửa xong: `npm run build` rồi quay lại cách chạy ở mục 3.
+
+## 5. Chạy cái gì khi nào
+
+| Bạn vừa làm gì | Cần chạy |
+|---|---|
+| Sửa Python trong `backend/` | Không gì cả — `HUB_DEBUG=true` nên uvicorn tự reload |
+| Sửa React trong `frontend/src` | `npm run dev` lúc làm, `npm run build` khi xong |
+| Kéo code mới về | `pip install -r requirements.txt` và `npm install`, rồi `npm run build` |
+| Chỉ muốn dùng, không sửa gì | `python main.py` |
+
+## 6. Lệnh hay dùng
+
+**Backend** (`cd D:\xanax\backend`)
+
+```powershell
+python main.py                            # chạy server
+python -m pytest tests/ -q                # 311 test
+python scripts\smoke_hub.py               # Playwright: đi hết 12 tab trên trình duyệt thật
+python tools\migrate_mcp_server_paths.py  # xem trước; thêm --apply để ghi
+```
+
+**Frontend** (`cd D:\xanax\frontend`)
+
+```powershell
+npm run dev                       # dev server cổng 5173
+npm run build                     # build ra dist/
+npm run typecheck                 # kiểm kiểu, không sinh file
+npm run verify:graphs             # graph_json thật giữ nguyên từng byte
+npm run verify:workflow-protocol  # phủ đủ message type của /ws/workflow
+npm run verify:meeting-protocol   # reducer phòng họp
+npm run verify:hub-integration    # không còn iframe, tab giữ state, route nặng lazy
+```
+
+Bốn script `verify:*` đọc **DB thật** và **mã backend thật** rồi đối chiếu — chúng bắt được lỗi lệch hợp đồng giữa hai nửa mà typecheck không thấy.
+
+## 7. Hỏng thì xem đây trước
+
+| Triệu chứng | Xử lý |
+|---|---|
+| `ModuleNotFoundError: cryptography` | `pip install -r requirements.txt` — gói này bắt buộc, không gói nào kéo theo nó |
+| Mở `localhost:8000` ra trang trắng | Chưa build frontend. `cd frontend && npm run build` |
+| Cấu hình `.env` như không có tác dụng | Đang chạy sai thư mục? Phải `cd backend` rồi mới `python main.py` |
+| Đăng nhập xong lại bị đá ra | Bình thường sau khi restart server — mọi phiên bị xoá |
+| Cổng 8000 đã bị chiếm | `Get-NetTCPConnection -LocalPort 8000 -State Listen` để xem tiến trình nào |
+| Sửa React mà giao diện không đổi | Đang mở cổng 8000 (bản build cũ) thay vì 5173 (bản dev) |
 
 ---
+
+# Kiến trúc
+
+```
+Trình duyệt
+    │
+    │  cùng một origin — cookie xanax_session đi kèm mọi request
+    ▼
+┌─────────────────────────────────────────────┐
+│  FastAPI  :8000                             │
+│                                             │
+│  /api/*   91 đường dẫn   ─┐                 │
+│           128 operation   ├─ AuthGuard gác  │
+│  /ws/*    6 kênh         ─┘                 │
+│                          ─┘                 │
+│  /*       SPA fallback → frontend/dist      │
+└─────────────────────────────────────────────┘
+```
+
+SPA fallback trả `index.html` cho **mọi** đường dẫn không bắt đầu bằng `/api` hay `/ws`, để React Router tự định tuyến. Hai tiền tố đó được loại trừ tường minh — nếu không, API sẽ trả về HTML và cả hệ thống hỏng cùng lúc.
 
 ## Ý tưởng cốt lõi
 
@@ -56,8 +205,6 @@ Mở `http://localhost:5173/login`. Các route chính là `/hub`, `/workspace` v
 
 **Xanax** (tên hệ thống, cũng là tên trợ lý điều phối) là agent cấp trên: đọc snapshot DB tươi mỗi tin nhắn, tự tạo công việc, kích hoạt quy trình, và ghi nhớ bài học vào `SOUL.md`.
 
----
-
 ## 12 tab trong `/hub`
 
 | Tab | URL | Nội dung |
@@ -67,15 +214,17 @@ Mở `http://localhost:5173/login`. Các route chính là `/hub`, `/workspace` v
 | Kỹ năng | `/hub/skills` | CRUD skill 3 loại: `custom` / `api` / `mcp` — có nút kiểm tra kết nối |
 | Dự án | `/hub/tasks` | Kanban công việc, matcher gợi ý người phù hợp, cảnh báo không khớp |
 | Họp | `/hub/meeting` | Phòng họp nhiều agent, realtime qua WebSocket |
-| Huấn luyện | `/hub/train` | Chat với Xanax, dạy quy tắc → lưu vào `SOUL.md` |
+| Dạy AI | `/hub/train` | Chat dạy quy tắc → lưu vào soul của học viên |
 | Quy trình | `/hub/company-runner` | Thiết kế + chạy quy trình nhiều bước, duyệt từng output |
 | Tác vụ tự động | `/hub/auto-runner` | Quy trình chạy theo lịch cron / webhook |
 | Tài sản | `/hub/assets` | File upload + kết quả quy trình đã lưu trữ, tải về |
-| Model Pool | `/hub/model` | Khai báo model, giới hạn dùng/ngày, test kết nối, biểu đồ top 10. Ba kiểu kết nối: qua provider trung gian, qua API chính chủ, hoặc **qua CLI gói thuê bao** |
+| Bộ não AI | `/hub/model` | Model Pool: khai báo model, giới hạn dùng/ngày, test kết nối |
 | Chi phí | `/hub/cost` | Thống kê token/chi phí, xuất báo cáo `.xlsx` |
-| Cài đặt | `/hub/settings` | Cấu hình chung |
+| Cài đặt | `/hub/settings` | Giao diện, ngôn ngữ, thông tin phiên |
 
-Ngoài `/hub` còn: `/workspace` (chat huấn luyện toàn màn hình) và `/taskrunner` (quy trình toàn màn hình). Ba màn hình này dùng chung component React với các tab tương ứng trong Hub, không qua iframe.
+Ngoài `/hub` còn `/workspace` (dạy AI toàn màn hình) và `/taskrunner` (quy trình toàn màn hình). Ba màn hình này **dùng chung component React** với tab tương ứng trong Hub — không qua iframe, nên trạng thái tab được giữ khi chuyển qua lại.
+
+Định tuyến nằm hoàn toàn ở client (`frontend/src/routes.tsx` và `HubPage.tsx`). Backend không còn danh sách tab nào.
 
 ---
 
@@ -84,7 +233,7 @@ Ngoài `/hub` còn: `/workspace` (chat huấn luyện toàn màn hình) và `/ta
 Skill là "kỹ năng nghề" gán cho nhân viên. Khi nhân viên chạy, mọi skill được gán sẽ thành **tool** mà model gọi được.
 
 ### 1. `custom` — prompt thuần
-Nội dung file markdown trong `skills/`, nhét vào system prompt. Không gọi ra ngoài.
+Nội dung file markdown trong `backend/skills/`, nhét vào system prompt. Không gọi ra ngoài.
 
 ### 2. `api` — HTTP endpoint
 Khai báo method / URL / headers / body template. `core/skill_tools.py` sinh tool động, đăng ký vào `ToolRegistry`.
@@ -97,7 +246,7 @@ Có xử lý riêng cho Facebook Page: tự đổi sang `/photos` khi bài đăn
 ```
 Skill "cat_anh_san_pham"  (type: mcp)
   ├─ transport: stdio
-  ├─ target: <python.exe venv rembg> d:\xanax\backend\mcp_servers\image_cut.py
+  ├─ target: <python.exe venv rembg> D:\xanax\backend\mcp_servers\image_cut.py
   └─ tools: ["cut_product", "cut_product_batch"]   ← chọn từng tool, không phải all-or-nothing
 ```
 
@@ -108,26 +257,31 @@ Chi tiết đáng lưu ý:
 - Kết nối được giữ bền bởi một supervisor task; `mcp_manager.close_all()` chạy khi server tắt.
 - Tool trả về ảnh (`ImageContent`) được ghi ra `backend/data/mcp-images/YYYYMMDD/` và trả về đường dẫn file.
 - Tiền tố tên tool do backend sinh (`core/slugify.py`, có bóc dấu tiếng Việt) và trả về qua `GET /api/tools/mcp/status` — **frontend không được tự slugify lại**.
-- Sau khi dời backend, cập nhật target tuyệt đối trong DB bằng `python tools/migrate_mcp_server_paths.py` để xem trước, rồi thêm `--apply` để backup và ghi.
+- `target` trong DB là **đường dẫn tuyệt đối**. Dời thư mục dự án là skill chết lặng lẽ (MCP báo `pending`, tool biến mất). Sửa bằng `python tools/migrate_mcp_server_paths.py` — mặc định chỉ xem trước, `--apply` để backup DB rồi ghi.
 
 ### MCP server có sẵn: `backend/mcp_servers/image_cut.py`
 
 Cắt ảnh sản phẩm: tách nền → cắt sát viền → chừa lề → đưa về tỉ lệ khung bài đăng.
 
 ```
-cut_product(input_path, output_path, model="u2netp",
+cut_product(input_path, output_path, model="birefnet-general-lite",
             padding_percent=2.0, ratio="", background="transparent",
-            alpha_matting=False)
+            alpha_matting=False, alpha_matting_foreground_threshold=240,
+            alpha_matting_background_threshold=10, alpha_matting_erode_size=10)
 cut_product_batch(...)
 ```
 
-Chạy bằng Python của venv `rembg`, **không phải** venv xanax. Model mặc định `u2netp`: đo thực tế trên máy này 0.44s/ảnh, ~657MB RSS — nhanh gấp đôi và nhẹ hơn `u2net` (0.97s, 985MB).
+Chạy bằng Python của venv `rembg`, **không phải** venv xanax.
+
+Model mặc định `birefnet-general-lite` — đo trên ảnh chụp thật, đây là model duy nhất xử lý sạch cả nền tối lẫn **bóng đổ trên mặt bàn**, và không làm bạc chi tiết tối của sản phẩm. Giá: 13,5s/ảnh và 214MB tải về. Cần nhanh thì `model="u2netp", alpha_matting=True` (~5s), chấp nhận bóng đổ còn sót.
+
+Đừng nâng `erode_size` quá 10 và đừng dùng `isnet-general-use` — cả hai đều đã đo và đều làm hỏng ảnh. Toàn bộ số đo, cơ chế, và giới hạn: [docs/tach-nen-san-pham.md](docs/tach-nen-san-pham.md).
 
 ---
 
 ## Bảo mật
 
-### Gác xác thực — `api/auth_guard.py`
+### Gác xác thực — `backend/api/auth_guard.py`
 
 ASGI middleware thuần **mặc định ĐÓNG**: mọi `/api/*` và `/ws/*` đều yêu cầu phiên đăng nhập, trừ danh sách mở tường minh.
 
@@ -138,9 +292,11 @@ _PUBLIC_PREFIXES = ("/api/workflow/hooks/",)   # webhook có token riêng trong 
 _GUARDED_PREFIXES = ("/api/", "/ws/")
 ```
 
-Hai lựa chọn thiết kế có chủ ý:
+Ba lựa chọn thiết kế có chủ ý:
+
 - **Middleware thay vì `Depends` từng router** — route mới thêm sau tự động được bảo vệ; kiểu `Depends` thì mỗi router mới là một cơ hội quên.
 - **ASGI thuần thay vì `@app.middleware("http")`** — cái sau chỉ chạy với scope `http`, WebSocket sẽ lọt lưới, mà `/ws/meeting` chính là nơi chứa nội dung họp và quyền kích hoạt quy trình.
+- **`websocket.accept()` trước khi đóng `1008`.** Dòng accept trông thừa nhưng không thừa: theo chuẩn ASGI, gửi `websocket.close` mà chưa accept là *từ chối bắt tay*, và uvicorn dịch nó thành **HTTP 403** — trình duyệt chỉ thấy handshake hỏng với mã 1006, không bao giờ nhận được 1008. Frontend dựa vào 1008 để phân biệt "hết phiên" (về trang đăng nhập, KHÔNG thử lại) với "mạng đứt" (nối lại).
 
 **Thứ tự middleware trong `hub/server.py` là quan trọng:**
 
@@ -152,7 +308,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 CORS phải nằm ngoài AuthGuard vì preflight `OPTIONS` không mang cookie — nếu ngược lại, mọi preflight sẽ bị chặn 401.
 
-### Mã hoá bí mật khi lưu — `core/secret_crypto.py`
+### Mã hoá bí mật khi lưu — `backend/core/secret_crypto.py`
 
 AES-256-GCM cho các khoá nhạy cảm trong `skills.config_json`:
 
@@ -161,13 +317,18 @@ enc:v1:<base64(nonce || ciphertext)>
 SECRET_CONFIG_KEYS = ("api_key", "token")
 ```
 
-- Khoá lấy từ `XANAX_SECRET_KEY`, không có thì tự sinh vào `backend/data/.secret_key`.
-- API trả về giá trị đã che (`••••••••`); khi lưu, giá trị che được merge lại thành giá trị cũ — sửa skill không làm mất token.
+- Khoá lấy theo thứ tự: biến môi trường `XANAX_SECRET_KEY` → cùng khoá đó trong `backend/.env` → `backend/data/.secret_key` → tự sinh mới.
+- API trả về giá trị đã che (`••••••••`); khi lưu, giá trị che được merge lại thành giá trị cũ — sửa mô tả skill không làm mất token.
 - Đây là bảo vệ **dữ liệu khi nằm yên**, không phải bảo vệ quyền truy cập API. Ai qua được `auth_guard` vẫn dùng được skill.
 - Di trú dữ liệu cũ: `python tools/encrypt_existing_secrets.py` (mặc định chỉ xem trước, `--apply` để ghi, tự backup DB và kiểm tra giải mã khớp).
 
+> Mất `backend/data/.secret_key` **và** không ghim khoá trong `.env` là mất luôn mọi token đã lưu. File đó nằm trong `.gitignore`, git không giữ hộ.
+
 ### Phiên đăng nhập
-TTL 8h · idle timeout 15 phút (client) · purge cron 30 phút · cookie `xanax_session` (HttpOnly, SameSite=strict) · mật khẩu PBKDF2-HMAC-SHA256 260.000 vòng · mọi phiên bị xoá khi server restart.
+
+TTL 8h (server) · cookie `xanax_session` HttpOnly, **SameSite=lax**, `max_age` 7 ngày · nhịp tim client 5 giây gọi `/api/auth/me` · purge cron 30 phút · mật khẩu PBKDF2-HMAC-SHA256 260.000 vòng · **mọi phiên bị xoá khi server restart**.
+
+Cookie để `SameSite=lax` và `secure=False` được là nhờ frontend cùng origin với backend. Nếu tách sang origin khác thì phải đổi sang `SameSite=None; Secure` và bật HTTPS thật.
 
 ---
 
@@ -176,72 +337,95 @@ TTL 8h · idle timeout 15 phút (client) · purge cron 30 phút · cookie `xanax
 ```
 xanax/
 ├── backend/
-│   ├── main.py                  # uvicorn runner + banner + tự mở trình duyệt
+│   ├── main.py                      # uvicorn runner + banner + tự mở trình duyệt
+│   ├── requirements.txt
+│   ├── .env                         # cấu hình thật (không commit)
+│   ├── xanax.db                     # SQLite, tự tạo — 27 bảng
+│   │
 │   ├── hub/
-│   │   ├── server.py            # API/WS + static build + SPA fallback
-│   │   ├── config.py            # Pydantic Settings (env prefix HUB_)
-│   │   ├── database.py          # aiosqlite — toàn bộ DB operations + migration
-│   │   └── events.py            # event bus nội bộ
+│   │   ├── server.py                # create_app(): route, middleware, lifespan,
+│   │   │                            # mount dist/ và SPA fallback
+│   │   ├── config.py                # Pydantic Settings (env prefix HUB_)
+│   │   ├── database.py              # aiosqlite — toàn bộ DB + migration
+│   │   └── events.py                # event bus nội bộ
+│   │
 │   ├── api/
-│   ├── auth_guard.py            # gác xác thực /api/* và /ws/*
-│   ├── websocket.py             # /ws/chat
-│   ├── websocket_training.py    # /ws/training — live context + Xanax tool use
-│   ├── websocket_workflow.py    # /ws/workflow — chạy quy trình nhiều bước
-│   ├── websocket_meeting.py     # /ws/meeting — phòng họp nhiều agent
-│   ├── websocket_benchmark.py   # /ws/benchmark
-│   ├── websocket_task.py
-│   ├── agents/
-│   │   ├── subprocess_util.py   # subprocess an toàn trên Windows (BẮT BUỘC dùng)
-│   │   ├── claude_runner.py     # wrapper Claude CLI (stream-json)
-│   │   └── codex_runner.py      # wrapper Codex CLI (prompt qua stdin)
-│   └── routes/                  # 20 module: auth, agents, skills_mgmt, projects,
-│                                # meetings, workflow, model_pool, knowledge, ops,
-│                                # assets, departments, tools, ...
+│   │   ├── auth_guard.py            # gác xác thực /api/* và /ws/*
+│   │   ├── websocket.py             # /ws/chat
+│   │   ├── websocket_training.py    # /ws/training — live context + Xanax tool use
+│   │   ├── websocket_workflow.py    # /ws/workflow — chạy quy trình nhiều bước
+│   │   ├── websocket_meeting.py     # /ws/meeting — phòng họp nhiều agent
+│   │   ├── websocket_benchmark.py   # /ws/benchmark
+│   │   ├── websocket_task.py
+│   │   ├── agents/
+│   │   │   ├── subprocess_util.py   # subprocess an toàn trên Windows (BẮT BUỘC)
+│   │   │   ├── claude_runner.py     # wrapper Claude CLI (stream-json)
+│   │   │   └── codex_runner.py      # wrapper Codex CLI (prompt qua stdin)
+│   │   └── routes/                  # 19 module, 91 đường dẫn /api
+│   │
 │   ├── core/
-│   ├── mcp_client.py            # MCP client: stdio/http/sse, chọn tool, ảnh
-│   ├── skill_tools.py           # skill type "api" → tool động
-│   ├── secret_crypto.py         # AES-256-GCM cho api_key/token
-│   ├── model_pool_bridge.py     # gọi model qua pool, LimitExceededError
-│   ├── cli_provider.py          # gọi model qua CLI gói thuê bao (claude/codex),
-│   │                            # build_clean_env() chặn rò rỉ biến sang gateway
-│   ├── hermes_bridge.py         # LLM client + phiên chat in-memory
-│   ├── image_gen.py             # sinh ảnh, ImageGenError với lỗi cụ thể
-│   ├── agent_soul.py            # soul.md riêng cho từng nhân viên
-│   ├── soul_sync.py             # SOUL.md của Xanax
-│   ├── project_storage.py       # lưu trữ kết quả run ra ổ đĩa theo cây thư mục
-│   ├── rag.py                   # truy hồi tài liệu bằng keyword overlap
-│   ├── matcher.py               # khớp nhân viên ↔ công việc
-│   ├── orchestrator.py          # điều phối agent chạy ngầm
-│   ├── scheduler.py             # APScheduler: cron / delayed / queue
-│   ├── xlsx_report.py           # xuất báo cáo chi phí .xlsx
-│   ├── slugify.py               # slug có bóc dấu tiếng Việt (nguồn duy nhất)
-│   └── hermes/                  # framework agent nội bộ: agent, planner,
-│                                # memory, context, tool_registry
+│   │   ├── mcp_client.py            # MCP client: stdio/http/sse, chọn tool, ảnh
+│   │   ├── skill_tools.py           # skill type "api" → tool động
+│   │   ├── secret_crypto.py         # AES-256-GCM cho api_key/token
+│   │   ├── model_pool_bridge.py     # gọi model qua pool, LimitExceededError
+│   │   ├── cli_provider.py          # gọi model qua CLI gói thuê bao,
+│   │   │                            # build_clean_env() chặn rò rỉ sang gateway
+│   │   ├── hermes_bridge.py         # LLM client + phiên chat in-memory
+│   │   ├── image_gen.py             # sinh ảnh, ImageGenError với lỗi cụ thể
+│   │   ├── image_compose.py         # ghép ảnh sản phẩm lên nền
+│   │   ├── agent_soul.py            # soul.md riêng từng nhân viên
+│   │   ├── project_soul.py          # soul riêng từng dự án
+│   │   ├── skill_soul.py            # phụ lục bài học của skill
+│   │   ├── soul_sync.py             # SOUL.md của Xanax
+│   │   ├── project_storage.py       # archive kết quả run ra ổ đĩa
+│   │   ├── rag.py                   # truy hồi tài liệu bằng keyword overlap
+│   │   ├── matcher.py               # khớp nhân viên ↔ công việc
+│   │   ├── orchestrator.py          # điều phối agent chạy ngầm
+│   │   ├── scheduler.py             # APScheduler: cron / delayed / queue
+│   │   ├── xlsx_report.py           # xuất báo cáo chi phí .xlsx
+│   │   ├── slugify.py               # slug bóc dấu tiếng Việt (nguồn duy nhất)
+│   │   └── hermes/                  # framework agent nội bộ
+│   │
 │   ├── mcp_servers/
-│   ├── image_cut.py             # MCP server cắt ảnh sản phẩm
-│   └── xanax_skills.py          # cầu nối MCP: phơi skill api/builtin cho CLI gói
-│   ├── tools/                   # builtin tools + script bảo trì
-│   ├── skills/                  # skill dạng prompt (markdown)
-│   ├── scripts/
-│   │   └── smoke_hub.py         # Playwright: 12 route + state + ảnh run cũ
-│   ├── tests/                   # test suite
-│   ├── data/                    # runtime: projects/, legacy-static/, mcp-images/
-│   │                            # và .secret_key (không commit)
-│   └── xanax.db                 # SQLite, tự tạo — 28 bảng
-├── deliverables/
-├── docs/
+│   │   ├── image_cut.py             # MCP server cắt ảnh sản phẩm
+│   │   └── xanax_skills.py          # cầu nối MCP: phơi skill api/builtin cho CLI
+│   │
+│   ├── skills/                      # skill dạng prompt (markdown)
+│   ├── tools/                       # builtin tool + script bảo trì
+│   ├── scripts/smoke_hub.py         # Playwright: 12 tab + state + ảnh run cũ
+│   ├── tests/                       # 311 test
+│   └── data/                        # runtime — KHÔNG commit
+│       ├── .secret_key              # ⚠ mất là mất hết token skill
+│       ├── projects/                # archive từng lần chạy
+│       ├── assets/  souls/  project_souls/  skill_souls/  training-images/
+│       ├── legacy-static/           # ảnh cũ thời giao diện vanilla
+│       └── mcp-images/              # tạo khi có tool MCP trả về ảnh
+│
 ├── frontend/
-│   ├── public/images/           # ảnh thương hiệu, Vite chép nguyên vào dist/images
-│   ├── src/                     # React + TypeScript: API client, store, i18n, component, pages
+│   ├── index.html
+│   ├── vite.config.ts               # proxy /api và /ws tới :8000 khi dev
 │   ├── package.json
-│   ├── vite.config.ts           # proxy /api và /ws tới :8000 khi dev
-│   └── dist/                    # bản build có hash, không commit
+│   ├── public/images/               # ảnh thương hiệu → dist/images
+│   ├── scripts/                     # 4 script verify:* đọc DB + mã backend thật
+│   ├── src/
+│   │   ├── main.tsx                 # entry + import font @fontsource
+│   │   ├── routes.tsx               # React Router
+│   │   ├── api/                     # client.ts (một nơi duy nhất gọi API) + types
+│   │   ├── ws/useWebSocket.ts       # hook chung cho cả 6 kênh
+│   │   ├── store/                   # theme, ngôn ngữ, phiên
+│   │   ├── components/              # Icon, Modal, Markdown, ChatAttach…
+│   │   └── pages/
+│   │       ├── login/  hub/  workspace/  taskrunner/
+│   └── dist/                        # bản build có hash — KHÔNG commit
+│
+├── docs/
+├── deliverables/
 └── README.md
 ```
 
 ---
 
-## Database — 28 bảng
+## Database — 27 bảng
 
 **File:** `backend/hub/database.py` (schema + migration tự chạy lúc startup)
 
@@ -262,7 +446,7 @@ LEGACY      task_sessions · pipeline_logs
 
 Vài điểm dễ sai:
 - `agent_configs.model_pool_id` là **INTEGER FK** → `model_pool.id`. Cột `model` (string) chỉ còn để tương thích ngược, được derive tự động khi `list_agent_configs()` JOIN với pool. Đừng lưu model string thủ công.
-- `workflow_tasks.agents_json`: `[{"agent_id":1, "order":1, "instructions":"...", "model_pool_id":2}]`
+- `workflow_tasks.graph_json` là **nguồn thật** của sơ đồ quy trình (node có toạ độ `x`/`y`, cạnh có nhánh `true`/`false`). `agents_json` là dạng tuần tự cũ, tự chuyển sang graph lần đầu mở.
 - `workflow_outputs.status`: `done` | `error` — `error` khi provider trả `[Error]...` hoặc sinh ảnh thất bại.
 - Skill **không** cấu hình model riêng: model luôn lấy từ nhân viên được gán, kể cả khi sinh ảnh.
 
@@ -284,7 +468,9 @@ Xanax hành động bằng cú pháp nhúng cuối câu trả lời; server pars
 | `update_work_item` | `id` · `status` · `priority` · `assignee` |
 | `trigger_workflow` | `task_id=N` |
 
-Mỗi tin nhắn tới Xanax đều kèm snapshot DB tươi (`_build_live_context()` trong `api/websocket_training.py`): agents, skills, dự án, công việc, quy trình, model pool, và `xanax_notes`. Không cần restart để Xanax biết dữ liệu mới.
+Mỗi tin nhắn tới Xanax đều kèm snapshot DB tươi (`_build_live_context()` trong `api/websocket_training.py`). Không cần restart để Xanax biết dữ liệu mới.
+
+Phía React, `stripToolSyntaxForDisplay()` (`components/Markdown.tsx`) giữ lại phần đuôi có thể là mảnh của marker (`[`, `[[`, `[[XA`…) khi stream — nếu không, cú pháp tool sẽ **nhấp nháy trên màn hình** đúng một khoảnh khắc giữa hai chunk rồi mới biến mất.
 
 ---
 
@@ -293,6 +479,8 @@ Mỗi tin nhắn tới Xanax đều kèm snapshot DB tươi (`_build_live_contex
 **Ngữ cảnh 3 lớp** khi chạy quy trình: mô tả dự án (brief cố định) → mô tả quy trình → input người dùng. Chỉ lớp cuối đổi mỗi lần chạy.
 
 **Phát hiện lỗi:** `_is_error_output()` bắt `[Error]`, `[Hermes error:`, `[Xanax error:` → đánh dấu run `failed`. Trước đây provider trả lỗi dạng text kèm HTTP 200 thì run vẫn bị đánh dấu "Hoàn thành".
+
+**Run sống lâu hơn kết nối.** Lần chạy nằm trong `_run_sessions` của tiến trình server và **chạy tiếp khi WebSocket đứt**. Client F5 xong phải gửi `attach` kèm `run_id` để nối lại — bỏ bước này là người dùng mất dấu một quy trình vẫn đang chạy.
 
 **Trong phòng họp**, chỉ Xanax được kích hoạt quy trình. `_is_workflow_command()` nhận diện câu lệnh chạy quy trình (cố ý bắt rộng) và chặn định tuyến tắt về nhân viên — nếu không, lần gọi thứ hai sẽ bị nhân viên "trả lời lại" bằng kết quả bịa thay vì thật sự chạy. Prompt của nhân viên cũng nói rõ họ không có quyền này.
 
@@ -314,7 +502,7 @@ Prompt phải đi qua **stdin**, không qua `argv`. Prompt của agent dài hàn
 
 Nhân viên có thể chạy bằng **tiến trình CLI đã đăng nhập gói** (`claude`, `codex`) thay vì gọi HTTP tới provider trung gian. Không có API key nào trong cấu hình, nên không có key nào để lộ hay bị thu hồi, và chi phí nằm trong gói thuê bao thay vì tính theo token.
 
-Thêm ở **Model Pool → Thêm model → tab "Qua CLI (gói thuê bao)"**:
+Thêm ở **Bộ não AI → Thêm model → tab "Qua CLI (gói thuê bao)"**:
 
 | Ô | Ý nghĩa |
 |---|---|
@@ -322,7 +510,7 @@ Thêm ở **Model Pool → Thêm model → tab "Qua CLI (gói thuê bao)"**:
 | Model ID | `claude-haiku-4-5`, `gpt-5.5`… — truyền thành `--model`/`-m` |
 | Thư mục tài khoản | `CLAUDE_CONFIG_DIR` / `CODEX_HOME`. Để trống = tài khoản mặc định. **Mỗi tài khoản một thư mục** — đây là cách chạy nhiều gói song song trên một máy, và cách xoay tài khoản khi một gói cạn hạn mức phiên |
 
-Gán model đó cho nhân viên như bình thường (Nhân sự → chọn agent → Model). Phòng họp và Quy trình tự động dùng, vì cả hai đều đi qua `stream_from_agent_models()`. Thứ tự ưu tiên nhiều model vẫn hoạt động: model CLI hết hạn mức phiên thì tự chuyển sang model kế tiếp trong danh sách.
+Gán model đó cho nhân viên như bình thường (Nhân sự → chọn agent → Model). Phòng họp và Quy trình tự động dùng, vì cả hai đều đi qua `stream_from_agent_models()`. Thứ tự ưu tiên nhiều model vẫn hoạt động: model CLI hết hạn mức phiên thì tự chuyển sang model kế tiếp.
 
 **Điều quan trọng nhất — `build_clean_env()` trong `core/cli_provider.py`.** CLI ưu tiên biến môi trường hơn đăng nhập gói: nếu tiến trình server có `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` trỏ về gateway, tiến trình con **âm thầm chui qua gateway đó** mà không báo lỗi gì. Nên mọi lần spawn CLI đều chạy bằng env đã xoá sạch nhóm biến này. Đừng bỏ qua nó khi thêm engine CLI mới.
 
@@ -347,6 +535,7 @@ Hai giới hạn phải biết trước:
   Sổ bằng chứng là `collect_tool_invocations()` (`core/skill_tools.py`), ghi ở đúng nơi tool được thực thi: `_stream_openai` cho đường HTTP, và sự kiện `tool_use` của CLI cho đường MCP. Chỉ tool đi qua MCP mới được tính — tool nội bộ của CLI như `ToolSearch` thì không, nếu không một nhân viên tra cứu rồi bịa kết quả vẫn qua được cửa.
 
   Đây là hành vi cố ý sau sự cố thật: nhân viên đăng Facebook chạy trên model CLI, tool bị bỏ im lặng, nhân viên vẫn sinh ra chữ và bước quy trình ghi "Đã chạy xong" trong khi **không có request nào tới Facebook** — chỉ mở fanpage ra mới biết. Thà hỏng ồn ào còn hơn thành công giả.
+
 - **Codex CLI sinh được ảnh.** Bật bằng `--enable image_generation` — Codex có skill hệ thống `imagegen` chạy trong gói ChatGPT, nên **không cần mua image model riêng**. `_maybe_generate_image()` tự dùng đường này cho entry `codex_cli`.
 
   Khác đường HTTP ở một điểm: Codex **tự chọn nơi lưu** (`~/.codex/generated_images/<thread_id>/call_*.png`), nên phải bắt `thread_id` từ sự kiện `thread.started` rồi copy về thư mục của lần chạy. Codex không trả `usage` cho ảnh nên bảng chi phí ghi 0 — đúng bản chất, ảnh nằm trong gói chứ không tính theo token.
@@ -363,33 +552,40 @@ CLI trả về số token thật trong sự kiện kết thúc, nên trang Chi p
 
 ```powershell
 cd D:\xanax\backend
-python -m pytest tests/ -q      # 311 passed
+python -m pytest tests/ -q            # 311 passed
+python scripts\smoke_hub.py           # Playwright trên trình duyệt thật
+```
+
+```powershell
+cd D:\xanax\frontend
+npm run typecheck
+npm run verify:graphs
+npm run verify:workflow-protocol
+npm run verify:meeting-protocol
+npm run verify:hub-integration
 ```
 
 `tests/test_api.py` có `anon_client` (không đăng nhập) và `client` (tự tạo rồi xoá user tạm) — `TestAuthGuard` kiểm tra đúng cả hai chiều: endpoint bị chặn khi không có phiên, và chạy được khi có.
+
+**Không có test tự động nào cho WebSocket.** Logic WS được kiểm bằng cách gọi thẳng hàm nội bộ với `httpx.AsyncClient` đã monkeypatch. Đừng giả định "pytest xanh nghĩa là WS không hỏng" — bốn script `verify:*` phía frontend chính là để bù chỗ này.
 
 ---
 
 ## Checklist trước khi deploy
 
 Đã xong:
-- [x] Xác thực toàn bộ `/api/*` và `/ws/*`
+- [x] Xác thực toàn bộ `/api/*` và `/ws/*`, gồm cả WebSocket
 - [x] Mã hoá `api_key` / `token` khi lưu, che khi trả về API
-- [x] Nén gzip (CSS còn 17%, JS còn 24% kích thước gốc)
-- [x] Tách CSS/JS khỏi HTML, nạp `defer`
-- [x] 311 test tự động
+- [x] Nén gzip cho mọi response
+- [x] Frontend tách chunk theo route; bundle vào đầu 232 kB → **74,6 kB gzip**
+- [x] Bản build **không gọi ra Internet lần nào** — font tự chứa, không CDN
+- [x] 311 test tự động + 4 script verify đối chiếu hợp đồng FE/BE
 
 Còn phải làm:
-- [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder trong `.env.example`)
-- [ ] `HUB_DEBUG=false` (đang `true` → uvicorn bật reload)
+- [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder)
+- [ ] `HUB_DEBUG=false` (đang `true` → uvicorn bật reload, và `cors_origins` thành `["*"]`)
 - [ ] Dockerfile + reverse proxy + TLS
 - [ ] Chuyển sang Postgres nếu cần nhiều người dùng đồng thời
-
-Sổ kỹ thuật sau Giai đoạn 6:
-- [ ] Cho loader đọc `XANAX_SECRET_KEY` từ `backend/.env`; hiện khoá đã được ghim ở đó nhưng `core/secret_crypto.py` vẫn chỉ đọc process environment rồi fallback sang `backend/data/.secret_key`
-- [x] `Settings.env_file` đã dùng đường dẫn tuyệt đối tới `backend/.env` từ trước Giai đoạn 1; không còn phụ thuộc thư mục đứng khi chạy
-- [ ] Tự host Google Fonts; `frontend/index.html` hiện vẫn tải font từ Internet
-- [ ] Sửa `auth_guard._deny()` để `websocket.accept()` trước khi đóng mã `1008`; hiện client chưa có phiên nhận HTTP 403 ở bước handshake
 
 ---
 
@@ -397,37 +593,81 @@ Sổ kỹ thuật sau Giai đoạn 6:
 
 | Triệu chứng | Nguyên nhân thường gặp |
 |---|---|
-| LLM không phản hồi | Kiểm tra `GET /api/health` và `HUB_LLM_API_BASE` trong `.env` |
-| Model Pool báo `404 no active credential` | Credential phải cấu hình ở dashboard của provider (9router), không phải trong Xanax |
-| Model CLI báo `model requires a newer version of Codex` | Model mặc định của gói mới hơn `codex` CLI đang cài. Điền Model ID rõ ràng (`gpt-5.5`, `gpt-5.4`) thay vì để trống, hoặc nâng cấp CLI |
-| Model CLI báo `not supported when using Codex with a ChatGPT account` | Model đó chỉ dùng được với API key, không dùng được bằng gói. Đổi sang model khác |
-| Model CLI bỗng báo lỗi xác thực dù không đổi gì | Kiểm biến rò rỉ: `Get-ChildItem env: \| Where-Object Name -match 'ANTHROPIC\|OPENAI'`. `build_clean_env()` chặn chúng khi spawn, nhưng nếu ai đó gọi `stream_proc` mà quên truyền `env` thì lỗ hổng quay lại |
-| Model CLI hết hạn mức phiên 5 giờ | Xoay tài khoản: đổi ô "Thư mục tài khoản" của entry sang thư mục gói khác. Không cần restart |
-| Nhân viên báo "đã đăng/đã gửi" nhưng thực tế không có gì | Không còn xảy ra âm thầm: bước sẽ trượt kèm lý do. Nếu vẫn gặp, kiểm `collect_tool_invocations()` có ghi gì không |
-| Bước trượt vì `KHÔNG gọi công cụ` dù nhân viên đã giao đủ việc | Kỹ năng đó có phải loại `api` không? Chỉ `api` mới bắt buộc. Nếu là `mcp`/`builtin` mà vẫn trượt thì là lỗi — xem `_required_tool_names()` |
-| `Nhân viên này có kỹ năng cần gọi công cụ...` | Nhân viên chỉ còn model không gọi được công cụ. Với `claude_cli` thì phải có `skill_ids`; với `codex_cli` thì chưa hỗ trợ — thêm 1 model OpenAI-compatible |
-| MCP server báo `status: pending`, tool không hiện | Server khởi động quá chậm (thường do MCP lồng MCP), hoặc `ToolSearch` bị tắt nên model không nạp được schema |
-| Nhân viên CLI kể việc sắp làm thay vì làm | `claude`/`codex` là agent lập trình, phản xạ là báo kế hoạch trước. Đã chặn bằng `_DELIVERABLE_ONLY` + `--permission-mode default` (KHÔNG dùng `plan`) |
-| Nhân viên dùng sai model | Nhân sự → chọn agent → đổi Model → Save. `model_pool_id` là số nguyên, không phải chuỗi |
-| Sinh ảnh thất bại | Model text không hỗ trợ `/images/generations` — cần thêm image model vào pool. Lỗi hiện nguyên văn kèm tên model và HTTP status |
-| Skill MCP không thấy tool nào | Bấm "Kiểm tra kết nối" trên thẻ skill. Sai `target` hoặc sai Python venv là nguyên nhân phổ biến nhất |
+| Mở `localhost:8000` ra trang trắng | Chưa `npm run build`, hoặc `frontend/dist/` bị xoá |
+| Sửa React mà không thấy đổi | Đang xem cổng 8000 (bản build) thay vì 5173 (bản dev) |
+| `ModuleNotFoundError: cryptography` | `pip install -r requirements.txt` |
+| Cấu hình `.env` như vô tác dụng | Chạy `python main.py` từ ngoài `backend/`. Phải `cd backend` trước |
+| Dev bị 401 khắp nơi | Proxy trong `vite.config.ts` sai. **Đừng** sửa bằng cách mở CORS |
+| LLM không phản hồi | Kiểm `GET /api/health` và `HUB_LLM_API_BASE` trong `.env` |
+| Model Pool báo `404 no active credential` | Credential phải cấu hình ở dashboard của provider, không phải trong Xanax |
+| Model CLI báo `model requires a newer version of Codex` | Điền Model ID rõ ràng (`gpt-5.5`, `gpt-5.4`) thay vì để trống, hoặc nâng cấp CLI |
+| Model CLI báo `not supported when using Codex with a ChatGPT account` | Model đó chỉ dùng được với API key. Đổi model khác |
+| Model CLI bỗng lỗi xác thực dù không đổi gì | Kiểm biến rò rỉ: `Get-ChildItem env: \| Where-Object Name -match 'ANTHROPIC\|OPENAI'` |
+| Model CLI hết hạn mức phiên 5 giờ | Đổi ô "Thư mục tài khoản" sang thư mục gói khác. Không cần restart |
+| Nhân viên báo "đã đăng" nhưng thực tế không có gì | Không còn xảy ra âm thầm: bước sẽ trượt kèm lý do. Kiểm `collect_tool_invocations()` |
+| Bước trượt vì `KHÔNG gọi công cụ` dù đã giao đủ việc | Chỉ kỹ năng `api` mới bắt buộc. `mcp`/`builtin` mà trượt là lỗi — xem `_required_tool_names()` |
+| MCP báo `status: pending`, tool không hiện | Server khởi động chậm (thường do MCP lồng MCP), hoặc `ToolSearch` bị tắt |
+| Skill MCP không thấy tool nào | Bấm "Kiểm tra kết nối". Sai `target` hoặc sai Python venv là nguyên nhân phổ biến nhất. Vừa dời thư mục dự án? Chạy `tools/migrate_mcp_server_paths.py` |
 | MCP báo `'Server' object has no attribute 'list_tools'` | SDK `mcp` 2.x đã bỏ decorator này. Ghim `mcp<2` |
-| Tab URL không load đúng | Tên tab phải có trong `_HUB_TABS` (`hub/server.py`) |
+| Nhân viên CLI kể việc sắp làm thay vì làm | Đã chặn bằng `_DELIVERABLE_ONLY` + `--permission-mode default` (KHÔNG dùng `plan`) |
+| Sinh ảnh thất bại | Model text không hỗ trợ `/images/generations` — cần thêm image model vào pool |
+| F5 xong mất dấu quy trình đang chạy | Client không gửi `attach` kèm `run_id`. Run vẫn đang chạy trong server |
 | Preflight CORS bị 401 | Ai đó đảo thứ tự `add_middleware` — AuthGuard phải thêm TRƯỚC CORS |
 
 ---
 
 ## Quy ước khi sửa code
 
+### Backend
 1. Thêm route mới → đăng ký trong `create_app()` (`hub/server.py`). Middleware tự bảo vệ, không cần thêm `Depends`.
 2. Thêm bảng DB mới → thêm vào `init_db()` **và** viết migration trong `database.py`.
-3. Cần slug? Dùng `core/slugify.py`. Đừng viết lại bằng JS — bản Python bóc dấu tiếng Việt (`cắt ảnh` → `cat_anh`), bản JS ngây thơ sẽ ra `c_t_nh` và tên tool lệch nhau.
+3. Cần slug? Dùng `core/slugify.py`. Đừng viết lại bằng JS — bản Python bóc dấu tiếng Việt (`cắt ảnh` → `cat_anh`), bản JS ngây thơ ra `c_t_nh` và tên tool lệch nhau.
 4. Mọi subprocess đi qua `stream_proc`.
 5. Codex CLI nhận prompt qua **stdin**, không qua CLI arg.
 6. Pipeline chạy bằng `asyncio.create_task` — không block vòng lặp receive của WebSocket.
 7. Đường dẫn SOUL.md luôn qua `_soul_path()`, không hardcode.
 8. Thêm khoá bí mật mới vào skill config → thêm tên khoá vào `SECRET_CONFIG_KEYS`.
-9. Cuối mỗi phiên làm việc: cập nhật README này cho khớp thực tế.
+9. Thêm phụ thuộc Python → thêm vào `requirements.txt`, kể cả khi máy bạn đã có sẵn.
+
+### Frontend
+10. Mọi lời gọi API đi qua `src/api/client.ts`. Đừng `fetch` trần — nơi đó xử lý 401, 204 và bóc `.detail`.
+11. Mọi WebSocket đi qua `src/ws/useWebSocket.ts`. Mã đóng `1008` là hết phiên: về login, **không** thử lại.
+12. Đổi `graph_json` hay giao thức WS → chạy `npm run verify:*` trước khi commit.
+13. Chuỗi hiển thị phải có cả `vi` và `en` (từ điển `pages/hub/i18n.ts` hoặc `vi ? … : …`).
+14. Route nặng thì `React.lazy()`. React Flow và Chart.js chỉ một tab dùng tới.
+15. Xuống dòng bình thường. Nhồi cả component vào một dòng là diff vô dụng và trace lỗi vô nghĩa.
+
+### Chung
+16. Cuối mỗi phiên làm việc: cập nhật README này cho khớp thực tế.
+17. Đổi số phiên bản → sửa **hai** chỗ: `backend/hub/config.py` và `backend/pyproject.toml`.
+
+---
+
+## Đánh số phiên bản
+
+Theo [SemVer](https://semver.org): `MAJOR.MINOR.PATCH`. "Hợp đồng" ở đây là những
+thứ bên ngoài phụ thuộc vào — không phải giao diện.
+
+| Bậc | Khi nào tăng | Ví dụ trong dự án này |
+|---|---|---|
+| **MAJOR** | Phá vỡ tương thích | Đổi/xoá endpoint, đổi hình dạng message WebSocket, đổi schema DB hay `graph_json` theo kiểu dữ liệu cũ đọc không ra, đổi cấu trúc thư mục lớn |
+| **MINOR** | Thêm khả năng mới, vẫn tương thích ngược | Thêm endpoint, thêm loại node quy trình, thêm tính năng người dùng thấy được, đổi lớn về giao diện |
+| **PATCH** | Chỉ sửa lỗi và tài liệu | Sửa lỗi hiển thị, sửa tương phản màu, sửa chú thích, thêm phụ thuộc còn thiếu |
+
+**Nguồn duy nhất là `Settings.version` trong `backend/hub/config.py`.** Nó chảy ra
+banner lúc khởi động, `GET /api/health` và `/api/docs`. `backend/pyproject.toml`
+phải khai cùng số — đó chỉ là metadata đóng gói, không phải nguồn.
+
+Đừng khai `HUB_VERSION` trong `.env`: `.env` **đè lên** giá trị trong code, nên
+sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
+
+### Lịch sử
+
+| Phiên bản | Nội dung |
+|---|---|
+| `0.1.0` | Bản đầu — FastAPI + SQLite + giao diện vanilla JS |
+| `2.0.0` | Tách backend/frontend, viết lại giao diện bằng React + TypeScript (7 giai đoạn). API, WebSocket và schema DB giữ nguyên |
+| `2.1.0` | Hệ màu dùng chung cho cả 4 trang · cỡ chữ chỉnh bằng một biến · khôi phục bộ chọn hình đại diện (30 hình, 20 màu) · font tự chứa · sửa tương phản đạt WCAG AA · nạp `XANAX_SECRET_KEY` từ `.env` · WebSocket trả đúng mã đóng `1008` |
 
 ---
 

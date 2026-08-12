@@ -107,9 +107,19 @@ class AuthGuardMiddleware:
 
     async def _deny(self, scope, receive, send) -> None:
         if scope["type"] == "websocket":
-            # Phải nhận connect trước rồi mới đóng được, nếu không client nhận lỗi
-            # handshake khó hiểu thay vì mã đóng rõ ràng.
+            # Phải nhận connect RỒI ACCEPT rồi mới đóng được, nếu không client
+            # nhận lỗi handshake khó hiểu thay vì mã đóng rõ ràng.
+            #
+            # Dòng accept dưới đây trông thừa nhưng không thừa. Theo chuẩn ASGI,
+            # gửi websocket.close mà chưa accept là TỪ CHỐI BẮT TAY, và uvicorn
+            # dịch nó thành HTTP 403 — trình duyệt chỉ thấy handshake hỏng với mã
+            # 1006, không bao giờ nhận được 1008. Đo thật: bỏ dòng này thì client
+            # nhận "HTTP 403"; có dòng này thì nhận đúng close code 1008 kèm lý do.
+            #
+            # Phía frontend dựa vào 1008 để phân biệt "hết phiên" (về trang đăng
+            # nhập, KHÔNG thử lại) với "mạng đứt" (nối lại) — xem useWebSocket.ts.
             await receive()
+            await send({"type": "websocket.accept"})
             await send({"type": "websocket.close", "code": 1008, "reason": "Chưa đăng nhập"})
             return
         body = json.dumps({"detail": "Chưa đăng nhập hoặc phiên đã hết hạn"}).encode()

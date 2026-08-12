@@ -3,60 +3,33 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 
 .workspace-page-root {
   /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
-  --bg-card:#2C2721; --ink:#F0EAE0; --ink-muted:#A99E8E;
-  --accent:#5B8F7F; --accent-soft:rgba(95,143,127,0.18);
-  --gold:#E0B265; --gold-soft:rgba(224,178,101,0.16);
-  --lavender-ink:#B29FE8; --peach-ink:#E0935A; --mint-ink:#5FC996; --sky-ink:#6FA8D6;
-  --lavender:rgba(228,219,247,0.14); --peach:rgba(251,227,206,0.14); --mint:rgba(216,238,224,0.14); --sky:rgba(220,234,245,0.14);
-  --status-on:#6FBF8F; --status-idle:#7A7266;
-  --shadow:0 6px 24px rgba(0,0,0,0.35); --shadow-hover:0 10px 30px rgba(0,0,0,0.45);
-  --radius:14px; --radius-sm:10px;
+    
+   
+   
+     
+     
+   
+   
+   
 
-  --bg:       #221E1A;
-  --bg2:      var(--bg-card);
-  --bg3:      #332D26;
-  --border:   #3A342C;
-  --cyan:     var(--accent);
-  --purple:   var(--lavender-ink);
-  --text:     var(--ink);
-  --muted:    var(--ink-muted);
-  --pass:     var(--status-on);
-  --fail:     #D9695C;
-  --pending:  var(--gold);
-  --cyan-rgb:   91,143,127;
-  --purple-rgb: 178,159,232;
-  --green-rgb:  111,191,143;
-  --red-rgb:    217,105,92;
-  --amber-rgb:  224,178,101;
-  --sidebar:  240px;
-  --info:     300px;
-}
-/* ── Token gốc — bản Sáng (mặc định, đúng brief) ── */
-:global(body.light) .workspace-page-root {
-  --bg-card:#FFFFFF; --ink:#2B2620; --ink-muted:#948A7C;
-  --accent:#4F7C6F; --accent-soft:#E4EEEA;
-  --gold:#D9A552; --gold-soft:#FBF0DE;
-  --lavender-ink:#7C6BAE; --peach-ink:#C97A3A; --mint-ink:#3F8A63; --sky-ink:#4A7FA6;
-  --lavender:#E4DBF7; --peach:#FBE3CE; --mint:#D8EEE0; --sky:#DCEAF5;
-  --status-on:#5FA57A; --status-idle:#C7BFAF;
-  --shadow:0 6px 24px rgba(43,38,32,0.07); --shadow-hover:0 10px 30px rgba(43,38,32,0.11);
-
-  --bg:      #FBF7F1;
-  --bg2:     var(--bg-card);
-  --bg3:     #F5F0E8;
-  --border:  #EDE6D9;
-  --cyan:    var(--accent);
-  --purple:  var(--lavender-ink);
-  --pass:    var(--status-on);
-  --fail:    #C1443A;
-  --pending: var(--gold);
-  --cyan-rgb:   79,124,111;
-  --purple-rgb: 124,107,174;
-  --green-rgb:  95,165,122;
-  --red-rgb:    193,68,58;
-  --amber-rgb:  217,165,82;
-  --text:    var(--ink);
-  --muted:   var(--ink-muted);
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }
 
 :global(body) {
@@ -86,7 +59,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 }
 .topbar-logo {
   font-family: 'Quicksand', sans-serif;
-  font-size: 18px;
+  font-size:calc(18px * var(--fs-scale));
   font-weight: 700;
   color: var(--ink);
   letter-spacing: -0.2px;
@@ -98,12 +71,12 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .topbar-nav { display: flex; gap: 4px; }
 .topbar-nav a {
   padding: 4px 12px; border: 1px solid transparent; border-radius: 6px;
-  color: var(--muted); font-size: 13px; text-decoration: none; transition: all .15s;
+  color: var(--muted); font-size:calc(13px * var(--fs-scale)); text-decoration: none; transition: all .15s;
 }
 .topbar-nav a:hover { color: var(--text); background: var(--bg3); }
 .topbar-nav a.active { color: var(--cyan); border-color: rgba(var(--cyan-rgb),.3); background: rgba(var(--cyan-rgb),.06); }
 .topbar-badge {
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   color: var(--muted);
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -115,7 +88,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   color: var(--muted);
 }
 .btn-logout {
@@ -125,7 +98,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 4px 12px;
   border-radius: 6px;
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -159,7 +132,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   justify-content: space-between;
 }
 .sessions-header h2 {
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
@@ -172,7 +145,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  font-size: 18px;
+  font-size:calc(18px * var(--fs-scale));
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -191,7 +164,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .sessions-list::-webkit-scrollbar { width: 4px; }
 .sessions-list::-webkit-scrollbar-track { background: transparent; }
 .sessions-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-.empty-list { padding: 20px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.empty-list { padding: 20px; text-align: center; color: var(--muted); font-size:calc(12px * var(--fs-scale)); line-height: 1.8; }
 
 .session-item {
   padding: 10px 12px;
@@ -220,14 +193,14 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .dot-fail        { background: var(--fail); }
 .session-info { flex: 1; min-width: 0; }
 .session-title {
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .session-meta {
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   color: var(--muted);
   margin-top: 2px;
 }
@@ -250,9 +223,9 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   gap: 16px;
   color: var(--muted);
 }
-.chat-empty-icon { font-size: 48px; opacity: 0.3; }
-.chat-empty h3 { font-size: 16px; font-weight: 600; }
-.chat-empty p  { font-size: 13px; text-align: center; max-width: 260px; line-height: 1.6; }
+.chat-empty-icon { font-size:calc(48px * var(--fs-scale)); opacity: 0.3; }
+.chat-empty h3 { font-size:calc(16px * var(--fs-scale)); font-weight: 600; }
+.chat-empty p  { font-size:calc(13px * var(--fs-scale)); text-align: center; max-width: 260px; line-height: 1.6; }
 
 .chat-messages {
   flex: 1;
@@ -280,7 +253,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 700;
 }
 .msg-avatar svg { width: 17px; height: 17px; }
@@ -299,7 +272,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   max-width: calc(100% - 60px);
   padding: 12px 16px;
   border-radius: 12px;
-  font-size: 14px;
+  font-size:calc(14px * var(--fs-scale));
   line-height: 1.6;
 }
 .msg-user .msg-bubble {
@@ -323,7 +296,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   color: var(--text);
   padding: 1px 5px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-family: 'Consolas', monospace;
 }
 .msg-bubble pre {
@@ -342,19 +315,19 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .msg-bubble a { color: var(--cyan); }
 .msg-bubble h1, .msg-bubble h2, .msg-bubble h3,
 .msg-bubble h4, .msg-bubble h5, .msg-bubble h6 {
-  color: var(--text); font-size: 14px; margin: 10px 0 6px;
+  color: var(--text); font-size:calc(14px * var(--fs-scale)); margin: 10px 0 6px;
 }
 .msg-bubble blockquote {
   margin: 8px 0; padding: 4px 12px;
   border-left: 3px solid var(--border); color: var(--muted);
 }
 .msg-bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
-.msg-bubble table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.msg-bubble table { border-collapse: collapse; margin: 8px 0; font-size:calc(13px * var(--fs-scale)); }
 .msg-bubble th, .msg-bubble td { border: 1px solid var(--border); padding: 4px 8px; }
 
-.msg-tool .msg-avatar { background: rgba(139,92,246,.2); color: #a78bfa; font-size: 14px; }
+.msg-tool .msg-avatar { background: rgba(139,92,246,.2); color: #a78bfa; font-size:calc(14px * var(--fs-scale)); }
 .tool-results { border: 1px solid rgba(139,92,246,.25); background: rgba(139,92,246,.07); padding: 10px 14px; }
-.tool-result-item { padding: 3px 0; font-size: 13px; line-height: 1.5; }
+.tool-result-item { padding: 3px 0; font-size:calc(13px * var(--fs-scale)); line-height: 1.5; }
 .tool-result-item.ok { color: #4ade80; }
 .tool-result-item.err { color: #f87171; }
 .tool-result-item strong { color: inherit; }
@@ -383,7 +356,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   background: rgba(var(--red-rgb),0.1);
   border-bottom: 1px solid rgba(var(--red-rgb),0.3);
   padding: 8px 16px;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   color: #f87171;
   display: none;
 }
@@ -407,7 +380,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 10px 14px;
   color: var(--text);
   font-family: inherit;
-  font-size: 14px;
+  font-size:calc(14px * var(--fs-scale));
   resize: none;
   min-height: 42px;
   max-height: 140px;
@@ -450,7 +423,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   align-items: center;
   justify-content: center;
   color: var(--muted);
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   text-align: center;
   padding: 20px;
 }
@@ -469,7 +442,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .info-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .info-section-label {
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -484,7 +457,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 8px 10px;
   color: var(--text);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
   outline: none;
   transition: border-color 0.15s;
@@ -497,7 +470,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   gap: 6px;
   padding: 5px 12px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
 }
 .status-in_progress { background: rgba(var(--amber-rgb),0.15); color: var(--pending); border: 1px solid rgba(var(--amber-rgb),0.3); }
@@ -510,7 +483,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 7px;
   border-radius: 8px;
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   border: 1px solid;
@@ -522,7 +495,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .btn-fail:hover { background: rgba(var(--red-rgb),0.2); }
 .btn-status:disabled, .btn-feedback:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
-.info-date { font-size: 13px; color: var(--muted); }
+.info-date { font-size:calc(13px * var(--fs-scale)); color: var(--muted); }
 .info-task-edit, .notes-edit {
   width: 100%;
   min-height: 80px;
@@ -532,7 +505,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 8px 10px;
   color: var(--text);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   resize: vertical;
   outline: none;
   transition: border-color 0.15s;
@@ -560,7 +533,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--purple);
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -593,7 +566,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 }
 .fp-title {
   font-family: 'Quicksand', sans-serif;
-  font-size: 16px;
+  font-size:calc(16px * var(--fs-scale));
   font-weight: 700;
   color: var(--ink);
   display: flex;
@@ -601,7 +574,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   gap: 8px;
 }
 .fp-hint {
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   color: var(--muted);
   line-height: 1.6;
 }
@@ -615,7 +588,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 10px 12px;
   color: var(--text);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   resize: vertical;
   outline: none;
   transition: border-color 0.15s;
@@ -631,7 +604,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -643,7 +616,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -672,12 +645,12 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   box-shadow: var(--shadow-hover);
 }
 .cp-title {
-  font-size: 15px;
+  font-size:calc(15px * var(--fs-scale));
   font-weight: 700;
   color: #ef4444;
 }
 .cp-body {
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   color: var(--muted);
   line-height: 1.6;
 }
@@ -689,7 +662,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -701,7 +674,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -710,7 +683,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 
 .page-footer {
   text-align: center; padding: 8px 20px;
-  font-size: 11px; color: var(--muted); opacity: 0.4;
+  font-size:calc(11px * var(--fs-scale)); color: var(--muted); opacity: 0.4;
   border-top: 1px solid var(--border); flex-shrink: 0;
 }
 
@@ -722,7 +695,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
   margin-top: 6px;
@@ -737,7 +710,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--cyan);
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -751,7 +724,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: #ef4444;
   font-family: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
   opacity: 0.6;
@@ -779,7 +752,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 }
 .modal h3 {
   font-family: 'Quicksand', sans-serif;
-  font-size: 17px;
+  font-size:calc(17px * var(--fs-scale));
   font-weight: 700;
   margin-bottom: 16px;
   color: var(--ink);
@@ -795,7 +768,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 10px 12px;
   color: var(--text);
   font-family: inherit;
-  font-size: 14px;
+  font-size:calc(14px * var(--fs-scale));
   outline: none;
   margin-bottom: 12px;
   transition: border-color 0.15s;
@@ -810,7 +783,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -822,7 +795,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -839,7 +812,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 20px;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   color: var(--text);
   z-index: 2000;
   transition: transform 0.3s ease;
@@ -854,7 +827,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .field-label {
   display: block;
   margin: 12px 0 4px;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   color: var(--text);
 }
@@ -864,7 +837,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   width: 100%;
   padding: 9px 10px;
   font: inherit;
-  font-size: 13px;
+  font-size:calc(13px * var(--fs-scale));
   color: var(--text);
   background: var(--bg2);
   border: 1px solid var(--border);
@@ -873,7 +846,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 
 .field-hint {
   margin: 6px 0 2px;
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   line-height: 1.6;
   color: var(--muted);
 }
@@ -889,13 +862,13 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   margin: 2px 0 7px;
 }
 .scope-bar-label {
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   color: var(--muted);
 }
 .scope-chip {
   padding: 3px 9px;
   font: inherit;
-  font-size: 11px;
+  font-size:calc(11px * var(--fs-scale));
   font-weight: 600;
   color: var(--text);
   background: var(--bg3);
@@ -921,7 +894,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   margin-top: 8px;
   padding: 8px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size:calc(12px * var(--fs-scale));
   color: var(--muted);
   cursor: pointer;
   background: none;
@@ -948,16 +921,16 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 /* Cấp công cụ thật cho học viên trong buổi dạy. Dòng cảnh báo cố tình nổi màu:
    tick vào đây là công cụ chạy thật, không phải mô phỏng. */
 .student-tools { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
-.student-tool { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; }
+.student-tool { display: flex; align-items: center; gap: 7px; font-size:calc(12px * var(--fs-scale)); cursor: pointer; }
 .student-tool input { cursor: pointer; }
 .student-tool input:disabled { cursor: default; }
 .student-tools-warn {
   margin-top: 8px; padding: 7px 9px; border-radius: 6px;
-  font-size: 11px; line-height: 1.5; color: var(--gold);
+  font-size:calc(11px * var(--fs-scale)); line-height: 1.5; color: var(--gold);
   background: rgba(var(--amber-rgb), 0.10);
   border: 1px solid rgba(var(--amber-rgb), 0.30);
 }
-.student-tools-msg { font-size: 11px; color: var(--muted); font-style: italic; line-height: 1.5; }
+.student-tools-msg { font-size:calc(11px * var(--fs-scale)); color: var(--muted); font-style: italic; line-height: 1.5; }
 
 /* ── Đính kèm file trong khung chat ── */
 .btn-attach {
@@ -979,12 +952,12 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   display: inline-flex; align-items: center; gap: 6px;
   max-width: 240px; padding: 4px 8px;
   background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
-  font-size: 12px; color: var(--text);
+  font-size:calc(12px * var(--fs-scale)); color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .chat-attach-chip.uploading { color: var(--muted); font-style: italic; }
 .chat-attach-chip button {
   background: none; border: none; color: var(--muted);
-  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+  cursor: pointer; font-size:calc(14px * var(--fs-scale)); line-height: 1; padding: 0 2px;
 }
 .chat-attach-chip button:hover { color: var(--fail); }

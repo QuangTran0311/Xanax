@@ -1,0 +1,218 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Hệ màu và cỡ chữ dùng chung — NGUỒN DUY NHẤT cho mọi trang.
+
+   Trước file này, bốn trang có bốn bảng màu riêng: Hub dùng xanh-trên-đen
+   (#0b1412 / #52d6a0), còn Login, Quy trình và Dạy AI vẫn mang bảng nâu-kem
+   (#221E1A / #F0EAE0 / #5B8F7F) thừa kế từ giao diện vanilla cũ. Cùng một app
+   mà mở hai trang ra là thấy hai tông màu khác hẳn nhau.
+
+   Bảng màu chuẩn lấy từ Hub. Toàn bộ token cũ được ÁNH XẠ về token chuẩn ở
+   cuối file, nên ba trang kia đổi màu mà không phải sửa một dòng layout nào.
+
+   QUY TẮC: thêm màu mới thì thêm Ở ĐÂY. Đừng khai --bg/--text/--accent trong
+   file .module.css của trang — custom property khai trên class sẽ ĐÈ lên
+   :root, và đó chính là cách bảng màu nâu cũ sống sót được lâu đến vậy.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Nền và bề mặt ────────────────────────────────────────── */
+  --bg: #0b1412;
+  --surface: #111d1a;
+  --surface2: #172723;
+  --surface3: #1c2d28;
+  --sidebar: #06110f;
+
+  /* ── Chữ ──────────────────────────────────────────────────── */
+  --text: #f2f6f4;
+  --text-soft: #cdd9d5;
+  --muted: #9daea8;
+
+  /* ── Đường viền ───────────────────────────────────────────── */
+  --border: #263832;
+  --border-strong: #32493f;
+
+  /* ── Màu ngữ nghĩa ────────────────────────────────────────── */
+  --accent: #52d6a0;
+  --accent-strong: #6fe6b5;
+  /* Màu chữ ĐẶT TRÊN nền accent. Ở theme tối, accent là xanh sáng nên chữ trắng
+     chỉ đạt 1.83:1 — không đọc nổi. Chữ gần đen đạt 10.2:1.
+     Đừng hardcode `color:white` cho nút chính; dùng token này. */
+  --on-accent: #08120f;
+  --danger: #e27b6f;
+  /* Chữ trắng trên nút đỏ tối chỉ 2.88:1; gần-đen đạt 6.60:1 */
+  --on-danger: #1a0d0b;
+  --warning: #d7a95e;
+  --info: #5b9df0;
+  --purple-tone: #a78bfa;
+
+  /* Bộ ba RGB để dùng trong rgba(). Phải khai riêng vì rgba() không nhận
+     được mã hex qua var(). Đổi màu ở trên thì đổi luôn ở đây. */
+  --accent-rgb: 82, 214, 160;
+  --danger-rgb: 226, 123, 111;
+  --warning-rgb: 215, 169, 94;
+  --info-rgb: 91, 157, 240;
+  --purple-rgb-base: 167, 139, 250;
+
+  /* ── Hình khối ────────────────────────────────────────────── */
+  --radius-sm-base: 6px;
+  --radius-base: 10px;
+  --radius-lg-base: 16px;
+  --shadow-base: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-hover-base: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.35);
+  --mono-base: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  /* ── Cỡ chữ ───────────────────────────────────────────────────────────
+     MỘT số này điều khiển cỡ chữ toàn app. Mọi khai báo font-size trong các
+     file .module.css đều là calc(<px gốc> * var(--fs-scale)).
+
+     1.15 tương đương phóng trình duyệt lên ~115%, nhưng CHỈ chữ to ra —
+     khung, khoảng cách và icon giữ nguyên, nên bố cục không xô lệch.
+     Muốn to/nhỏ hơn thì đổi đúng dòng này, không cần sửa chỗ nào khác.
+     ──────────────────────────────────────────────────────────────────── */
+  --fs-scale: 1.15;
+
+  color-scheme: dark;
+}
+
+:global(body.light),
+body.light {
+  --bg: #f5f5ef;
+  --surface: #fffefa;
+  --surface2: #f0f3ec;
+  --surface3: #e7ede5;
+  --sidebar: #12382d;
+
+  --text: #17201d;
+  --text-soft: #3d4a45;
+  /* #66746e chỉ đạt 4.47:1 trên nền sáng — sát ngưỡng. Đậm thêm một nấc → 4.96:1 */
+  --muted: #5f6d67;
+
+  --border: #dfe5dc;
+  --border-strong: #c8d2c6;
+
+  /* #2f8c68 với chữ trắng chỉ đạt 4.14:1. Đậm thêm một nấc → 4.58:1 */
+  --accent: #2c8462;
+  --accent-strong: #237454;
+  --on-accent: #ffffff;
+  --danger: #bd5048;
+  --on-danger: #ffffff;
+  --warning: #ad7628;
+  --info: #2f6fb8;
+  --purple-tone: #7c5cd6;
+
+  --accent-rgb: 47, 140, 104;
+  --danger-rgb: 189, 80, 72;
+  --warning-rgb: 173, 118, 40;
+  --info-rgb: 47, 111, 184;
+  --purple-rgb-base: 124, 92, 214;
+
+  --shadow-base: 0 1px 2px rgba(23, 32, 29, 0.06), 0 8px 24px rgba(23, 32, 29, 0.08);
+  --shadow-hover-base: 0 2px 6px rgba(23, 32, 29, 0.1), 0 16px 40px rgba(23, 32, 29, 0.12);
+
+  color-scheme: light;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ÁNH XẠ TOKEN CŨ → TOKEN CHUẨN
+
+   49 tên dưới đây đến từ bảng màu nâu-kem cũ và vẫn còn được dùng rải rác
+   trong LoginPage / TaskrunnerPage / WorkspacePage. Giữ nguyên tên, đổi giá
+   trị — nhờ vậy ba trang đó đổi màu mà không phải viết lại CSS bố cục.
+
+   Đây là lớp bắc cầu, không phải đích đến. Khi nào sửa vào một trang thì đổi
+   luôn var(--ink) thành var(--text) rồi xoá dần bảng này.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root,
+body.light {
+  /* chữ */
+  --ink: var(--text);
+  --ink-soft: var(--text-soft);
+  --ink-muted: var(--muted);
+  --text2: var(--text-soft);
+  --text3: var(--muted);
+
+  /* nền */
+  --bg-card: var(--surface);
+  --bg2: var(--surface2);
+  --bg3: var(--surface3);
+  --border2: var(--border-strong);
+
+  /* nhấn */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --mint: color-mix(in srgb, var(--accent) 14%, transparent);
+  --mint-ink: var(--accent);
+  --green: var(--accent);
+  --green-rgb: var(--accent-rgb);
+
+  /* --cyan LÀ màu nhấn chính của trang Quy trình (43 chỗ) và Dạy AI (27 chỗ);
+     hai trang đó không dùng --accent lần nào. Ánh xạ nó về xanh lơ thật sẽ làm
+     chúng lệch tông hẳn so với Hub — đã thấy trên ảnh chụp. Nên nó là --accent. */
+  --cyan: var(--accent);
+  --cyan-rgb: var(--accent-rgb);
+
+  /* cảnh báo / vàng */
+  --gold: var(--warning);
+  --gold-soft: color-mix(in srgb, var(--warning) 16%, transparent);
+  --amber: var(--warning);
+  --amber-rgb: var(--warning-rgb);
+  --peach: color-mix(in srgb, var(--warning) 14%, transparent);
+  --peach-ink: var(--warning);
+
+  /* nguy hiểm / đỏ */
+  --red: var(--danger);
+  --red-rgb: var(--danger-rgb);
+  --fail: var(--danger);
+
+  /* thông tin / xanh dương */
+  --sky: color-mix(in srgb, var(--info) 14%, transparent);
+  --sky-ink: var(--info);
+  --blue: var(--info);
+  --blue-rgb: var(--info-rgb);
+
+  /* tím */
+  --lavender: color-mix(in srgb, var(--purple-tone) 14%, transparent);
+  --lavender-ink: var(--purple-tone);
+  --purple: var(--purple-tone);
+  --purple-rgb: var(--purple-rgb-base);
+
+  /* trạng thái */
+  --pass: var(--accent);
+  --pending: var(--warning);
+  --status-on: var(--accent);
+  --status-idle: var(--muted);
+
+  /* hình khối */
+  --radius: var(--radius-base);
+  --radius-sm: var(--radius-sm-base);
+  --radius-lg: var(--radius-lg-base);
+  --radius-token: var(--radius-base);
+  --radius-sm-token: var(--radius-sm-base);
+  --shadow: var(--shadow-base);
+  --shadow-hover: var(--shadow-hover-base);
+  --mono: var(--mono-base);
+}
+
+/* ── Nền trang ────────────────────────────────────────────────
+   Đặt ở đây thay vì trong từng trang: đổi route mà nền nhấp nháy
+   trắng-đen là do mỗi trang tự sơn nền của riêng nó. */
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: calc(14px * var(--fs-scale));
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
+/* Chuyển theme mượt, nhưng KHÔNG áp cho mọi thuộc tính:
+   transition:all sẽ làm cả biểu đồ và animation node giật. */
+body,
+html {
+  transition: background-color 0.18s ease, color 0.18s ease;
+}

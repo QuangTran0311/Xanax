@@ -14,6 +14,11 @@ _DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(_BACKEND_DIR / 'xanax.db').as_po
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
+        # Đường dẫn TUYỆT ĐỐI — đừng đổi lại thành chuỗi ".env". Chuỗi tương đối
+        # được phân giải theo thư mục đang đứng, nên chạy từ ngoài backend/ sẽ
+        # không thấy file và pydantic lặng lẽ dùng toàn giá trị mặc định: mất
+        # HUB_SECRET_KEY, HUB_API_KEY, HUB_LLM_API_BASE... mà không một dòng
+        # cảnh báo nào. Hỏng kiểu này chỉ lộ ra khi gọi model thất bại.
         env_file=_BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         env_prefix="HUB_",
@@ -26,7 +31,10 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = True
     title: str = "Xanax Hub Server"
-    version: str = "0.1.0"
+    # NGUỒN DUY NHẤT của số phiên bản. Đừng khai HUB_VERSION trong .env —
+    # .env đè lên đây và sửa dòng này sẽ không có tác dụng gì.
+    # Quy ước đánh số: xem mục "Đánh số phiên bản" trong README.
+    version: str = "2.1.0"
     description: str = "Multi-Agent Orchestration Platform powered by Hermes Agent"
 
     # Security

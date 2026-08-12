@@ -27,22 +27,46 @@ _PREFIX = "enc:v1:"
 _NONCE_LEN = 12  # khuyến nghị của AES-GCM
 _KEY_ENV = "XANAX_SECRET_KEY"
 _KEY_FILE = Path(__file__).parent.parent / "data" / ".secret_key"
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 _key_cache: bytes | None = None
 
 
+def _key_from_env_file() -> str:
+    """XANAX_SECRET_KEY ghi trong backend/.env.
+
+    Đọc riêng ở đây chứ không dựa vào hub/config.py: Settings có env_prefix="HUB_"
+    nên nó chỉ nạp các khoá HUB_*, và pydantic-settings không đổ giá trị vào
+    os.environ. Trước đây khoá này ghi trong .env mà KHÔNG có tác dụng gì — hệ
+    thống vẫn chạy nhờ file .secret_key, nên không ai phát hiện ra.
+    """
+    if not _ENV_FILE.exists():
+        return ""
+    try:
+        from dotenv import dotenv_values
+        return (dotenv_values(_ENV_FILE).get(_KEY_ENV) or "").strip()
+    except Exception:
+        logger.exception("Không đọc được %s để lấy %s", _ENV_FILE, _KEY_ENV)
+        return ""
+
+
 def _load_key() -> bytes:
-    """Khoá 32 byte, ưu tiên biến môi trường; không có thì tự sinh và lưu file.
+    """Khoá 32 byte. Thứ tự ưu tiên: biến môi trường → backend/.env → file
+    data/.secret_key → tự sinh mới.
 
     Sinh tự động là chủ ý: nếu bắt buộc phải cấu hình mới chạy được thì mọi
     người sẽ tắt mã hoá đi cho nhanh. Khi deploy thật thì đặt XANAX_SECRET_KEY
     để khoá không nằm cùng chỗ với file .db mà nó bảo vệ.
+
+    CẢNH BÁO khi đổi khoá: mọi secret đã lưu đều mã hoá bằng khoá CŨ. Đặt một
+    khoá khác với khoá đang dùng là không giải mã lại được, không có đường khôi
+    phục — phải nhập tay lại toàn bộ api_key/token của skill.
     """
     global _key_cache
     if _key_cache is not None:
         return _key_cache
 
-    raw = (os.environ.get(_KEY_ENV) or "").strip()
+    raw = (os.environ.get(_KEY_ENV) or "").strip() or _key_from_env_file()
     if raw:
         try:
             key = base64.urlsafe_b64decode(raw)

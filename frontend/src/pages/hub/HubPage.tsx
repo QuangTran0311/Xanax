@@ -86,6 +86,7 @@ function HubShell() {
     loading,
   } = useHub();
   const [serverOnline, setServerOnline] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [visitedTabs, setVisitedTabs] = useState<Set<HubTab>>(() => new Set([active]));
   const [savedSubpaths, setSavedSubpaths] = useState<Partial<Record<HubTab, string>>>(() => ({
     [active]: currentSubpath,
@@ -119,6 +120,8 @@ function HubShell() {
     };
   }, [navigate]);
 
+  useEffect(() => setMobileSidebarOpen(false), [location.pathname]);
+
   const mountedTabs = useMemo(() => {
     const mounted = new Set(visitedTabs);
     if (validTabs.has(active)) mounted.add(active);
@@ -128,9 +131,9 @@ function HubShell() {
   if (!validTabs.has(active)) return <Navigate to="/hub" replace />;
 
   return (
-    <div className={`${c("hubRoot")} ${sidebarCompact ? c("compactSidebar") : ""} ${animations ? "" : c("noAnimations")}`}>
-      <aside className={c("sidebar")}>
-        <div className={c("brand")}><span /><strong>Xanax</strong></div>
+    <div className={`${c("hubRoot")} ${sidebarCompact ? c("compactSidebar") : ""} ${mobileSidebarOpen ? c("mobileSidebarOpen") : ""} ${animations ? "" : c("noAnimations")}`}>
+      <aside className={c("sidebar")} aria-label={language === "vi" ? "Điều hướng chính" : "Main navigation"}>
+        <div className={c("brand")} title="Xanax"><span /><strong>Xanax</strong><small>AI OPERATIONS</small></div>
         <nav>
           {navigation.map((item) => (
             <div key={item.tab} className={item.divider ? c("navDivider") : ""}>
@@ -143,6 +146,7 @@ function HubShell() {
                   ? `${c("navItem")} ${c("navActive")}`
                   : c("navItem")}
                 title={hubText(language, item.label)}
+                onClick={() => setMobileSidebarOpen(false)}
               >
                 <Icon name={item.icon} />
                 <span>{hubText(language, item.label)}</span>
@@ -150,23 +154,48 @@ function HubShell() {
             </div>
           ))}
         </nav>
-        <button className={c("collapseButton")} onClick={() => setSidebarCompact(!sidebarCompact)}>
+        <div className={serverOnline ? c("sidebarHealth") : `${c("sidebarHealth")} ${c("sidebarHealthOffline")}`} title={serverOnline ? (language === "vi" ? "Hệ thống ổn định" : "System healthy") : hubText(language, "common.server_down")}>
+          <span><i /></span>
+          <div><strong>{serverOnline ? (language === "vi" ? "Hệ thống ổn định" : "System healthy") : hubText(language, "common.server_down")}</strong><small>{serverOnline ? (language === "vi" ? "Tất cả dịch vụ hoạt động" : "All services operational") : (language === "vi" ? "Đang thử kết nối lại" : "Trying to reconnect")}</small></div>
+        </div>
+        <button
+          className={c("collapseButton")}
+          onClick={() => setSidebarCompact(!sidebarCompact)}
+          title={sidebarCompact ? (language === "vi" ? "Mở rộng" : "Expand") : (language === "vi" ? "Thu gọn" : "Collapse")}
+          aria-label={sidebarCompact ? (language === "vi" ? "Mở rộng sidebar" : "Expand sidebar") : (language === "vi" ? "Thu gọn sidebar" : "Collapse sidebar")}
+        >
           <Icon name={sidebarCompact ? "arrowRight" : "arrowLeft"} />
-          <span>{sidebarCompact ? "" : language === "vi" ? "Thu gọn" : "Collapse"}</span>
+          <span>{language === "vi" ? "Thu gọn" : "Collapse"}</span>
         </button>
       </aside>
 
+      <button
+        className={c("sidebarScrim")}
+        aria-label={language === "vi" ? "Đóng điều hướng" : "Close navigation"}
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+
       <div className={c("workspace")}>
         <header className={c("topbar")}>
-          <span className={serverOnline ? c("online") : c("offline")}>
-            <i />
-            {serverOnline ? "Online" : hubText(language, "common.server_down")}
-          </span>
+          <div className={c("topbarLeading")}>
+            <button
+              className={c("mobileMenuButton")}
+              onClick={() => setMobileSidebarOpen((current) => !current)}
+              aria-expanded={mobileSidebarOpen}
+              aria-label={language === "vi" ? "Mở điều hướng" : "Open navigation"}
+            >
+              <Icon name={mobileSidebarOpen ? "close" : "sliders"} />
+            </button>
+            <span className={serverOnline ? c("online") : c("offline")}>
+              <i />
+              {serverOnline ? (language === "vi" ? "Hệ thống trực tuyến" : "System online") : hubText(language, "common.server_down")}
+            </span>
+          </div>
           <div className={c("topbarActions")}>
-            <button onClick={toggleTheme} title={theme === "light" ? "Dark" : "Light"}>
+            <button onClick={toggleTheme} title={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")} aria-label={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")}>
               <Icon name={theme === "light" ? "moon" : "sun"} />
             </button>
-            <span><Icon name="user" />{loading ? "…" : username}</span>
+            <span className={c("accountSummary")}><span><Icon name="user" /></span><strong>{loading ? "…" : username}</strong></span>
           </div>
         </header>
 
