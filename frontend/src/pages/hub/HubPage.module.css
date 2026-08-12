@@ -5,19 +5,8 @@
 :global(button:focus-visible), :global(a:focus-visible), :global(input:focus-visible), :global(select:focus-visible), :global(textarea:focus-visible) { outline: 3px solid color-mix(in srgb,#52d6a0 48%,transparent); outline-offset: 2px; }
 
 .hubRoot {
-  
-  
-  
-  
-  
-  
-  
-  
-  
   --accentStrong: #6be1b0;
   --accentSoft: rgba(82,214,160,.13);
-  
-  
   min-height: 100vh;
   display: grid;
   grid-template-columns: 232px minmax(0,1fr);
@@ -25,19 +14,8 @@
   color: var(--text);
 }
 :global(body.light) .hubRoot {
-  
-  
-  
-  
-  
-  
-  
-  
-  
   --accentStrong: #246f54;
   --accentSoft: #dceee5;
-  
-  
 }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 16px 12px 12px; background: var(--sidebar); color: #f2f6f4; display: flex; flex-direction: column; z-index: 20; }
 .brand { min-height: 48px; display: grid; grid-template-columns: 12px minmax(0,1fr); grid-template-rows:auto auto; column-gap: 10px; align-content:center; padding: 0 10px 10px; font-family: Quicksand,sans-serif; }

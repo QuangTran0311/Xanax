@@ -1,25 +1,5 @@
 .taskrunner-root,.taskrunner-root *,.taskrunner-root *::before,.taskrunner-root *::after{box-sizing:border-box;margin:0;padding:0}
 svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;vertical-align:-4px}
-.taskrunner-root{
-  /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
-     
-   
-   
-     
-   
-   
-   
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-}
 :global(html),:global(body){height:100%;font-family:'Inter',sans-serif}
 
 /* ── Topbar (standalone route only) ── */

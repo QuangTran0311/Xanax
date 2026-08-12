@@ -1,35 +1,23 @@
 .workspace-page-root, .workspace-page-root *, .workspace-page-root *::before, .workspace-page-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
 svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; vertical-align: -4px; }
 
-.workspace-page-root {
-  /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
-    
-   
-   
-     
-     
-   
-   
-   
+/* ══════════════════════════════════════════════════════════════════════════
+   Bề rộng hai cột biên của bố cục ba panel.
 
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+   TÊN CÓ TIỀN TỐ `--ws-` LÀ BẮT BUỘC, KHÔNG ĐƯỢC RÚT GỌN.
+
+   Trước đây hai token này tên là `--sidebar` và `--info`. Mà theme.css cũng có
+   `--sidebar` (nền sidebar, #06110f) và `--info` (xanh dương, #5b9df0) — là MÀU.
+   Khi token cục bộ bị gỡ trong commit 1ebe071, var(--sidebar) rơi xuống lấy giá
+   trị màu ở :root, biến grid-template-columns thành `#06110f 1fr #5b9df0`. Khai
+   báo không hợp lệ bị bỏ, grid ba cột sập xuống một cột, và KHÔNG có lỗi nào
+   trong console để lần ra.
+
+   Đổi lại tên ngắn là tái hiện đúng lỗi đó.
+   ══════════════════════════════════════════════════════════════════════════ */
+.workspace-page-root {
+  --ws-col-sessions: 240px;
+  --ws-col-info: 300px;
 }
 
 :global(body) {
@@ -110,7 +98,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--sidebar) 1fr var(--info);
+  grid-template-columns: var(--ws-col-sessions) minmax(0, 1fr) var(--ws-col-info);
   overflow: hidden;
 }
 

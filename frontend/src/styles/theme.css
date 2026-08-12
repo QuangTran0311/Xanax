@@ -20,6 +20,10 @@
   --surface: #111d1a;
   --surface2: #172723;
   --surface3: #1c2d28;
+  /* CẢNH BÁO: đây là MÀU nền sidebar, không phải bề rộng. Trang Dạy AI từng có
+     token cục bộ trùng tên mang giá trị 240px; khi nó bị gỡ, var(--sidebar) rơi
+     xuống lấy màu này và làm sập bố cục ba cột mà không báo lỗi. Token độ dài của
+     trang đó nay tên là --ws-col-sessions / --ws-col-info. */
   --sidebar: #06110f;
 
   /* ── Chữ ──────────────────────────────────────────────────── */
