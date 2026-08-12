@@ -24,7 +24,7 @@ export function TaskrunnerPage({
   embedded = false,
   kindOverride,
   taskIdOverride,
-  basePath = "/v2/taskrunner",
+  basePath = "/taskrunner",
   onOpenProject,
 }: TaskrunnerPageProps = {}) {
   const navigate = useNavigate();
@@ -71,7 +71,7 @@ export function TaskrunnerPage({
         setUsername(user.username);
         setProjects(projectData.projects || []);
       })
-      .catch(() => navigate("/v2/login", { replace: true }));
+      .catch(() => navigate("/login", { replace: true }));
   }, [navigate]);
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export function TaskrunnerPage({
               <span className={c("page-title")}>Quy trình</span>
               <span className={c("topbar-user")}>
                 {username}
-                <button onClick={() => void sessionApi.logout().then(() => navigate("/v2/login"))}>
+                <button onClick={() => void sessionApi.logout().then(() => navigate("/login"))}>
                   Đăng xuất
                 </button>
               </span>

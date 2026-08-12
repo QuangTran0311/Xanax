@@ -12,9 +12,7 @@ interface UseWebSocketOptions<TMessage> {
   onClose?: (event: CloseEvent, reconnectAttempt: number) => void;
 }
 
-function loginPath(): string {
-  return window.location.pathname.startsWith("/v2") ? "/v2/login" : "/login";
-}
+const loginPath = () => "/login";
 
 /**
  * Shared authenticated WebSocket transport.

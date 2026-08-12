@@ -33,6 +33,6 @@ assert.match(hubSource, /<WorkspacePage embedded/, "Workspace is not mounted dir
 assert.match(hubSource, /<TaskrunnerPage[\s\S]*embedded/, "Taskrunner is not mounted directly in Hub");
 
 assert.match(clientSource, /window\.location\.assign\(target\)/, "auth redirect no longer uses normal window navigation");
-assert.match(loginSource, /window\.location\.assign\("\/v2\/hub"\)/, "React login does not enter the React Hub");
+assert.match(loginSource, /window\.location\.assign\("\/hub"\)/, "React login does not enter the React Hub");
 
 console.log("PASS: no iframe bridge markers, tabs stay mounted, heavy routes are lazy, and auth uses window.location");

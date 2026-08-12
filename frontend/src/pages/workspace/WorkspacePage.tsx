@@ -108,7 +108,7 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     window.addEventListener("storage", onStorage);
     void Promise.all([sessionApi.current(), loadSessions(), loadRosters()])
       .then(([me]) => setUser(me))
-      .catch(() => navigate("/v2/login", { replace: true }));
+      .catch(() => navigate("/login", { replace: true }));
     return () => window.removeEventListener("storage", onStorage);
   }, [loadRosters, loadSessions, navigate]);
 
@@ -119,7 +119,7 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       window.clearTimeout(idleTimer);
       idleTimer = window.setTimeout(() => {
         if (streaming) { reset(); return; }
-        void sessionApi.logout().finally(() => navigate("/v2/login?reason=idle", { replace: true }));
+        void sessionApi.logout().finally(() => navigate("/login?reason=idle", { replace: true }));
       }, idleMs);
     };
     const events: Array<keyof WindowEventMap> = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
@@ -372,7 +372,7 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
 
   const logout = async () => {
     await sessionApi.logout();
-    navigate("/v2/login", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   const connectionText = useMemo(() => {
@@ -390,8 +390,8 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       {!embedded ? <header className={c("topbar")}>
         <span className={c("topbar-logo")}><span className={c("dot")} />Xanax</span>
         <nav className={c("topbar-nav")}>
-          <a className={c("active")} href="/v2/workspace">Training</a>
-          <a href="/v2/taskrunner">Quy trình</a>
+          <a className={c("active")} href="/workspace">Training</a>
+          <a href="/taskrunner">Quy trình</a>
         </nav>
         <div className={c("topbar-user")}><span>{user?.username ?? "—"}</span><button className={c("btn-logout")} onClick={() => void logout()}>Đăng xuất</button></div>
       </header> : null}

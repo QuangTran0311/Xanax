@@ -10,28 +10,444 @@ import type { ModelRecord } from "./types";
 import styles from "./HubPage.module.css";
 
 const c = (name: string) => styles[name] ?? name;
-interface ModelDraft { id?: number; name: string; provider: string; api_style: string; model_id: string; base_url: string; api_key: string; cli_config_dir: string; category: string; max_requests_per_day: number; max_tokens_per_day: number; price_input_per_1m: number; price_cache_per_1m: number; price_output_per_1m: number; currency: string; }
-const blankModel = (): ModelDraft => ({ name: "", provider: "9router", api_style: "openai_compat", model_id: "", base_url: "", api_key: "", cli_config_dir: "", category: "general", max_requests_per_day: 0, max_tokens_per_day: 0, price_input_per_1m: 0, price_cache_per_1m: 0, price_output_per_1m: 0, currency: "USD" });
+interface ModelDraft {
+  id?: number;
+  name: string;
+  provider: string;
+  api_style: string;
+  model_id: string;
+  base_url: string;
+  api_key: string;
+  cli_config_dir: string;
+  category: string;
+  max_requests_per_day: number;
+  max_tokens_per_day: number;
+  price_input_per_1m: number;
+  price_cache_per_1m: number;
+  price_output_per_1m: number;
+  currency: string;
+}
+const blankModel = (): ModelDraft => ({
+  name: "",
+  provider: "9router",
+  api_style: "openai_compat",
+  model_id: "",
+  base_url: "",
+  api_key: "",
+  cli_config_dir: "",
+  category: "general",
+  max_requests_per_day: 0,
+  max_tokens_per_day: 0,
+  price_input_per_1m: 0,
+  price_cache_per_1m: 0,
+  price_output_per_1m: 0,
+  currency: "USD",
+});
 
 export function BrainPage() {
-  const { language } = useLanguage(); const vi = language === "vi"; const [section, setSection] = useState<"pool" | "benchmark">("pool");
-  if (section === "pool") return <ModelPoolPage onBenchmarks={() => setSection("benchmark")} />;
-  return <><div className={c("brainSwitch")}><button onClick={() => setSection("pool")}><Icon name="brain" />{vi ? "Model Pool" : "Model pool"}</button><button className={c("brainActive")}><Icon name="flask" />{vi ? "Đánh giá" : "Benchmarks"}</button></div><BenchmarkPage /></>;
+  const { language } = useLanguage();
+  const vi = language === "vi";
+  const [section, setSection] = useState<"pool" | "benchmark">("pool");
+  if (section === "pool")
+    return <ModelPoolPage onBenchmarks={() => setSection("benchmark")} />;
+  return (
+    <>
+      <div className={c("brainSwitch")}>
+        <button onClick={() => setSection("pool")}>
+          <Icon name="brain" />
+          {vi ? "Model Pool" : "Model pool"}
+        </button>
+        <button className={c("brainActive")}>
+          <Icon name="flask" />
+          {vi ? "Đánh giá" : "Benchmarks"}
+        </button>
+      </div>
+      <BenchmarkPage />
+    </>
+  );
 }
 
 function ModelPoolPage({ onBenchmarks }: { onBenchmarks: () => void }) {
-  const { language } = useLanguage(); const vi = language === "vi"; const { modelPool, refreshModelPool, toast, confirm } = useHub();
-  const [draft, setDraft] = useState<ModelDraft | null>(null); const [testing, setTesting] = useState<number | null>(null);
-  const open = (model?: ModelRecord) => setDraft(model ? { ...blankModel(), id: model.id, name: model.name || "", provider: model.provider || "9router", api_style: model.api_style || "openai_compat", model_id: model.model_id || "", base_url: String(model.base_url || ""), api_key: "", cli_config_dir: String(model.cli_config_dir || ""), category: model.category || "general", max_requests_per_day: Number(model.max_requests_per_day || 0), max_tokens_per_day: Number(model.max_tokens_per_day || 0), price_input_per_1m: Number(model.price_input_per_1m || 0), price_cache_per_1m: Number(model.price_cache_per_1m || 0), price_output_per_1m: Number(model.price_output_per_1m || 0), currency: String(model.currency || "USD") } : blankModel());
-  const save = async () => { if (!draft?.name.trim() || !draft.model_id.trim()) return toast(vi ? "Tên và Model ID là bắt buộc" : "Name and model ID are required", "error"); const body: Partial<ModelDraft> = { ...draft, name: draft.name.trim(), model_id: draft.model_id.trim() }; delete body.id; if (draft.id && !draft.api_key) delete body.api_key; try { if (draft.id) await apiClient.patch(`/model-pool/${draft.id}`, body); else await apiClient.post("/model-pool", body); await refreshModelPool(); setDraft(null); toast(vi ? "Đã lưu model" : "Model saved", "success"); } catch (error) { toast(error instanceof Error ? error.message : "Save failed", "error"); } };
-  const remove = async (model: ModelRecord) => { if (!(await confirm(vi ? "Xoá model này?" : "Delete this model?"))) return; await apiClient.delete(`/model-pool/${model.id}`); await refreshModelPool(); };
-  const test = async (model: ModelRecord) => { setTesting(model.id); try { const result = await apiClient.post<{ ok: boolean; error?: string }>(`/model-pool/${model.id}/test`); toast(result.ok ? (vi ? "Kết nối tốt" : "Connection succeeded") : result.error || "Connection failed", result.ok ? "success" : "error"); } finally { setTesting(null); } };
-  return <div className={c("page")}><header className={c("pageHeader")}><div><h1>{vi ? "Bộ não AI" : "AI brains"}</h1><p>{vi ? "Quản lý model, giới hạn, giá và đánh giá chất lượng" : "Manage models, limits, pricing, and benchmarks"}</p></div><div className={c("headerActions")}><button data-testid="open-benchmarks" className={c("buttonGhost")} onClick={onBenchmarks}><Icon name="flask" />{vi ? "Đánh giá model" : "Benchmarks"}</button><button data-testid="new-model" className={c("primaryButton")} onClick={() => open()}><Icon name="brain" />{vi ? "Thêm model" : "Add model"}</button></div></header><section className={c("modelGrid")}>{modelPool.map((model) => { const usage = model.usage_today || {}; return <article key={model.id} className={c("modelCard")}><header><span className={c("tag")}>{model.category || "general"}</span><span className={model.enabled === false || model.enabled === 0 ? c("offBadge") : c("onBadge")}>{model.enabled === false || model.enabled === 0 ? "OFF" : "ON"}</span></header><h2>{model.name}</h2><p>{model.model_id} · {model.provider}</p><div className={c("modelStats")}><span><strong>{Number(usage.request_count || 0).toLocaleString()}</strong>{vi ? "lượt hôm nay" : "calls today"}</span><span><strong>{Number(usage.tokens_input || 0).toLocaleString()}</strong>input</span><span><strong>{Number(usage.tokens_output || 0).toLocaleString()}</strong>output</span></div><footer><button className={c("buttonGhost")} disabled={testing === model.id} onClick={() => void test(model)}><Icon name="plug" />{testing === model.id ? "…" : (vi ? "Kiểm tra" : "Test")}</button><button data-testid={`edit-model-${model.id}`} className={c("buttonGhost")} onClick={() => open(model)}><Icon name="edit" />{vi ? "Sửa" : "Edit"}</button><button data-testid={`delete-model-${model.id}`} className={c("dangerLink")} onClick={() => void remove(model)}><Icon name="trash" /></button></footer></article>; })}</section>{draft ? <ModelDialog draft={draft} setDraft={setDraft} vi={vi} onSave={save} onClose={() => setDraft(null)} /> : null}</div>;
+  const { language } = useLanguage();
+  const vi = language === "vi";
+  const { modelPool, refreshModelPool, toast, confirm } = useHub();
+  const [draft, setDraft] = useState<ModelDraft | null>(null);
+  const [testing, setTesting] = useState<number | null>(null);
+  const open = (model?: ModelRecord) =>
+    setDraft(
+      model
+        ? {
+            ...blankModel(),
+            id: model.id,
+            name: model.name || "",
+            provider: model.provider || "9router",
+            api_style: model.api_style || "openai_compat",
+            model_id: model.model_id || "",
+            base_url: String(model.base_url || ""),
+            api_key: "",
+            cli_config_dir: String(model.cli_config_dir || ""),
+            category: model.category || "general",
+            max_requests_per_day: Number(model.max_requests_per_day || 0),
+            max_tokens_per_day: Number(model.max_tokens_per_day || 0),
+            price_input_per_1m: Number(model.price_input_per_1m || 0),
+            price_cache_per_1m: Number(model.price_cache_per_1m || 0),
+            price_output_per_1m: Number(model.price_output_per_1m || 0),
+            currency: String(model.currency || "USD"),
+          }
+        : blankModel(),
+    );
+  const save = async () => {
+    if (!draft?.name.trim() || !draft.model_id.trim())
+      return toast(
+        vi ? "Tên và Model ID là bắt buộc" : "Name and model ID are required",
+        "error",
+      );
+    const body: Partial<ModelDraft> = {
+      ...draft,
+      name: draft.name.trim(),
+      model_id: draft.model_id.trim(),
+    };
+    delete body.id;
+    if (draft.id && !draft.api_key) delete body.api_key;
+    try {
+      if (draft.id) await apiClient.patch(`/model-pool/${draft.id}`, body);
+      else await apiClient.post("/model-pool", body);
+      await refreshModelPool();
+      setDraft(null);
+      toast(vi ? "Đã lưu model" : "Model saved", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Save failed", "error");
+    }
+  };
+  const remove = async (model: ModelRecord) => {
+    if (!(await confirm(vi ? "Xoá model này?" : "Delete this model?"))) return;
+    await apiClient.delete(`/model-pool/${model.id}`);
+    await refreshModelPool();
+  };
+  const test = async (model: ModelRecord) => {
+    setTesting(model.id);
+    try {
+      const result = await apiClient.post<{ ok: boolean; error?: string }>(
+        `/model-pool/${model.id}/test`,
+      );
+      toast(
+        result.ok
+          ? vi
+            ? "Kết nối tốt"
+            : "Connection succeeded"
+          : result.error || "Connection failed",
+        result.ok ? "success" : "error",
+      );
+    } finally {
+      setTesting(null);
+    }
+  };
+  return (
+    <div className={c("page")}>
+      <header className={c("pageHeader")}>
+        <div>
+          <h1>{vi ? "Bộ não AI" : "AI brains"}</h1>
+          <p>
+            {vi
+              ? "Quản lý model, giới hạn, giá và đánh giá chất lượng"
+              : "Manage models, limits, pricing, and benchmarks"}
+          </p>
+        </div>
+        <div className={c("headerActions")}>
+          <button
+            data-testid="open-benchmarks"
+            className={c("buttonGhost")}
+            onClick={onBenchmarks}
+          >
+            <Icon name="flask" />
+            {vi ? "Đánh giá model" : "Benchmarks"}
+          </button>
+          <button
+            data-testid="new-model"
+            className={c("primaryButton")}
+            onClick={() => open()}
+          >
+            <Icon name="brain" />
+            {vi ? "Thêm model" : "Add model"}
+          </button>
+        </div>
+      </header>
+      <section className={c("modelGrid")}>
+        {modelPool.map((model) => {
+          const usage = model.usage_today || {};
+          return (
+            <article key={model.id} className={c("modelCard")}>
+              <header>
+                <span className={c("tag")}>{model.category || "general"}</span>
+                <span
+                  className={
+                    model.enabled === false || model.enabled === 0
+                      ? c("offBadge")
+                      : c("onBadge")
+                  }
+                >
+                  {model.enabled === false || model.enabled === 0
+                    ? "OFF"
+                    : "ON"}
+                </span>
+              </header>
+              <h2>{model.name}</h2>
+              <p>
+                {model.model_id} · {model.provider}
+              </p>
+              <div className={c("modelStats")}>
+                <span>
+                  <strong>
+                    {Number(usage.request_count || 0).toLocaleString()}
+                  </strong>
+                  {vi ? "lượt hôm nay" : "calls today"}
+                </span>
+                <span>
+                  <strong>
+                    {Number(usage.tokens_input || 0).toLocaleString()}
+                  </strong>
+                  input
+                </span>
+                <span>
+                  <strong>
+                    {Number(usage.tokens_output || 0).toLocaleString()}
+                  </strong>
+                  output
+                </span>
+              </div>
+              <footer>
+                <button
+                  className={c("buttonGhost")}
+                  disabled={testing === model.id}
+                  onClick={() => void test(model)}
+                >
+                  <Icon name="plug" />
+                  {testing === model.id ? "…" : vi ? "Kiểm tra" : "Test"}
+                </button>
+                <button
+                  data-testid={`edit-model-${model.id}`}
+                  className={c("buttonGhost")}
+                  onClick={() => open(model)}
+                >
+                  <Icon name="edit" />
+                  {vi ? "Sửa" : "Edit"}
+                </button>
+                <button
+                  data-testid={`delete-model-${model.id}`}
+                  className={c("dangerLink")}
+                  onClick={() => void remove(model)}
+                >
+                  <Icon name="trash" />
+                </button>
+              </footer>
+            </article>
+          );
+        })}
+      </section>
+      {draft ? (
+        <ModelDialog
+          draft={draft}
+          setDraft={setDraft}
+          vi={vi}
+          onSave={save}
+          onClose={() => setDraft(null)}
+        />
+      ) : null}
+    </div>
+  );
 }
 
-function ModelDialog({ draft, setDraft, vi, onSave, onClose }: { draft: ModelDraft; setDraft: (draft: ModelDraft) => void; vi: boolean; onSave: () => Promise<void>; onClose: () => void }) {
-  const set = <K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) => setDraft({ ...draft, [key]: value });
-  return <Dialog title={draft.id ? (vi ? "Sửa model" : "Edit model") : (vi ? "Thêm model" : "Add model")} onClose={onClose} wide><div className={c("formGrid")}><Field label={vi ? "Tên hiển thị" : "Display name"}><input data-testid="model-name" className={c("input")} value={draft.name} onChange={(event) => set("name", event.target.value)} /></Field><Field label="Model ID"><input data-testid="model-id" className={c("input")} value={draft.model_id} onChange={(event) => set("model_id", event.target.value)} /></Field><Field label="Provider"><input className={c("input")} value={draft.provider} onChange={(event) => set("provider", event.target.value)} /></Field><Field label="API style"><select className={c("select")} value={draft.api_style} onChange={(event) => set("api_style", event.target.value)}>{["openai_compat", "openai_native", "anthropic_native", "gemini_native", "claude_cli", "codex_cli"].map((style) => <option key={style}>{style}</option>)}</select></Field><Field label="Base URL"><input className={c("input")} value={draft.base_url} onChange={(event) => set("base_url", event.target.value)} /></Field><Field label="API key"><input className={c("input")} type="password" value={draft.api_key} placeholder={draft.id ? (vi ? "Để trống để giữ key cũ" : "Leave blank to retain the key") : ""} onChange={(event) => set("api_key", event.target.value)} /></Field><Field label="CLI config directory"><input className={c("input")} value={draft.cli_config_dir} onChange={(event) => set("cli_config_dir", event.target.value)} /></Field><Field label={vi ? "Nhóm" : "Category"}><select className={c("select")} value={draft.category} onChange={(event) => set("category", event.target.value)}>{["general", "coding", "creative", "fast", "analysis"].map((category) => <option key={category}>{category}</option>)}</select></Field><NumberField label={vi ? "Giới hạn lượt/ngày" : "Calls/day limit"} value={draft.max_requests_per_day} set={(value) => set("max_requests_per_day", value)} /><NumberField label={vi ? "Giới hạn token/ngày" : "Tokens/day limit"} value={draft.max_tokens_per_day} set={(value) => set("max_tokens_per_day", value)} /><NumberField label="Input / 1M" value={draft.price_input_per_1m} set={(value) => set("price_input_per_1m", value)} /><NumberField label="Cache / 1M" value={draft.price_cache_per_1m} set={(value) => set("price_cache_per_1m", value)} /><NumberField label="Output / 1M" value={draft.price_output_per_1m} set={(value) => set("price_output_per_1m", value)} /><Field label={vi ? "Tiền tệ" : "Currency"}><input className={c("input")} value={draft.currency} onChange={(event) => set("currency", event.target.value)} /></Field></div><div className={c("formActions")}><button data-testid="save-model" className={c("primaryButton")} onClick={() => void onSave()}>{vi ? "Lưu" : "Save"}</button></div></Dialog>;
+function ModelDialog({
+  draft,
+  setDraft,
+  vi,
+  onSave,
+  onClose,
+}: {
+  draft: ModelDraft;
+  setDraft: (draft: ModelDraft) => void;
+  vi: boolean;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const set = <K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) =>
+    setDraft({ ...draft, [key]: value });
+  return (
+    <Dialog
+      title={
+        draft.id
+          ? vi
+            ? "Sửa model"
+            : "Edit model"
+          : vi
+            ? "Thêm model"
+            : "Add model"
+      }
+      onClose={onClose}
+      wide
+    >
+      <div className={c("formGrid")}>
+        <Field label={vi ? "Tên hiển thị" : "Display name"}>
+          <input
+            data-testid="model-name"
+            className={c("input")}
+            value={draft.name}
+            onChange={(event) => set("name", event.target.value)}
+          />
+        </Field>
+        <Field label="Model ID">
+          <input
+            data-testid="model-id"
+            className={c("input")}
+            value={draft.model_id}
+            onChange={(event) => set("model_id", event.target.value)}
+          />
+        </Field>
+        <Field label="Provider">
+          <input
+            className={c("input")}
+            value={draft.provider}
+            onChange={(event) => set("provider", event.target.value)}
+          />
+        </Field>
+        <Field label="API style">
+          <select
+            className={c("select")}
+            value={draft.api_style}
+            onChange={(event) => set("api_style", event.target.value)}
+          >
+            {[
+              "openai_compat",
+              "openai_native",
+              "anthropic_native",
+              "gemini_native",
+              "claude_cli",
+              "codex_cli",
+            ].map((style) => (
+              <option key={style}>{style}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Base URL">
+          <input
+            className={c("input")}
+            value={draft.base_url}
+            onChange={(event) => set("base_url", event.target.value)}
+          />
+        </Field>
+        <Field label="API key">
+          <input
+            className={c("input")}
+            type="password"
+            value={draft.api_key}
+            placeholder={
+              draft.id
+                ? vi
+                  ? "Để trống để giữ key cũ"
+                  : "Leave blank to retain the key"
+                : ""
+            }
+            onChange={(event) => set("api_key", event.target.value)}
+          />
+        </Field>
+        <Field label="CLI config directory">
+          <input
+            className={c("input")}
+            value={draft.cli_config_dir}
+            onChange={(event) => set("cli_config_dir", event.target.value)}
+          />
+        </Field>
+        <Field label={vi ? "Nhóm" : "Category"}>
+          <select
+            className={c("select")}
+            value={draft.category}
+            onChange={(event) => set("category", event.target.value)}
+          >
+            {["general", "coding", "creative", "fast", "analysis"].map(
+              (category) => (
+                <option key={category}>{category}</option>
+              ),
+            )}
+          </select>
+        </Field>
+        <NumberField
+          label={vi ? "Giới hạn lượt/ngày" : "Calls/day limit"}
+          value={draft.max_requests_per_day}
+          set={(value) => set("max_requests_per_day", value)}
+        />
+        <NumberField
+          label={vi ? "Giới hạn token/ngày" : "Tokens/day limit"}
+          value={draft.max_tokens_per_day}
+          set={(value) => set("max_tokens_per_day", value)}
+        />
+        <NumberField
+          label="Input / 1M"
+          value={draft.price_input_per_1m}
+          set={(value) => set("price_input_per_1m", value)}
+        />
+        <NumberField
+          label="Cache / 1M"
+          value={draft.price_cache_per_1m}
+          set={(value) => set("price_cache_per_1m", value)}
+        />
+        <NumberField
+          label="Output / 1M"
+          value={draft.price_output_per_1m}
+          set={(value) => set("price_output_per_1m", value)}
+        />
+        <Field label={vi ? "Tiền tệ" : "Currency"}>
+          <input
+            className={c("input")}
+            value={draft.currency}
+            onChange={(event) => set("currency", event.target.value)}
+          />
+        </Field>
+      </div>
+      <div className={c("formActions")}>
+        <button
+          data-testid="save-model"
+          className={c("primaryButton")}
+          onClick={() => void onSave()}
+        >
+          {vi ? "Lưu" : "Save"}
+        </button>
+      </div>
+    </Dialog>
+  );
 }
-function NumberField({ label, value, set }: { label: string; value: number; set: (value: number) => void }) { return <Field label={label}><input className={c("input")} type="number" min={0} step="any" value={value} onChange={(event) => set(Number(event.target.value) || 0)} /></Field>; }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className={c("field")}><span>{label}</span>{children}</label>; }
+function NumberField({
+  label,
+  value,
+  set,
+}: {
+  label: string;
+  value: number;
+  set: (value: number) => void;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        className={c("input")}
+        type="number"
+        min={0}
+        step="any"
+        value={value}
+        onChange={(event) => set(Number(event.target.value) || 0)}
+      />
+    </Field>
+  );
+}
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={c("field")}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}

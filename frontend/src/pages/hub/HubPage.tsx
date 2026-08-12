@@ -75,7 +75,7 @@ function HubShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const active = (tab || "home") as HubTab;
-  const currentSubpath = location.pathname.split("/").slice(4).join("/");
+  const currentSubpath = location.pathname.split("/").slice(3).join("/");
   const { language } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const {
@@ -106,7 +106,7 @@ function HubShell() {
         const response = await fetch("/api/auth/me", { cache: "no-store" });
         if (!activeEffect) return;
         setServerOnline(true);
-        if (response.status === 401) navigate("/v2/login", { replace: true });
+        if (response.status === 401) navigate("/login", { replace: true });
       } catch {
         if (activeEffect) setServerOnline(false);
       }
@@ -125,7 +125,7 @@ function HubShell() {
     return mounted;
   }, [active, visitedTabs]);
 
-  if (!validTabs.has(active)) return <Navigate to="/v2/hub" replace />;
+  if (!validTabs.has(active)) return <Navigate to="/hub" replace />;
 
   return (
     <div className={`${c("hubRoot")} ${sidebarCompact ? c("compactSidebar") : ""} ${animations ? "" : c("noAnimations")}`}>
@@ -137,8 +137,8 @@ function HubShell() {
               <NavLink
                 end={item.tab === "home"}
                 to={item.tab === "home"
-                  ? "/v2/hub"
-                  : `/v2/hub/${item.tab}${savedSubpaths[item.tab] ? `/${savedSubpaths[item.tab]}` : ""}`}
+                  ? "/hub"
+                  : `/hub/${item.tab}${savedSubpaths[item.tab] ? `/${savedSubpaths[item.tab]}` : ""}`}
                 className={({ isActive }) => isActive
                   ? `${c("navItem")} ${c("navActive")}`
                   : c("navItem")}
@@ -209,7 +209,7 @@ function HubTabContent({ tab, subpath }: { tab: HubTab; subpath: string }) {
   const openProject = (projectId: number, projectSubtab: ProjectSubtab) => {
     setCurrentProjectId(projectId);
     setCurrentProjectSubtab(projectSubtab);
-    navigate("/v2/hub/tasks");
+    navigate("/hub/tasks");
   };
 
   if (tab === "home") return <OverviewPage />;
@@ -230,7 +230,7 @@ function HubTabContent({ tab, subpath }: { tab: HubTab; subpath: string }) {
         embedded
         kindOverride="company"
         taskIdOverride={taskId}
-        basePath="/v2/hub/company-runner"
+        basePath="/hub/company-runner"
         onOpenProject={openProject}
       />
     );
@@ -240,7 +240,7 @@ function HubTabContent({ tab, subpath }: { tab: HubTab; subpath: string }) {
       embedded
       kindOverride="automation"
       taskIdOverride={taskId}
-      basePath="/v2/hub/auto-runner"
+      basePath="/hub/auto-runner"
       onOpenProject={openProject}
     />
   );

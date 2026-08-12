@@ -1,258 +1,219 @@
-"""Smoke test frontend: nạp thật bằng Chromium, đi qua từng tab, thu lỗi.
+"""Playwright smoke test for the production React frontend.
 
-Phủ /hub (12 tab, sổ hành động, tương tác thật) và ba trang còn lại
-(/workspace, /taskrunner, /login).
-
-Vì sao cần
-----------
-Frontend không có test. Lỗi ES module (thiếu export, tham chiếu chéo sót) và
-handler nội tuyến chết lặng đều chỉ lộ lúc chạy trong trình duyệt, không có
-công cụ tĩnh nào bắt được. Script này là lưới an toàn cho mọi thay đổi trong
-dashboard/static/hub/.
-
-Chạy
-----
-    python main.py                # cửa sổ khác, để server lên trước
-    python scripts/smoke_hub.py   # thoát 0 = sạch
-
-Không nằm trong pytest vì cần server sống + Chromium của Playwright
-(cài một lần: `playwright install chromium`).
-
-Đăng nhập bằng cách tạo session thẳng trong DB, nên không cần biết mật khẩu.
+Run the FastAPI server first, then execute ``python scripts/smoke_hub.py``.
+The script creates a database session directly, visits all 12 Hub routes,
+checks client-side navigation/state retention, and opens an archived image from
+an old workflow run. Exit code 0 means the smoke checks passed.
 """
-import asyncio, sys, os, pathlib
+
+from __future__ import annotations
+
+import asyncio
+import io
+import os
+import pathlib
+import sys
+from urllib.parse import urlparse
+
+
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 BASE = "http://localhost:8000"
-TABS = ["home", "agents", "skills", "tasks", "ops", "knowledge",
-        "meetings", "models", "cost", "assets", "benchmark", "settings"]
+TABS = [
+    "home",
+    "agents",
+    "skills",
+    "tasks",
+    "meeting",
+    "train",
+    "company-runner",
+    "auto-runner",
+    "assets",
+    "model",
+    "cost",
+    "settings",
+]
 
 
-async def main():
-    from hub.database import init_db, create_session, COOKIE_NAME, get_user_by_username
+async def main() -> int:
     import aiosqlite
-    from hub.database import DB_PATH
+    from playwright.async_api import async_playwright
+
+    from hub.database import COOKIE_NAME, DB_PATH, create_session, init_db
 
     await init_db()
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        row = await (await db.execute("SELECT id, username FROM users LIMIT 1")).fetchone()
-    if not row:
-        print("KHÔNG có user nào trong DB — không đăng nhập được"); return 2
-    token = await create_session(row["id"])
-    print(f"-- đăng nhập với user '{row['username']}' (id={row['id']})")
+        user = await (await db.execute("SELECT id, username FROM users LIMIT 1")).fetchone()
 
-    from playwright.async_api import async_playwright
-    errors, failed_req = [], []
+    if not user:
+        print("KHÔNG có user nào trong DB — không đăng nhập được")
+        return 2
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        ctx = await browser.new_context()
-        await ctx.add_cookies([{"name": COOKIE_NAME, "value": token,
-                                "domain": "localhost", "path": "/"}])
-        page = await ctx.new_page()
-        page.on("console", lambda m: errors.append(f"[console.{m.type}] {m.text}")
-                if m.type in ("error",) else None)
-        page.on("pageerror", lambda e: errors.append(f"[pageerror] {e}"))
-        page.on("requestfailed", lambda r: failed_req.append(f"{r.url} :: {r.failure}"))
+    token = await create_session(user["id"])
+    print(f"-- đăng nhập với user '{user['username']}' (id={user['id']})")
 
-        resp = await page.goto(f"{BASE}/hub", wait_until="networkidle", timeout=45000)
-        print(f"-- GET /hub -> {resp.status}")
+    errors: list[str] = []
+    failed_requests: list[str] = []
+    response_errors: list[str] = []
+    hosts: set[str] = set()
 
-        # Không còn hàm nào trên window, nên lấy switchTab qua dynamic import.
-        # Module ES là singleton theo URL: import lại chính là instance đang chạy.
-        await page.evaluate("""async () => {
-          const m = await import('/static/hub/tabs.js');
-          window.__switchTab = m.switchTab;
-        }""")
-        loaded = await page.evaluate("typeof window.__switchTab === 'function'")
-        print(f"-- nạp module hub/tabs.js: {'OK' if loaded else 'HỎNG'}")
-        if not loaded:
-            errors.append("không import được hub/tabs.js")
-        # 1. hub.html không được còn handler nội tuyến nào.
-        import re as _re
-        html = (ROOT / "dashboard" / "hub.html").read_text(encoding="utf-8")
-        inline = _re.findall(
-            r'\bon(?:click|change|input|submit|keydown|keyup|blur|focus)="', html)
-        print(f"-- handler nội tuyến còn sót trong hub.html: {len(inline)}")
-        if inline:
-            errors.append(f"{len(inline)} handler nội tuyến chưa chuyển")
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context()
+        await context.add_cookies(
+            [{"name": COOKIE_NAME, "value": token, "domain": "localhost", "path": "/"}]
+        )
+        page = await context.new_page()
 
-        # 2. Mọi data-* trong HTML phải có trong sổ đăng ký, nếu không nút sẽ
-        #    chết lặng. Đối chiếu tên thay vì bấm thật — trong đó có nút xoá.
-        declared = sorted({m.group(2) for m in _re.finditer(
-            r'data-(click|change|input|keydown)="([^"]*)"', html)})
-        known = await page.evaluate(
-            "async () => (await import('/static/hub/actions.js')).registeredActions()")
-        missing_a = [d for d in declared if d not in known]
-        print(f"-- hành động data-* trong hub.html: {len(declared)} tên, "
-              f"đã đăng ký {len(known)}, thiếu {len(missing_a)}")
-        if missing_a:
-            print("   THIẾU: " + ", ".join(missing_a))
-            errors.append("hành động chưa đăng ký: " + ", ".join(missing_a))
+        page.on(
+            "console",
+            lambda message: errors.append(f"[console.error] {message.text}")
+            if message.type == "error"
+            else None,
+        )
+        page.on("pageerror", lambda error: errors.append(f"[pageerror] {error}"))
+        page.on(
+            "request",
+            lambda request: hosts.add(urlparse(request.url).netloc),
+        )
+        page.on(
+            "requestfailed",
+            lambda request: failed_requests.append(f"{request.url} :: {request.failure}"),
+        )
+        page.on(
+            "response",
+            lambda response: response_errors.append(f"{response.status} {response.url}")
+            if response.status >= 400
+            and urlparse(response.url).hostname in {"localhost", "127.0.0.1"}
+            else None,
+        )
 
-        # 3. Các hàm render cũng không được còn onclick nội tuyến.
-        js_inline = 0
-        for f in sorted((ROOT / "dashboard" / "static" / "hub").glob("*.js")):
-            for ln in f.read_text(encoding="utf-8").split("\n"):
-                if ln.lstrip().startswith("//"):
-                    continue          # chú thích có nhắc tới mã cũ
-                js_inline += len(_re.findall(
-                    r'\bon(?:click|change|input|keydown|keyup|blur|focus)=["\']', ln))
-        print(f"-- handler nội tuyến còn sót trong hub/*.js: {js_inline}")
-        if js_inline:
-            errors.append(f"{js_inline} handler nội tuyến trong JS chưa chuyển")
+        response = await page.goto(f"{BASE}/hub", wait_until="networkidle", timeout=45_000)
+        print(f"-- GET /hub -> {response.status if response else 'không có response'}")
+        await page.locator('[data-hub-panel="home"]:not([hidden])').wait_for()
 
-        # Sau mỗi tab, quét DOM THẬT tìm data-* rồi đối chiếu sổ đăng ký. Đây là
-        # lớp duy nhất bắt được nút do hàm render sinh ra lúc chạy — quét tĩnh
-        # không thấy chúng, và nút hỏng thì im lặng cho tới khi có người bấm.
-        SCAN = """() => {
-          const out = new Set();
-          for (const t of ['click', 'change', 'input', 'keydown'])
-            for (const el of document.querySelectorAll(`[data-${t}]`))
-              out.add(el.dataset[t]);
-          return [...out];
-        }"""
-        seen_actions = set()
+        print("-- 12 route Hub:")
         for tab in TABS:
             before = len(errors)
+            path = "/hub" if tab == "home" else f"/hub/{tab}"
             try:
-                await page.evaluate(f"window.__switchTab('{tab}')")
-                await page.wait_for_timeout(900)
-                found = await page.evaluate(SCAN)
-                seen_actions |= set(found)
-                unknown = [a for a in found if a not in known]
-                if unknown:
-                    errors.append(f"[{tab}] hành động chưa đăng ký: {', '.join(unknown)}")
-            except Exception as e:
-                errors.append(f"[switchTab {tab}] {e}")
-            new = len(errors) - before
-            print(f"   tab {tab:11s} {'OK' if new == 0 else f'{new} LỖI'}")
-        print(f"-- data-* thấy thật trong DOM khi duyệt 12 tab: {len(seen_actions)} tên, "
-              f"tất cả đã đăng ký")
+                await page.locator(f'a[href="{path}"]').click()
+                await page.wait_for_url(f"{BASE}{path}")
+                await page.locator(f'[data-hub-panel="{tab}"]:not([hidden])').wait_for()
+                await page.wait_for_timeout(250)
+            except Exception as error:
+                errors.append(f"[{tab}] {error}")
+            new_errors = len(errors) - before
+            print(f"   {tab:14s} {'OK' if new_errors == 0 else f'{new_errors} LỖI'}")
 
-        # 4. Bấm thật vào vài nút để chứng minh uỷ quyền hoạt động end-to-end.
-        #    Chỉ chọn thao tác không phá dữ liệu, và có hiệu ứng quan sát được.
-        await page.evaluate("window.__switchTab('home')")
-        await page.wait_for_timeout(400)
+        # React keeps every visited panel mounted. A search typed in Agents must
+        # survive navigation away and back — behavior previously supplied by iframe.
+        await page.locator('a[href="/hub/agents"]').click()
+        agent_search = page.locator('[data-hub-panel="agents"] input[placeholder*="nhân viên"]')
+        await agent_search.fill("__smoke_state__")
+        await page.locator('a[href="/hub/skills"]').click()
+        await page.locator('a[href="/hub/agents"]').click()
+        retained = await agent_search.input_value() == "__smoke_state__"
+        print(f"-- trạng thái tab cũ giữ nguyên: {'OK' if retained else 'HỎNG'}")
+        if not retained:
+            errors.append("chuyển tab làm mất state của tab Nhân sự")
 
-        async def check(label, selector, probe, want, dispatch=False):
-            """dispatch=True: phát sự kiện thẳng lên phần tử thay vì bấm chuột.
+        # Browser navigation must follow the same client-side route history.
+        await page.locator('a[href="/hub/skills"]').click()
+        await page.go_back()
+        back_ok = page.url.endswith("/hub/agents")
+        await page.go_forward()
+        forward_ok = page.url.endswith("/hub/skills")
+        print(f"-- Back/Forward: {'OK' if back_ok and forward_ok else 'HỎNG'}")
+        if not back_ok or not forward_ok:
+            errors.append("Back/Forward không khôi phục đúng route Hub")
 
-            Dùng cho phần tử bị panel khác che — ở đây ta kiểm tra chuỗi uỷ
-            quyền và giải đối số, không kiểm tra bố cục. Sự kiện vẫn nổi bọt
-            lên document đúng như click thật.
-            """
-            try:
-                if dispatch:
-                    await page.locator(selector).first.dispatch_event('click')
-                else:
-                    await page.click(selector, timeout=5000)
-                await page.wait_for_timeout(600)
-                got = await page.evaluate(probe)
-                ok = (got == want)
-                print(f"   {label:34s} {'OK' if ok else f'SAI (được {got!r}, cần {want!r})'}")
-                if not ok:
-                    errors.append(f"tương tác '{label}' không có hiệu lực")
-            except Exception as e:
-                print(f"   {label:34s} LỖI: {e}")
-                errors.append(f"tương tác '{label}': {e}")
+        iframe_count = await page.locator("iframe").count()
+        print(f"-- iframe trong DOM: {iframe_count}")
+        if iframe_count:
+            errors.append(f"còn {iframe_count} iframe trong DOM")
 
-        print("-- bấm thật (uỷ quyền sự kiện):")
-        # nav-card ở trang chủ: data-click="switchTab" data-click-args='["agents"]'
-        await check("nav-card -> tab Nhân viên", '.nav-card[data-click-args=\'["agents"]\']',
-                    "document.querySelector('.tab-btn[data-tab=\"agents\"]')"
-                    ".classList.contains('active')", True)
-        # nút không đối số: newAgent() dọn trắng biểu mẫu, nên bẩn nó trước rồi
-        # kiểm tra đã sạch — chứng minh hàm thật sự chạy.
-        await page.evaluate("document.getElementById('agent-name').value = 'BẨN'")
-        await check("+ Thêm nhân viên AI", 'button[data-click="newAgent"]',
-                    "document.getElementById('agent-name').value", "")
-        # nút đổi giao diện: đối số rỗng, hiệu ứng trên thuộc tính của <html>/<body>
-        # Nút do hàm render sinh ra: kiểm tra jattr + bộ giải đối số chạy đúng.
-        # Thẻ nhân viên mang data-click-args='[<id>]'; bấm vào phải nạp đúng
-        # nhân viên đó vào biểu mẫu.
-        n_cards = await page.evaluate("document.querySelectorAll('.agent-card').length")
-        if n_cards:
-            want = await page.evaluate(
-                "document.querySelector('.agent-card .agent-card-name').textContent")
-            await check("thẻ nhân viên (render động)", '.agent-card',
-                        "document.getElementById('agent-name').value", want, dispatch=True)
-        else:
-            print("   thẻ nhân viên (render động)     BỎ QUA (DB chưa có nhân viên)")
+        # Open run #84 (2026-07-11) from the real history UI and let the browser
+        # decode its archived image. This guards the 195-run legacy archive.
+        await page.goto(f"{BASE}/taskrunner", wait_until="networkidle", timeout=45_000)
+        await page.get_by_role("button", name="Tác vụ tự động").click()
+        task_card = page.locator('[data-task-id="1"]')
+        await task_card.wait_for()
+        await task_card.get_by_role("button", name="Lịch sử").click()
+        await page.get_by_text("#84", exact=True).click()
+        old_image = page.locator(
+            'img[src*="/api/workflow/runs/84/archive-file?path=02_lexapro.png"]'
+        )
+        await old_image.wait_for()
+        image_ok = await old_image.evaluate(
+            """image => new Promise((resolve) => {
+              const decoded = () => resolve(
+                image.naturalWidth > 0 && image.naturalHeight > 0
+              );
+              if (image.complete) return decoded();
+              image.addEventListener("load", decoded, { once: true });
+              image.addEventListener("error", () => resolve(false), { once: true });
+            })"""
+        )
+        print(f"-- ảnh run cũ #84 hiển thị: {'OK' if image_ok else 'HỎNG'}")
+        if not image_ok:
+            errors.append("ảnh archive của run cũ #84 không giải mã/hiển thị được")
 
-        # Chip lọc phòng ban — nút này dựng handler qua biến chuỗi nên từng bị
-        # bỏ sót khi module hoá; giữ lại phép thử để không tái diễn.
-        n_chip = await page.evaluate(
-            "document.querySelectorAll('[data-click=\"filterByDepartment\"]').length")
-        print(f"   chip lọc phòng ban: {n_chip} chip"
-              f"{' (BỎ QUA — DB chưa có phòng ban)' if n_chip < 2 else ''}")
-        if n_chip >= 2:
-            await check("chip lọc phòng ban", '[data-click="filterByDepartment"]',
-                        "document.querySelectorAll('.agent-card').length >= 0", True,
-                        dispatch=True)
-
-        before = await page.evaluate("document.documentElement.getAttribute('data-theme')"
-                                     " || document.body.className")
-        await page.click('#theme-toggle-btn')
-        await page.wait_for_timeout(400)
-        after = await page.evaluate("document.documentElement.getAttribute('data-theme')"
-                                    " || document.body.className")
-        ok = before != after
-        print(f"   {'đổi giao diện sáng/tối':34s} {'OK' if ok else 'SAI (không đổi)'}")
-        if not ok:
-            errors.append("nút đổi giao diện không có hiệu lực")
-        else:
-            await page.click('#theme-toggle-btn')   # trả lại như cũ
-
-        # 5. Ba trang còn lại cũng vừa được tách CSS/JS ra file — nạp thử.
-        print("-- các trang khác:")
-        for path in ("/workspace", "/taskrunner"):
-            before = len(errors)
-            r = await page.goto(f"{BASE}{path}", wait_until="networkidle", timeout=45000)
-            await page.wait_for_timeout(800)
-            new = len(errors) - before
-            print(f"   {path:14s} {r.status}  {'OK' if new == 0 else f'{new} LỖI'}")
-
-        # /login phải xem bằng phiên CHƯA đăng nhập, nếu không server đá về /hub
-        anon = await browser.new_context()
-        apage = await anon.new_page()
-        anon_errors = []
-        apage.on("pageerror", lambda e: anon_errors.append(f"[pageerror] {e}"))
-        apage.on("console", lambda m: anon_errors.append(f"[console.error] {m.text}")
-                 if m.type == "error" else None)
-        r = await apage.goto(f"{BASE}/login", wait_until="networkidle", timeout=45000)
-        await apage.wait_for_timeout(600)
-        has_form = await apage.evaluate(
-            "!!document.querySelector('input[type=password]')")
-        print(f"   {'/login':14s} {r.status}  "
-              f"{'OK' if not anon_errors and has_form else 'LỖI'}")
-        errors.extend(anon_errors)
+        # Login is public and must render as the React login page for an anonymous context.
+        anonymous = await browser.new_context()
+        login_page = await anonymous.new_page()
+        anonymous_errors: list[str] = []
+        login_page.on("pageerror", lambda error: anonymous_errors.append(str(error)))
+        login_response = await login_page.goto(
+            f"{BASE}/login", wait_until="networkidle", timeout=45_000
+        )
+        has_form = await login_page.locator('input[type="password"]').count() == 1
+        print(
+            f"-- /login -> {login_response.status if login_response else 'n/a'}: "
+            f"{'OK' if has_form and not anonymous_errors else 'HỎNG'}"
+        )
         if not has_form:
-            errors.append("/login không dựng được form đăng nhập")
-        await anon.close()
+            errors.append("/login không dựng được form đăng nhập React")
+        errors.extend(f"[anonymous] {error}" for error in anonymous_errors)
+        await anonymous.close()
 
         await browser.close()
 
-    print()
+    local_failed = [
+        failure
+        for failure in failed_requests
+        if urlparse(failure.split(" :: ", 1)[0]).hostname in {"localhost", "127.0.0.1"}
+        and "ERR_ABORTED" not in failure
+    ]
+    external_hosts = sorted(host for host in hosts if not host.startswith(("localhost", "127.0.0.1")))
+    print(f"-- hosts đã gọi: {', '.join(sorted(hosts)) or '(không có)'}")
+    print(f"-- hosts ngoài máy: {', '.join(external_hosts) or '(không có)'}")
+
     if errors:
-        print(f"=== {len(errors)} LỖI ===")
-        seen = set()
-        for e in errors:
-            if e[:160] in seen: continue
-            seen.add(e[:160]); print("  " + e[:300])
-    else:
-        print("=== KHÔNG có lỗi console/page ===")
+        print(f"\n=== {len(errors)} LỖI TRÌNH DUYỆT ===")
+        for error in dict.fromkeys(errors):
+            print(f"  {error[:500]}")
+    if local_failed:
+        print(f"\n=== {len(local_failed)} REQUEST LOCAL HỎNG ===")
+        for failure in local_failed:
+            print(f"  {failure}")
+    if response_errors:
+        print(f"\n=== {len(response_errors)} RESPONSE LOCAL >= 400 ===")
+        for failure in dict.fromkeys(response_errors):
+            print(f"  {failure}")
 
-    real_fail = [f for f in failed_req if "/static/" in f or "/api/" in f]
-    if real_fail:
-        print(f"\n=== {len(real_fail)} REQUEST HỎNG ===")
-        for f in real_fail[:15]: print("  " + f)
-
-    return 1 if (errors or real_fail) else 0
+    ok = not errors and not local_failed and not response_errors
+    print(f"\n=== {'SMOKE XANH' if ok else 'SMOKE HỎNG'} ===")
+    return 0 if ok else 1
 
 
-sys.exit(asyncio.run(main()))
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))

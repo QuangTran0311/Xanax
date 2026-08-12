@@ -9,12 +9,48 @@ import type { AgentRecord, ProjectRecord, ProjectSubtab } from "./types";
 import styles from "./HubPage.module.css";
 
 const c = (name: string) => styles[name] ?? name;
-interface WorkItem { id: number; title: string; description?: string; status: string; priority: string; assigned_agent_id?: number | null; agent_name?: string; }
-interface OpsItem { id: number; projectId: number; workflowName: string; status: string; runStatus?: string; outputType?: string; agentName?: string; agents?: Array<{ agentName?: string }>; priority?: string; startedAt?: string; finishedAt?: string; summary?: string; feedback?: string; readyForNext?: boolean; }
-interface HistoryItem { id: number; ts?: string; type?: string; text: string; runId?: number; }
-interface KnowledgeDoc { id: number; title: string; content?: string; tags?: string; project_id?: number; }
+interface WorkItem {
+  id: number;
+  title: string;
+  description?: string;
+  status: string;
+  priority: string;
+  assigned_agent_id?: number | null;
+  agent_name?: string;
+}
+interface OpsItem {
+  id: number;
+  projectId: number;
+  workflowName: string;
+  status: string;
+  runStatus?: string;
+  outputType?: string;
+  agentName?: string;
+  agents?: Array<{ agentName?: string }>;
+  priority?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  summary?: string;
+  feedback?: string;
+  readyForNext?: boolean;
+}
+interface HistoryItem {
+  id: number;
+  ts?: string;
+  type?: string;
+  text: string;
+  runId?: number;
+}
+interface KnowledgeDoc {
+  id: number;
+  title: string;
+  content?: string;
+  tags?: string;
+  project_id?: number;
+}
 export function ProjectsPage() {
-  const { language } = useLanguage(); const vi = language === "vi";
+  const { language } = useLanguage();
+  const vi = language === "vi";
   const {
     projects,
     agents,
@@ -27,55 +63,935 @@ export function ProjectsPage() {
     confirm,
   } = useHub();
   const [query, setQuery] = useState("");
-  const [projectDraft, setProjectDraft] = useState<Partial<ProjectRecord> | null>(null);
+  const [projectDraft, setProjectDraft] =
+    useState<Partial<ProjectRecord> | null>(null);
   const project = projects.find((item) => item.id === currentProjectId);
-  const saveProject = async () => { if (!projectDraft?.name?.trim()) return; const body = { name: projectDraft.name.trim(), description: projectDraft.description || "", status: projectDraft.status }; if (projectDraft.id) await apiClient.patch(`/projects/${projectDraft.id}`, body); else await apiClient.post("/projects/", body); await refreshProjects(); setProjectDraft(null); toast(vi ? "Đã lưu dự án" : "Project saved", "success"); };
-  const removeProject = async () => { if (!project || !(await confirm(vi ? "Xoá dự án và toàn bộ công việc liên quan?" : "Delete this project and its work items?"))) return; await apiClient.delete(`/projects/${project.id}`); setCurrentProjectId(null); await refreshProjects(); };
+  const saveProject = async () => {
+    if (!projectDraft?.name?.trim()) return;
+    const body = {
+      name: projectDraft.name.trim(),
+      description: projectDraft.description || "",
+      status: projectDraft.status,
+    };
+    if (projectDraft.id)
+      await apiClient.patch(`/projects/${projectDraft.id}`, body);
+    else await apiClient.post("/projects/", body);
+    await refreshProjects();
+    setProjectDraft(null);
+    toast(vi ? "Đã lưu dự án" : "Project saved", "success");
+  };
+  const removeProject = async () => {
+    if (
+      !project ||
+      !(await confirm(
+        vi
+          ? "Xoá dự án và toàn bộ công việc liên quan?"
+          : "Delete this project and its work items?",
+      ))
+    )
+      return;
+    await apiClient.delete(`/projects/${project.id}`);
+    setCurrentProjectId(null);
+    await refreshProjects();
+  };
   if (!project) {
-    const visible = projects.filter((item) => !query || `${item.name || ""} ${item.description || ""}`.toLowerCase().includes(query.toLowerCase()));
-    return <div className={c("page")}><header className={c("pageHeader")}><div><h1>{vi ? "Dự án" : "Projects"}</h1><p>{vi ? "Theo dõi công việc, quy trình và tư liệu theo dự án" : "Track work, workflows, and knowledge by project"}</p></div><button data-testid="new-project" className={c("primaryButton")} onClick={() => setProjectDraft({ name: "", description: "" })}><Icon name="folder" />{vi ? "Tạo dự án" : "Create project"}</button></header><div className={c("toolbar")}><input className={c("input")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={vi ? "Tìm dự án…" : "Search projects…"} /></div><section className={c("projectGrid")}>{visible.map((item) => <button key={item.id} className={c("projectCard")} onClick={() => { setCurrentProjectId(item.id); setSubtab("overview"); }}><Icon name="folder" /><h2>{item.name}</h2><p>{item.description || "—"}</p><span>{item.status || "active"}</span></button>)}</section>{!visible.length ? <div className={c("empty")}><Icon name="folder" />{vi ? "Chưa có dự án" : "No projects yet"}</div> : null}{projectDraft ? <ProjectDialog draft={projectDraft} setDraft={setProjectDraft} vi={vi} onSave={saveProject} onClose={() => setProjectDraft(null)} /> : null}</div>;
+    const visible = projects.filter(
+      (item) =>
+        !query ||
+        `${item.name || ""} ${item.description || ""}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+    );
+    return (
+      <div className={c("page")}>
+        <header className={c("pageHeader")}>
+          <div>
+            <h1>{vi ? "Dự án" : "Projects"}</h1>
+            <p>
+              {vi
+                ? "Theo dõi công việc, quy trình và tư liệu theo dự án"
+                : "Track work, workflows, and knowledge by project"}
+            </p>
+          </div>
+          <button
+            data-testid="new-project"
+            className={c("primaryButton")}
+            onClick={() => setProjectDraft({ name: "", description: "" })}
+          >
+            <Icon name="folder" />
+            {vi ? "Tạo dự án" : "Create project"}
+          </button>
+        </header>
+        <div className={c("toolbar")}>
+          <input
+            className={c("input")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={vi ? "Tìm dự án…" : "Search projects…"}
+          />
+        </div>
+        <section className={c("projectGrid")}>
+          {visible.map((item) => (
+            <button
+              key={item.id}
+              className={c("projectCard")}
+              onClick={() => {
+                setCurrentProjectId(item.id);
+                setSubtab("overview");
+              }}
+            >
+              <Icon name="folder" />
+              <h2>{item.name}</h2>
+              <p>{item.description || "—"}</p>
+              <span>{item.status || "active"}</span>
+            </button>
+          ))}
+        </section>
+        {!visible.length ? (
+          <div className={c("empty")}>
+            <Icon name="folder" />
+            {vi ? "Chưa có dự án" : "No projects yet"}
+          </div>
+        ) : null}
+        {projectDraft ? (
+          <ProjectDialog
+            draft={projectDraft}
+            setDraft={setProjectDraft}
+            vi={vi}
+            onSave={saveProject}
+            onClose={() => setProjectDraft(null)}
+          />
+        ) : null}
+      </div>
+    );
   }
-  return <div className={c("page")}><header className={c("projectHeader")}><button className={c("backLink")} onClick={() => setCurrentProjectId(null)}><Icon name="arrowLeft" />{vi ? "Tất cả dự án" : "All projects"}</button><div><h1>{project.name}</h1><p>{project.description || "—"}</p></div><button data-testid="edit-project" className={c("buttonGhost")} onClick={() => setProjectDraft(project)}><Icon name="edit" />{vi ? "Sửa" : "Edit"}</button><button data-testid="delete-project" className={c("buttonDanger")} onClick={() => void removeProject()}><Icon name="trash" />{vi ? "Xoá" : "Delete"}</button></header><ProjectDashboard project={project} agents={agents} subtab={subtab} setSubtab={setSubtab} vi={vi} toast={toast} confirm={confirm} />{projectDraft ? <ProjectDialog draft={projectDraft} setDraft={setProjectDraft} vi={vi} onSave={saveProject} onClose={() => setProjectDraft(null)} /> : null}</div>;
+  return (
+    <div className={c("page")}>
+      <header className={c("projectHeader")}>
+        <button
+          className={c("backLink")}
+          onClick={() => setCurrentProjectId(null)}
+        >
+          <Icon name="arrowLeft" />
+          {vi ? "Tất cả dự án" : "All projects"}
+        </button>
+        <div>
+          <h1>{project.name}</h1>
+          <p>{project.description || "—"}</p>
+        </div>
+        <button
+          data-testid="edit-project"
+          className={c("buttonGhost")}
+          onClick={() => setProjectDraft(project)}
+        >
+          <Icon name="edit" />
+          {vi ? "Sửa" : "Edit"}
+        </button>
+        <button
+          data-testid="delete-project"
+          className={c("buttonDanger")}
+          onClick={() => void removeProject()}
+        >
+          <Icon name="trash" />
+          {vi ? "Xoá" : "Delete"}
+        </button>
+      </header>
+      <ProjectDashboard
+        project={project}
+        agents={agents}
+        subtab={subtab}
+        setSubtab={setSubtab}
+        vi={vi}
+        toast={toast}
+        confirm={confirm}
+      />
+      {projectDraft ? (
+        <ProjectDialog
+          draft={projectDraft}
+          setDraft={setProjectDraft}
+          vi={vi}
+          onSave={saveProject}
+          onClose={() => setProjectDraft(null)}
+        />
+      ) : null}
+    </div>
+  );
 }
 
-function ProjectDashboard({ project, agents, subtab, setSubtab, vi, toast, confirm }: { project: ProjectRecord; agents: AgentRecord[]; subtab: ProjectSubtab; setSubtab: (tab: ProjectSubtab) => void; vi: boolean; toast: (message: string, kind?: "success" | "error" | "info") => void; confirm: (message: string) => Promise<boolean> }) {
-  const [ops, setOps] = useState<OpsItem[]>([]); const [history, setHistory] = useState<HistoryItem[]>([]); const [items, setItems] = useState<WorkItem[]>([]); const [docs, setDocs] = useState<KnowledgeDoc[]>([]); const [loading, setLoading] = useState(true);
-  const [workDraft, setWorkDraft] = useState<Partial<WorkItem> | null>(null); const [docDraft, setDocDraft] = useState<Partial<KnowledgeDoc> | null>(null); const [feedback, setFeedback] = useState<{ item: OpsItem; action: "failed" | "needs_revision"; text: string } | null>(null);
-  const load = useCallback(async () => { setLoading(true); const [opsData, historyData, itemData, docData] = await Promise.all([apiClient.get<{ items: OpsItem[] }>(`/ops/items?project_id=${project.id}`).catch(() => ({ items: [] })), apiClient.get<{ history: HistoryItem[] }>(`/ops/history?project_id=${project.id}`).catch(() => ({ history: [] })), apiClient.get<{ items: WorkItem[] }>(`/projects/${project.id}/items`).catch(() => ({ items: [] })), apiClient.get<{ documents: KnowledgeDoc[] }>(`/knowledge?project_id=${project.id}`).catch(() => ({ documents: [] }))]); setOps(opsData.items || []); setHistory(historyData.history || []); setItems(itemData.items || []); setDocs(docData.documents || []); setLoading(false); }, [project.id]);
-  useEffect(() => { void load(); }, [load]);
-  const reviewCount = ops.filter((item) => item.status === "waiting_review").length;
-  const tabs: Array<[ProjectSubtab, string]> = [["overview", vi ? "Tổng quan" : "Overview"], ["runs", vi ? "Lượt chạy" : "Runs"], ["review", `${vi ? "Chờ duyệt" : "Review"}${reviewCount ? ` (${reviewCount})` : ""}`], ["kanban", "Kanban"], ["work", vi ? "Công việc" : "Work items"], ["knowledge", vi ? "Tư liệu" : "Knowledge"], ["history", vi ? "Lịch sử" : "History"]];
-  const approve = async (id: number) => { await apiClient.post(`/ops/items/${id}/approve`, { is_test: false }); toast(vi ? "Đã duyệt kết quả" : "Result approved", "success"); await load(); };
-  const saveFeedback = async () => { if (!feedback?.text.trim()) return; await apiClient.post(`/ops/items/${feedback.item.id}/feedback`, { action: feedback.action, text: feedback.text.trim(), is_test: false }); setFeedback(null); await load(); };
-  const moveRun = async (id: number, status: string) => { await apiClient.patch(`/ops/items/${id}`, { status }); await load(); };
-  const saveWork = async () => { if (!workDraft?.title?.trim()) return; const body = { title: workDraft.title.trim(), description: workDraft.description || "", status: workDraft.status || "backlog", priority: workDraft.priority || "medium", assigned_agent_id: workDraft.assigned_agent_id || null }; if (workDraft.id) await apiClient.patch(`/projects/items/${workDraft.id}`, body); else await apiClient.post(`/projects/${project.id}/items`, body); setWorkDraft(null); await load(); };
-  const removeWork = async (item: WorkItem) => { if (!(await confirm(vi ? "Xoá công việc này?" : "Delete this work item?"))) return; await apiClient.delete(`/projects/items/${item.id}`); await load(); };
-  const saveDoc = async () => { if (!docDraft?.title?.trim()) return; const body = { title: docDraft.title.trim(), content: docDraft.content || "", tags: docDraft.tags || "", project_id: project.id }; if (docDraft.id) await apiClient.patch(`/knowledge/${docDraft.id}`, body); else await apiClient.post("/knowledge", body); setDocDraft(null); await load(); };
-  const removeDoc = async (doc: KnowledgeDoc) => { if (!(await confirm(vi ? "Xoá tài liệu này?" : "Delete this document?"))) return; await apiClient.delete(`/knowledge/${doc.id}`); await load(); };
-  if (loading) return <div className={c("loading")}><Icon name="sync" />{vi ? "Đang tải…" : "Loading…"}</div>;
-  return <><div className={c("subtabs")}>{tabs.map(([key, label]) => <button key={key} className={subtab === key ? c("subtabActive") : ""} onClick={() => setSubtab(key)}>{label}</button>)}</div>
-    {subtab === "overview" ? <ProjectOverview project={project} ops={ops} items={items} docs={docs} vi={vi} /> : null}
-    {subtab === "runs" ? <RunTable ops={ops} vi={vi} /> : null}
-    {subtab === "review" ? <ReviewQueue ops={ops} vi={vi} onApprove={approve} onFeedback={(item, action) => setFeedback({ item, action, text: "" })} /> : null}
-    {subtab === "kanban" ? <OpsKanban ops={ops} vi={vi} onMove={moveRun} /> : null}
-    {subtab === "work" ? <WorkItems items={items} agents={agents} vi={vi} onEdit={setWorkDraft} onDelete={removeWork} /> : null}
-    {subtab === "knowledge" ? <Knowledge docs={docs} vi={vi} onEdit={setDocDraft} onDelete={removeDoc} /> : null}
-    {subtab === "history" ? <div className={c("timeline")}>{history.length ? history.map((item) => <div key={item.id}><Icon name="clock" /><p>{item.text}</p><time>{item.ts || "—"}</time></div>) : <span>{vi ? "Chưa có lịch sử" : "No history yet"}</span>}</div> : null}
-    {workDraft ? <WorkDialog draft={workDraft} setDraft={setWorkDraft} agents={agents} vi={vi} onSave={saveWork} onClose={() => setWorkDraft(null)} /> : null}
-    {docDraft ? <KnowledgeDialog draft={docDraft} setDraft={setDocDraft} vi={vi} onSave={saveDoc} onClose={() => setDocDraft(null)} /> : null}
-    {feedback ? <Dialog title={feedback.action === "failed" ? (vi ? "Đánh dấu không đạt" : "Mark failed") : (vi ? "Yêu cầu chỉnh sửa" : "Request revision")} onClose={() => setFeedback(null)}><textarea className={c("textarea")} rows={6} value={feedback.text} onChange={(event) => setFeedback({ ...feedback, text: event.target.value })} placeholder={vi ? "Phản hồi cụ thể cho nhân viên AI…" : "Specific feedback for the AI employee…"} /><div className={c("formActions")}><button className={c("primaryButton")} onClick={() => void saveFeedback()}>{vi ? "Gửi phản hồi" : "Send feedback"}</button></div></Dialog> : null}
-  </>;
+function ProjectDashboard({
+  project,
+  agents,
+  subtab,
+  setSubtab,
+  vi,
+  toast,
+  confirm,
+}: {
+  project: ProjectRecord;
+  agents: AgentRecord[];
+  subtab: ProjectSubtab;
+  setSubtab: (tab: ProjectSubtab) => void;
+  vi: boolean;
+  toast: (message: string, kind?: "success" | "error" | "info") => void;
+  confirm: (message: string) => Promise<boolean>;
+}) {
+  const [ops, setOps] = useState<OpsItem[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [items, setItems] = useState<WorkItem[]>([]);
+  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [workDraft, setWorkDraft] = useState<Partial<WorkItem> | null>(null);
+  const [docDraft, setDocDraft] = useState<Partial<KnowledgeDoc> | null>(null);
+  const [feedback, setFeedback] = useState<{
+    item: OpsItem;
+    action: "failed" | "needs_revision";
+    text: string;
+  } | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [opsData, historyData, itemData, docData] = await Promise.all([
+      apiClient
+        .get<{ items: OpsItem[] }>(`/ops/items?project_id=${project.id}`)
+        .catch(() => ({ items: [] })),
+      apiClient
+        .get<{
+          history: HistoryItem[];
+        }>(`/ops/history?project_id=${project.id}`)
+        .catch(() => ({ history: [] })),
+      apiClient
+        .get<{ items: WorkItem[] }>(`/projects/${project.id}/items`)
+        .catch(() => ({ items: [] })),
+      apiClient
+        .get<{
+          documents: KnowledgeDoc[];
+        }>(`/knowledge?project_id=${project.id}`)
+        .catch(() => ({ documents: [] })),
+    ]);
+    setOps(opsData.items || []);
+    setHistory(historyData.history || []);
+    setItems(itemData.items || []);
+    setDocs(docData.documents || []);
+    setLoading(false);
+  }, [project.id]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const reviewCount = ops.filter(
+    (item) => item.status === "waiting_review",
+  ).length;
+  const tabs: Array<[ProjectSubtab, string]> = [
+    ["overview", vi ? "Tổng quan" : "Overview"],
+    ["runs", vi ? "Lượt chạy" : "Runs"],
+    [
+      "review",
+      `${vi ? "Chờ duyệt" : "Review"}${reviewCount ? ` (${reviewCount})` : ""}`,
+    ],
+    ["kanban", "Kanban"],
+    ["work", vi ? "Công việc" : "Work items"],
+    ["knowledge", vi ? "Tư liệu" : "Knowledge"],
+    ["history", vi ? "Lịch sử" : "History"],
+  ];
+  const approve = async (id: number) => {
+    await apiClient.post(`/ops/items/${id}/approve`, { is_test: false });
+    toast(vi ? "Đã duyệt kết quả" : "Result approved", "success");
+    await load();
+  };
+  const saveFeedback = async () => {
+    if (!feedback?.text.trim()) return;
+    await apiClient.post(`/ops/items/${feedback.item.id}/feedback`, {
+      action: feedback.action,
+      text: feedback.text.trim(),
+      is_test: false,
+    });
+    setFeedback(null);
+    await load();
+  };
+  const moveRun = async (id: number, status: string) => {
+    await apiClient.patch(`/ops/items/${id}`, { status });
+    await load();
+  };
+  const saveWork = async () => {
+    if (!workDraft?.title?.trim()) return;
+    const body = {
+      title: workDraft.title.trim(),
+      description: workDraft.description || "",
+      status: workDraft.status || "backlog",
+      priority: workDraft.priority || "medium",
+      assigned_agent_id: workDraft.assigned_agent_id || null,
+    };
+    if (workDraft.id)
+      await apiClient.patch(`/projects/items/${workDraft.id}`, body);
+    else await apiClient.post(`/projects/${project.id}/items`, body);
+    setWorkDraft(null);
+    await load();
+  };
+  const removeWork = async (item: WorkItem) => {
+    if (!(await confirm(vi ? "Xoá công việc này?" : "Delete this work item?")))
+      return;
+    await apiClient.delete(`/projects/items/${item.id}`);
+    await load();
+  };
+  const saveDoc = async () => {
+    if (!docDraft?.title?.trim()) return;
+    const body = {
+      title: docDraft.title.trim(),
+      content: docDraft.content || "",
+      tags: docDraft.tags || "",
+      project_id: project.id,
+    };
+    if (docDraft.id) await apiClient.patch(`/knowledge/${docDraft.id}`, body);
+    else await apiClient.post("/knowledge", body);
+    setDocDraft(null);
+    await load();
+  };
+  const removeDoc = async (doc: KnowledgeDoc) => {
+    if (!(await confirm(vi ? "Xoá tài liệu này?" : "Delete this document?")))
+      return;
+    await apiClient.delete(`/knowledge/${doc.id}`);
+    await load();
+  };
+  if (loading)
+    return (
+      <div className={c("loading")}>
+        <Icon name="sync" />
+        {vi ? "Đang tải…" : "Loading…"}
+      </div>
+    );
+  return (
+    <>
+      <div className={c("subtabs")}>
+        {tabs.map(([key, label]) => (
+          <button
+            key={key}
+            className={subtab === key ? c("subtabActive") : ""}
+            onClick={() => setSubtab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {subtab === "overview" ? (
+        <ProjectOverview
+          project={project}
+          ops={ops}
+          items={items}
+          docs={docs}
+          vi={vi}
+        />
+      ) : null}
+      {subtab === "runs" ? <RunTable ops={ops} vi={vi} /> : null}
+      {subtab === "review" ? (
+        <ReviewQueue
+          ops={ops}
+          vi={vi}
+          onApprove={approve}
+          onFeedback={(item, action) => setFeedback({ item, action, text: "" })}
+        />
+      ) : null}
+      {subtab === "kanban" ? (
+        <OpsKanban ops={ops} vi={vi} onMove={moveRun} />
+      ) : null}
+      {subtab === "work" ? (
+        <WorkItems
+          items={items}
+          agents={agents}
+          vi={vi}
+          onEdit={setWorkDraft}
+          onDelete={removeWork}
+        />
+      ) : null}
+      {subtab === "knowledge" ? (
+        <Knowledge
+          docs={docs}
+          vi={vi}
+          onEdit={setDocDraft}
+          onDelete={removeDoc}
+        />
+      ) : null}
+      {subtab === "history" ? (
+        <div className={c("timeline")}>
+          {history.length ? (
+            history.map((item) => (
+              <div key={item.id}>
+                <Icon name="clock" />
+                <p>{item.text}</p>
+                <time>{item.ts || "—"}</time>
+              </div>
+            ))
+          ) : (
+            <span>{vi ? "Chưa có lịch sử" : "No history yet"}</span>
+          )}
+        </div>
+      ) : null}
+      {workDraft ? (
+        <WorkDialog
+          draft={workDraft}
+          setDraft={setWorkDraft}
+          agents={agents}
+          vi={vi}
+          onSave={saveWork}
+          onClose={() => setWorkDraft(null)}
+        />
+      ) : null}
+      {docDraft ? (
+        <KnowledgeDialog
+          draft={docDraft}
+          setDraft={setDocDraft}
+          vi={vi}
+          onSave={saveDoc}
+          onClose={() => setDocDraft(null)}
+        />
+      ) : null}
+      {feedback ? (
+        <Dialog
+          title={
+            feedback.action === "failed"
+              ? vi
+                ? "Đánh dấu không đạt"
+                : "Mark failed"
+              : vi
+                ? "Yêu cầu chỉnh sửa"
+                : "Request revision"
+          }
+          onClose={() => setFeedback(null)}
+        >
+          <textarea
+            className={c("textarea")}
+            rows={6}
+            value={feedback.text}
+            onChange={(event) =>
+              setFeedback({ ...feedback, text: event.target.value })
+            }
+            placeholder={
+              vi
+                ? "Phản hồi cụ thể cho nhân viên AI…"
+                : "Specific feedback for the AI employee…"
+            }
+          />
+          <div className={c("formActions")}>
+            <button
+              className={c("primaryButton")}
+              onClick={() => void saveFeedback()}
+            >
+              {vi ? "Gửi phản hồi" : "Send feedback"}
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
+    </>
+  );
 }
 
-function ProjectOverview({ project, ops, items, docs, vi }: { project: ProjectRecord; ops: OpsItem[]; items: WorkItem[]; docs: KnowledgeDoc[]; vi: boolean }) { const waiting = ops.filter((item) => item.status === "waiting_review").length; return <section className={c("overviewCards")}><article className={c("overviewWide")}><small>{vi ? "Mục tiêu dự án" : "Project goal"}</small><p>{project.description || "—"}</p></article><Summary value={ops.length} label={vi ? "Lượt chạy" : "Runs"} /><Summary value={ops.filter((item) => item.status === "in_progress").length} label={vi ? "Đang thực hiện" : "In progress"} /><Summary value={waiting} label={vi ? "Chờ CEO duyệt" : "Awaiting review"} /><Summary value={items.length} label={vi ? "Công việc" : "Work items"} /><Summary value={docs.length} label={vi ? "Tài liệu" : "Documents"} /><article className={c("overviewWide")}><small>{vi ? "Việc cần làm tiếp" : "Next action"}</small><p>{waiting ? (vi ? `Duyệt ${waiting} kết quả đang chờ.` : `Review ${waiting} pending results.`) : (vi ? "Không có kết quả nào chờ duyệt." : "Nothing is awaiting review.")}</p></article></section>; }
-function RunTable({ ops, vi }: { ops: OpsItem[]; vi: boolean }) { return <div className={c("tableScroll")}><table className={c("dataTable")}><thead><tr><th>{vi ? "Quy trình" : "Workflow"}</th><th>{vi ? "Nhân viên" : "Employees"}</th><th>{vi ? "Trạng thái" : "Status"}</th><th>{vi ? "Bắt đầu" : "Started"}</th><th>{vi ? "Tóm tắt" : "Summary"}</th></tr></thead><tbody>{ops.map((item) => <tr key={item.id}><td>{item.workflowName}</td><td>{item.agents?.map((agent) => agent.agentName).filter(Boolean).join(", ") || item.agentName || "—"}</td><td><Status value={item.status} /></td><td>{item.startedAt || "—"}</td><td>{item.summary || "—"}</td></tr>)}</tbody></table></div>; }
-function ReviewQueue({ ops, vi, onApprove, onFeedback }: { ops: OpsItem[]; vi: boolean; onApprove: (id: number) => Promise<void>; onFeedback: (item: OpsItem, action: "failed" | "needs_revision") => void }) { const waiting = ops.filter((item) => item.status === "waiting_review"); return <div className={c("reviewList")}>{waiting.length ? waiting.map((item) => <article key={item.id}><header><strong>{item.workflowName}</strong><Status value={item.status} /></header><p>{item.summary}</p><footer><button className={c("primaryButton")} onClick={() => void onApprove(item.id)}><Icon name="check" />{vi ? "Duyệt" : "Approve"}</button><button className={c("buttonDanger")} onClick={() => onFeedback(item, "failed")}>{vi ? "Không đạt" : "Fail"}</button><button className={c("buttonGhost")} onClick={() => onFeedback(item, "needs_revision")}>{vi ? "Yêu cầu sửa" : "Request revision"}</button></footer></article>) : <div className={c("empty")}><Icon name="check" />{vi ? "Không có kết quả chờ duyệt" : "No results awaiting review"}</div>}</div>; }
-function OpsKanban({ ops, vi, onMove }: { ops: OpsItem[]; vi: boolean; onMove: (id: number, status: string) => Promise<void> }) { const columns = ["in_progress", "waiting_review", "needs_revision", "approved", "completed", "failed"]; return <div className={c("kanban")}>{columns.map((status) => <section key={status} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const id = Number(event.dataTransfer.getData("text/plain")); if (id) void onMove(id, status); }}><header><Status value={status} /><span>{ops.filter((item) => item.status === status).length}</span></header>{ops.filter((item) => item.status === status).map((item) => <article draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", String(item.id))} key={item.id}><strong>{item.workflowName}</strong><p>{item.summary}</p><small>{item.agentName || (vi ? "Nhân viên AI" : "AI employee")}</small></article>)}</section>)}</div>; }
-function WorkItems({ items, agents, vi, onEdit, onDelete }: { items: WorkItem[]; agents: AgentRecord[]; vi: boolean; onEdit: (item: Partial<WorkItem>) => void; onDelete: (item: WorkItem) => Promise<void> }) { return <><div className={c("sectionActions")}><button className={c("primaryButton")} onClick={() => onEdit({ title: "", status: "backlog", priority: "medium" })}>+ {vi ? "Công việc" : "Work item"}</button></div><div className={c("workBoard")}>{["backlog", "in_progress", "review", "done"].map((status) => <section key={status}><header>{status}</header>{items.filter((item) => item.status === status).map((item) => <article key={item.id}><strong>{item.title}</strong><p>{item.description}</p><small>{agents.find((agent) => agent.id === item.assigned_agent_id)?.name || (vi ? "Chưa phân công" : "Unassigned")} · {item.priority}</small><footer><button onClick={() => onEdit(item)}><Icon name="edit" /></button><button onClick={() => void onDelete(item)}><Icon name="trash" /></button></footer></article>)}</section>)}</div></>; }
-function Knowledge({ docs, vi, onEdit, onDelete }: { docs: KnowledgeDoc[]; vi: boolean; onEdit: (doc: Partial<KnowledgeDoc>) => void; onDelete: (doc: KnowledgeDoc) => Promise<void> }) { return <><div className={c("sectionActions")}><button className={c("primaryButton")} onClick={() => onEdit({ title: "", content: "", tags: "" })}>+ {vi ? "Tài liệu" : "Document"}</button></div><div className={c("documentList")}>{docs.map((doc) => <article key={doc.id}><Icon name="book" /><div><strong>{doc.title}</strong><small>{doc.tags || "—"}</small><p>{(doc.content || "").slice(0, 300)}</p></div><button onClick={() => onEdit(doc)}><Icon name="edit" /></button><button onClick={() => void onDelete(doc)}><Icon name="trash" /></button></article>)}</div></>; }
-function ProjectDialog({ draft, setDraft, vi, onSave, onClose }: { draft: Partial<ProjectRecord>; setDraft: (draft: Partial<ProjectRecord>) => void; vi: boolean; onSave: () => Promise<void>; onClose: () => void }) { return <Dialog title={draft.id ? (vi ? "Sửa dự án" : "Edit project") : (vi ? "Tạo dự án" : "Create project")} onClose={onClose}><Field label={vi ? "Tên dự án" : "Project name"}><input data-testid="project-name" className={c("input")} value={draft.name || ""} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field><Field label={vi ? "Mô tả" : "Description"}><textarea className={c("textarea")} rows={6} value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></Field><div className={c("formActions")}><button data-testid="save-project" className={c("primaryButton")} onClick={() => void onSave()}>{vi ? "Lưu" : "Save"}</button></div></Dialog>; }
-function WorkDialog({ draft, setDraft, agents, vi, onSave, onClose }: { draft: Partial<WorkItem>; setDraft: (draft: Partial<WorkItem>) => void; agents: AgentRecord[]; vi: boolean; onSave: () => Promise<void>; onClose: () => void }) { return <Dialog title={vi ? "Công việc" : "Work item"} onClose={onClose}><Field label={vi ? "Tiêu đề" : "Title"}><input className={c("input")} value={draft.title || ""} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></Field><Field label={vi ? "Mô tả" : "Description"}><textarea className={c("textarea")} value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></Field><div className={c("formGrid")}><Field label={vi ? "Trạng thái" : "Status"}><select className={c("select")} value={draft.status || "backlog"} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>{["backlog", "in_progress", "review", "done"].map((status) => <option key={status}>{status}</option>)}</select></Field><Field label={vi ? "Ưu tiên" : "Priority"}><select className={c("select")} value={draft.priority || "medium"} onChange={(event) => setDraft({ ...draft, priority: event.target.value })}>{["low", "medium", "high", "critical"].map((priority) => <option key={priority}>{priority}</option>)}</select></Field></div><Field label={vi ? "Nhân viên" : "Employee"}><select className={c("select")} value={draft.assigned_agent_id || ""} onChange={(event) => setDraft({ ...draft, assigned_agent_id: Number(event.target.value) || null })}><option value="">—</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></Field><div className={c("formActions")}><button className={c("primaryButton")} onClick={() => void onSave()}>{vi ? "Lưu" : "Save"}</button></div></Dialog>; }
-function KnowledgeDialog({ draft, setDraft, vi, onSave, onClose }: { draft: Partial<KnowledgeDoc>; setDraft: (draft: Partial<KnowledgeDoc>) => void; vi: boolean; onSave: () => Promise<void>; onClose: () => void }) { return <Dialog title={vi ? "Tài liệu" : "Document"} onClose={onClose}><Field label={vi ? "Tiêu đề" : "Title"}><input className={c("input")} value={draft.title || ""} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></Field><Field label="Tags"><input className={c("input")} value={draft.tags || ""} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></Field><Field label={vi ? "Nội dung" : "Content"}><textarea className={c("textarea")} rows={12} value={draft.content || ""} onChange={(event) => setDraft({ ...draft, content: event.target.value })} /></Field><div className={c("formActions")}><button className={c("primaryButton")} onClick={() => void onSave()}>{vi ? "Lưu" : "Save"}</button></div></Dialog>; }
-function Summary({ value, label }: { value: number; label: string }) { return <article className={c("summaryCard")}><strong>{value}</strong><span>{label}</span></article>; }
-function Status({ value }: { value: string }) { return <span className={`${c("statusBadge")} ${c(`status_${value}`)}`}>{value}</span>; }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className={c("field")}><span>{label}</span>{children}</label>; }
+function ProjectOverview({
+  project,
+  ops,
+  items,
+  docs,
+  vi,
+}: {
+  project: ProjectRecord;
+  ops: OpsItem[];
+  items: WorkItem[];
+  docs: KnowledgeDoc[];
+  vi: boolean;
+}) {
+  const waiting = ops.filter((item) => item.status === "waiting_review").length;
+  return (
+    <section className={c("overviewCards")}>
+      <article className={c("overviewWide")}>
+        <small>{vi ? "Mục tiêu dự án" : "Project goal"}</small>
+        <p>{project.description || "—"}</p>
+      </article>
+      <Summary value={ops.length} label={vi ? "Lượt chạy" : "Runs"} />
+      <Summary
+        value={ops.filter((item) => item.status === "in_progress").length}
+        label={vi ? "Đang thực hiện" : "In progress"}
+      />
+      <Summary
+        value={waiting}
+        label={vi ? "Chờ CEO duyệt" : "Awaiting review"}
+      />
+      <Summary value={items.length} label={vi ? "Công việc" : "Work items"} />
+      <Summary value={docs.length} label={vi ? "Tài liệu" : "Documents"} />
+      <article className={c("overviewWide")}>
+        <small>{vi ? "Việc cần làm tiếp" : "Next action"}</small>
+        <p>
+          {waiting
+            ? vi
+              ? `Duyệt ${waiting} kết quả đang chờ.`
+              : `Review ${waiting} pending results.`
+            : vi
+              ? "Không có kết quả nào chờ duyệt."
+              : "Nothing is awaiting review."}
+        </p>
+      </article>
+    </section>
+  );
+}
+function RunTable({ ops, vi }: { ops: OpsItem[]; vi: boolean }) {
+  return (
+    <div className={c("tableScroll")}>
+      <table className={c("dataTable")}>
+        <thead>
+          <tr>
+            <th>{vi ? "Quy trình" : "Workflow"}</th>
+            <th>{vi ? "Nhân viên" : "Employees"}</th>
+            <th>{vi ? "Trạng thái" : "Status"}</th>
+            <th>{vi ? "Bắt đầu" : "Started"}</th>
+            <th>{vi ? "Tóm tắt" : "Summary"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ops.map((item) => (
+            <tr key={item.id}>
+              <td>{item.workflowName}</td>
+              <td>
+                {item.agents
+                  ?.map((agent) => agent.agentName)
+                  .filter(Boolean)
+                  .join(", ") ||
+                  item.agentName ||
+                  "—"}
+              </td>
+              <td>
+                <Status value={item.status} />
+              </td>
+              <td>{item.startedAt || "—"}</td>
+              <td>{item.summary || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function ReviewQueue({
+  ops,
+  vi,
+  onApprove,
+  onFeedback,
+}: {
+  ops: OpsItem[];
+  vi: boolean;
+  onApprove: (id: number) => Promise<void>;
+  onFeedback: (item: OpsItem, action: "failed" | "needs_revision") => void;
+}) {
+  const waiting = ops.filter((item) => item.status === "waiting_review");
+  return (
+    <div className={c("reviewList")}>
+      {waiting.length ? (
+        waiting.map((item) => (
+          <article key={item.id}>
+            <header>
+              <strong>{item.workflowName}</strong>
+              <Status value={item.status} />
+            </header>
+            <p>{item.summary}</p>
+            <footer>
+              <button
+                className={c("primaryButton")}
+                onClick={() => void onApprove(item.id)}
+              >
+                <Icon name="check" />
+                {vi ? "Duyệt" : "Approve"}
+              </button>
+              <button
+                className={c("buttonDanger")}
+                onClick={() => onFeedback(item, "failed")}
+              >
+                {vi ? "Không đạt" : "Fail"}
+              </button>
+              <button
+                className={c("buttonGhost")}
+                onClick={() => onFeedback(item, "needs_revision")}
+              >
+                {vi ? "Yêu cầu sửa" : "Request revision"}
+              </button>
+            </footer>
+          </article>
+        ))
+      ) : (
+        <div className={c("empty")}>
+          <Icon name="check" />
+          {vi ? "Không có kết quả chờ duyệt" : "No results awaiting review"}
+        </div>
+      )}
+    </div>
+  );
+}
+function OpsKanban({
+  ops,
+  vi,
+  onMove,
+}: {
+  ops: OpsItem[];
+  vi: boolean;
+  onMove: (id: number, status: string) => Promise<void>;
+}) {
+  const columns = [
+    "in_progress",
+    "waiting_review",
+    "needs_revision",
+    "approved",
+    "completed",
+    "failed",
+  ];
+  return (
+    <div className={c("kanban")}>
+      {columns.map((status) => (
+        <section
+          key={status}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            const id = Number(event.dataTransfer.getData("text/plain"));
+            if (id) void onMove(id, status);
+          }}
+        >
+          <header>
+            <Status value={status} />
+            <span>{ops.filter((item) => item.status === status).length}</span>
+          </header>
+          {ops
+            .filter((item) => item.status === status)
+            .map((item) => (
+              <article
+                draggable
+                onDragStart={(event) =>
+                  event.dataTransfer.setData("text/plain", String(item.id))
+                }
+                key={item.id}
+              >
+                <strong>{item.workflowName}</strong>
+                <p>{item.summary}</p>
+                <small>
+                  {item.agentName || (vi ? "Nhân viên AI" : "AI employee")}
+                </small>
+              </article>
+            ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+function WorkItems({
+  items,
+  agents,
+  vi,
+  onEdit,
+  onDelete,
+}: {
+  items: WorkItem[];
+  agents: AgentRecord[];
+  vi: boolean;
+  onEdit: (item: Partial<WorkItem>) => void;
+  onDelete: (item: WorkItem) => Promise<void>;
+}) {
+  return (
+    <>
+      <div className={c("sectionActions")}>
+        <button
+          className={c("primaryButton")}
+          onClick={() =>
+            onEdit({ title: "", status: "backlog", priority: "medium" })
+          }
+        >
+          + {vi ? "Công việc" : "Work item"}
+        </button>
+      </div>
+      <div className={c("workBoard")}>
+        {["backlog", "in_progress", "review", "done"].map((status) => (
+          <section key={status}>
+            <header>{status}</header>
+            {items
+              .filter((item) => item.status === status)
+              .map((item) => (
+                <article key={item.id}>
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                  <small>
+                    {agents.find((agent) => agent.id === item.assigned_agent_id)
+                      ?.name || (vi ? "Chưa phân công" : "Unassigned")}{" "}
+                    · {item.priority}
+                  </small>
+                  <footer>
+                    <button onClick={() => onEdit(item)}>
+                      <Icon name="edit" />
+                    </button>
+                    <button onClick={() => void onDelete(item)}>
+                      <Icon name="trash" />
+                    </button>
+                  </footer>
+                </article>
+              ))}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+function Knowledge({
+  docs,
+  vi,
+  onEdit,
+  onDelete,
+}: {
+  docs: KnowledgeDoc[];
+  vi: boolean;
+  onEdit: (doc: Partial<KnowledgeDoc>) => void;
+  onDelete: (doc: KnowledgeDoc) => Promise<void>;
+}) {
+  return (
+    <>
+      <div className={c("sectionActions")}>
+        <button
+          className={c("primaryButton")}
+          onClick={() => onEdit({ title: "", content: "", tags: "" })}
+        >
+          + {vi ? "Tài liệu" : "Document"}
+        </button>
+      </div>
+      <div className={c("documentList")}>
+        {docs.map((doc) => (
+          <article key={doc.id}>
+            <Icon name="book" />
+            <div>
+              <strong>{doc.title}</strong>
+              <small>{doc.tags || "—"}</small>
+              <p>{(doc.content || "").slice(0, 300)}</p>
+            </div>
+            <button onClick={() => onEdit(doc)}>
+              <Icon name="edit" />
+            </button>
+            <button onClick={() => void onDelete(doc)}>
+              <Icon name="trash" />
+            </button>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+}
+function ProjectDialog({
+  draft,
+  setDraft,
+  vi,
+  onSave,
+  onClose,
+}: {
+  draft: Partial<ProjectRecord>;
+  setDraft: (draft: Partial<ProjectRecord>) => void;
+  vi: boolean;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog
+      title={
+        draft.id
+          ? vi
+            ? "Sửa dự án"
+            : "Edit project"
+          : vi
+            ? "Tạo dự án"
+            : "Create project"
+      }
+      onClose={onClose}
+    >
+      <Field label={vi ? "Tên dự án" : "Project name"}>
+        <input
+          data-testid="project-name"
+          className={c("input")}
+          value={draft.name || ""}
+          onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+        />
+      </Field>
+      <Field label={vi ? "Mô tả" : "Description"}>
+        <textarea
+          className={c("textarea")}
+          rows={6}
+          value={draft.description || ""}
+          onChange={(event) =>
+            setDraft({ ...draft, description: event.target.value })
+          }
+        />
+      </Field>
+      <div className={c("formActions")}>
+        <button
+          data-testid="save-project"
+          className={c("primaryButton")}
+          onClick={() => void onSave()}
+        >
+          {vi ? "Lưu" : "Save"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+function WorkDialog({
+  draft,
+  setDraft,
+  agents,
+  vi,
+  onSave,
+  onClose,
+}: {
+  draft: Partial<WorkItem>;
+  setDraft: (draft: Partial<WorkItem>) => void;
+  agents: AgentRecord[];
+  vi: boolean;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog title={vi ? "Công việc" : "Work item"} onClose={onClose}>
+      <Field label={vi ? "Tiêu đề" : "Title"}>
+        <input
+          className={c("input")}
+          value={draft.title || ""}
+          onChange={(event) =>
+            setDraft({ ...draft, title: event.target.value })
+          }
+        />
+      </Field>
+      <Field label={vi ? "Mô tả" : "Description"}>
+        <textarea
+          className={c("textarea")}
+          value={draft.description || ""}
+          onChange={(event) =>
+            setDraft({ ...draft, description: event.target.value })
+          }
+        />
+      </Field>
+      <div className={c("formGrid")}>
+        <Field label={vi ? "Trạng thái" : "Status"}>
+          <select
+            className={c("select")}
+            value={draft.status || "backlog"}
+            onChange={(event) =>
+              setDraft({ ...draft, status: event.target.value })
+            }
+          >
+            {["backlog", "in_progress", "review", "done"].map((status) => (
+              <option key={status}>{status}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label={vi ? "Ưu tiên" : "Priority"}>
+          <select
+            className={c("select")}
+            value={draft.priority || "medium"}
+            onChange={(event) =>
+              setDraft({ ...draft, priority: event.target.value })
+            }
+          >
+            {["low", "medium", "high", "critical"].map((priority) => (
+              <option key={priority}>{priority}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label={vi ? "Nhân viên" : "Employee"}>
+        <select
+          className={c("select")}
+          value={draft.assigned_agent_id || ""}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              assigned_agent_id: Number(event.target.value) || null,
+            })
+          }
+        >
+          <option value="">—</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div className={c("formActions")}>
+        <button className={c("primaryButton")} onClick={() => void onSave()}>
+          {vi ? "Lưu" : "Save"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+function KnowledgeDialog({
+  draft,
+  setDraft,
+  vi,
+  onSave,
+  onClose,
+}: {
+  draft: Partial<KnowledgeDoc>;
+  setDraft: (draft: Partial<KnowledgeDoc>) => void;
+  vi: boolean;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog title={vi ? "Tài liệu" : "Document"} onClose={onClose}>
+      <Field label={vi ? "Tiêu đề" : "Title"}>
+        <input
+          className={c("input")}
+          value={draft.title || ""}
+          onChange={(event) =>
+            setDraft({ ...draft, title: event.target.value })
+          }
+        />
+      </Field>
+      <Field label="Tags">
+        <input
+          className={c("input")}
+          value={draft.tags || ""}
+          onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
+        />
+      </Field>
+      <Field label={vi ? "Nội dung" : "Content"}>
+        <textarea
+          className={c("textarea")}
+          rows={12}
+          value={draft.content || ""}
+          onChange={(event) =>
+            setDraft({ ...draft, content: event.target.value })
+          }
+        />
+      </Field>
+      <div className={c("formActions")}>
+        <button className={c("primaryButton")} onClick={() => void onSave()}>
+          {vi ? "Lưu" : "Save"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+function Summary({ value, label }: { value: number; label: string }) {
+  return (
+    <article className={c("summaryCard")}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </article>
+  );
+}
+function Status({ value }: { value: string }) {
+  return (
+    <span className={`${c("statusBadge")} ${c(`status_${value}`)}`}>
+      {value}
+    </span>
+  );
+}
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={c("field")}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}

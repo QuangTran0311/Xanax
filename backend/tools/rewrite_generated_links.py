@@ -1,7 +1,7 @@
 """One-off: viết lại các link /static/generated/xxx.png còn sót trong DB
 (workflow_outputs.output_content / edited_content) sang API archive-file, dựa
 vào run_info.json đã archive sẵn (tools/backfill_archive.py). Chạy trước khi
-xoá dashboard/static/generated, để lịch sử không bị vỡ ảnh trên UI.
+dọn kho `/static/generated` cũ, để lịch sử không bị vỡ ảnh trên UI.
 
 Chạy 1 lần: python tools/rewrite_generated_links.py
 """

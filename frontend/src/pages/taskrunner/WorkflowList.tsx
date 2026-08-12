@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "../../components/Icon";
+import { Markdown } from "../../components/Markdown";
 import type { ProjectSubtab } from "../hub/types";
 import { Modal } from "./Modal";
 import { workflowApi } from "./workflowApi";
@@ -60,7 +61,7 @@ function OutputReview({ output, onChange }: { output: WorkflowOutput; onChange: 
   };
   return <article className={c("output-review")} data-output-id={output.id}>
     <header><strong>Bước {output.step_order || 0} · {output.agent_name || "Hệ thống"}</strong><span>{output.status || "—"}</span></header>
-    {editing ? <textarea className={c("modal-input")} rows={7} value={content} onChange={(event) => setContent(event.target.value)} /> : <pre className={c("output-content")}>{content || "(chưa có nội dung)"}</pre>}
+    {editing ? <textarea className={c("modal-input")} rows={7} value={content} onChange={(event) => setContent(event.target.value)} /> : <div className={c("output-content")}><Markdown content={content || "(chưa có nội dung)"} /></div>}
     <textarea className={c("modal-input")} rows={2} placeholder="Ghi chú / phản hồi..." value={notes} onChange={(event) => setNotes(event.target.value)} onBlur={() => { if (!editing) void workflowApi.updateOutput(output.id, { notes }); }} />
     <div className={c("output-actions")}>
       <button className={`${c("wf-btn")} ${output.pass_fail === "pass" ? c("selected") : ""}`} onClick={() => void setPassFail("pass")}><Icon name="check" size={14} /> ĐẠT</button>

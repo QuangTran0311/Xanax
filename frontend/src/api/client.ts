@@ -14,9 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-function loginPath(): string {
-  return window.location.pathname.startsWith("/v2") ? "/v2/login" : "/login";
-}
+const loginPath = () => "/login";
 
 function redirectToLogin(): void {
   const target = loginPath();

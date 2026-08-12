@@ -2,7 +2,9 @@
 
 Xanax là hệ thống quản lý **nhân viên AI như một công ty**: tuyển (tạo agent), giao việc, xếp thành quy trình nhiều bước, họp bàn, nghiệm thu kết quả, và theo dõi chi phí token.
 
-Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend. Giao diện đang được chuyển dần từ vanilla JS sang **React + TypeScript**; đến Giai đoạn 3, trang đăng nhập, Workspace và Taskrunner React chạy song song với toàn bộ giao diện cũ.
+Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend và một SPA **React + TypeScript**. FastAPI phục vụ cả API, WebSocket và bản build frontend trên cùng cổng.
+
+### Chạy production
 
 ```powershell
 cd D:\xanax\backend
@@ -10,12 +12,20 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env        # sửa HUB_SECRET_KEY trước khi dùng thật
+
+cd D:\xanax\frontend
+npm install
+npm run build
+
+cd D:\xanax\backend
 python main.py
 ```
 
 Mặc định: `http://localhost:8000` → đăng nhập → `/hub`. API docs tại `/api/docs`.
 
-Frontend React khi phát triển chạy qua Vite và proxy cùng origin tới backend:
+### Chạy development
+
+Vite proxy `/api` và `/ws` tới FastAPI; chạy hai terminal:
 
 ```powershell
 # Terminal 1
@@ -28,7 +38,7 @@ npm install
 npm run dev
 ```
 
-Mở `http://localhost:5173/login`, `/v2/workspace` hoặc `/v2/taskrunner`. Bản build tạm được FastAPI phục vụ tại các route `/v2/*` này sau khi chạy `npm run build`; các route `/login`, `/hub`, `/workspace` và `/taskrunner` cũ vẫn giữ nguyên.
+Mở `http://localhost:5173/login`. Các route chính là `/hub`, `/workspace` và `/taskrunner`; không còn tiền tố tạm `/v2`.
 
 ---
 
@@ -65,7 +75,7 @@ Mở `http://localhost:5173/login`, `/v2/workspace` hoặc `/v2/taskrunner`. B�
 | Chi phí | `/hub/cost` | Thống kê token/chi phí, xuất báo cáo `.xlsx` |
 | Cài đặt | `/hub/settings` | Cấu hình chung |
 
-Ngoài `/hub` còn: `/workspace` (chat huấn luyện toàn màn hình), `/taskrunner` (quy trình toàn màn hình, cũng dùng nhúng iframe qua `?embed=1`).
+Ngoài `/hub` còn: `/workspace` (chat huấn luyện toàn màn hình) và `/taskrunner` (quy trình toàn màn hình). Ba màn hình này dùng chung component React với các tab tương ứng trong Hub, không qua iframe.
 
 ---
 
@@ -168,10 +178,10 @@ xanax/
 ├── backend/
 │   ├── main.py                  # uvicorn runner + banner + tự mở trình duyệt
 │   ├── hub/
-│   ├── server.py                # create_app(): routes, middleware, lifespan, static
-│   ├── config.py                # Pydantic Settings (env prefix HUB_)
-│   ├── database.py              # aiosqlite — toàn bộ DB operations + migration
-│   └── events.py                # event bus nội bộ
+│   │   ├── server.py            # API/WS + static build + SPA fallback
+│   │   ├── config.py            # Pydantic Settings (env prefix HUB_)
+│   │   ├── database.py          # aiosqlite — toàn bộ DB operations + migration
+│   │   └── events.py            # event bus nội bộ
 │   ├── api/
 │   ├── auth_guard.py            # gác xác thực /api/* và /ws/*
 │   ├── websocket.py             # /ws/chat
@@ -210,24 +220,21 @@ xanax/
 │   ├── mcp_servers/
 │   ├── image_cut.py             # MCP server cắt ảnh sản phẩm
 │   └── xanax_skills.py          # cầu nối MCP: phơi skill api/builtin cho CLI gói
-│   ├── dashboard/               # giao diện HTML cũ, giữ tới Giai đoạn 6
-│   ├── login.html · index.html · workspace.html · taskrunner.html
-│   ├── hub.html                 # khung SPA
-│   └── static/
-│       ├── hub.css              # ~83 KB — tách khỏi hub.html
-│       ├── hub.js               # ~239 KB — tách khỏi hub.html, nạp defer
-│       └── images/
 │   ├── tools/                   # builtin tools + script bảo trì
 │   ├── skills/                  # skill dạng prompt (markdown)
+│   ├── scripts/
+│   │   └── smoke_hub.py         # Playwright: 12 route + state + ảnh run cũ
 │   ├── tests/                   # test suite
-│   ├── data/                    # runtime: projects/, mcp-images/, .secret_key
+│   ├── data/                    # runtime: projects/, legacy-static/, mcp-images/
+│   │                            # và .secret_key (không commit)
 │   └── xanax.db                 # SQLite, tự tạo — 28 bảng
 ├── deliverables/
 ├── docs/
 ├── frontend/
+│   ├── public/images/           # ảnh thương hiệu, Vite chép nguyên vào dist/images
 │   ├── src/                     # React + TypeScript: API client, store, i18n, component, pages
 │   ├── package.json
-│   ├── vite.config.ts           # proxy /api, /ws và static/trang cũ tới :8000
+│   ├── vite.config.ts           # proxy /api và /ws tới :8000 khi dev
 │   └── dist/                    # bản build có hash, không commit
 └── README.md
 ```
@@ -370,15 +377,19 @@ python -m pytest tests/ -q      # 311 passed
 - [x] Mã hoá `api_key` / `token` khi lưu, che khi trả về API
 - [x] Nén gzip (CSS còn 17%, JS còn 24% kích thước gốc)
 - [x] Tách CSS/JS khỏi HTML, nạp `defer`
-- [x] 75 test tự động
+- [x] 311 test tự động
 
 Còn phải làm:
 - [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder trong `.env.example`)
-- [ ] Sau Giai đoạn 6: cho loader đọc `XANAX_SECRET_KEY` từ `backend/.env`; hiện khoá đã được ghim ở đó nhưng `core/secret_crypto.py` vẫn chỉ đọc process environment rồi fallback sang `backend/data/.secret_key`
 - [ ] `HUB_DEBUG=false` (đang `true` → uvicorn bật reload)
 - [ ] Dockerfile + reverse proxy + TLS
 - [ ] Chuyển sang Postgres nếu cần nhiều người dùng đồng thời
-- [ ] Hai script CDN (`marked`, `chart.js`) đang tải từ jsdelivr — mất mạng ngoài là mất biểu đồ và render markdown
+
+Sổ kỹ thuật sau Giai đoạn 6:
+- [ ] Cho loader đọc `XANAX_SECRET_KEY` từ `backend/.env`; hiện khoá đã được ghim ở đó nhưng `core/secret_crypto.py` vẫn chỉ đọc process environment rồi fallback sang `backend/data/.secret_key`
+- [x] `Settings.env_file` đã dùng đường dẫn tuyệt đối tới `backend/.env` từ trước Giai đoạn 1; không còn phụ thuộc thư mục đứng khi chạy
+- [ ] Tự host Google Fonts; `frontend/index.html` hiện vẫn tải font từ Internet
+- [ ] Sửa `auth_guard._deny()` để `websocket.accept()` trước khi đóng mã `1008`; hiện client chưa có phiên nhận HTTP 403 ở bước handshake
 
 ---
 

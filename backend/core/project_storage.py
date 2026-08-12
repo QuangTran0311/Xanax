@@ -4,7 +4,7 @@ trình/lần chạy để tra cứu về sau. Đây là bản lưu trữ song so
 này chỉ để archive/tải về.
 
 Ảnh sinh ra trong lúc chạy quy trình (core/image_gen.py) được ghi thẳng vào
-đây qua get_or_create_run_dir() — không còn lưu vào dashboard/static/generated
+đây qua get_or_create_run_dir() — không còn lưu vào kho `/static/generated`
 nữa. archive_workflow_run() chỉ ghi thêm phần text + run_info.json khi lượt
 chạy kết thúc, dùng chung đúng thư mục đó.
 
@@ -32,7 +32,7 @@ from core.slugify import slugify
 logger = logging.getLogger("xanax.project_storage")
 
 PROJECTS_DATA_DIR = Path(__file__).parent.parent / "data" / "projects"
-_DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"
+LEGACY_STATIC_DIR = Path(__file__).parent.parent / "data" / "legacy-static"
 
 _IMG_MD_RE = re.compile(r'!\[([^\]]*)\]\(((?:https?://|/)[^\s)]+)\)')
 _IMG_PATH_RE = re.compile(r'^(?:https?://|/)\S+\.(png|jpe?g|gif|webp)(\?\S*)?$', re.IGNORECASE)
@@ -111,7 +111,7 @@ def _resolve_local_static(url: str) -> Path | None:
     ngược lại (URL ngoài) trả về None."""
     if not url.startswith("/static/"):
         return None
-    return _DASHBOARD_DIR / Path(url.lstrip("/"))
+    return LEGACY_STATIC_DIR / Path(url.removeprefix("/static/"))
 
 
 def _own_archive_file(run_dir: Path, url: str) -> str | None:
@@ -197,7 +197,7 @@ def _archive_one_output(run_dir: Path, o: dict) -> dict:
                 shutil.copy2(src, img_dest)
                 entry["image_file"] = img_dest.name
                 # Trỏ lại link ảnh trong file text sang bản đã copy tại chỗ, để
-                # thư mục archive tự đủ (không phụ thuộc /static/generated cũ)
+                # thư mục archive tự đủ (không phụ thuộc kho /static/generated cũ)
                 content = content.replace(img_url, img_dest.name)
 
     text_dest = _unique_path(run_dir / f"{step_order:02d}_{agent_slug}.md")

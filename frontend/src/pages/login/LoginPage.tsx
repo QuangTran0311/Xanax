@@ -63,7 +63,7 @@ export function LoginPage() {
       await sessionApi.login({ username: cleanUsername, password });
       // Login is now a standalone route in the single React app. A normal
       // window navigation is correct; there is no parent frame to escape.
-      window.location.assign("/v2/hub");
+      window.location.assign("/hub");
     } catch (caught) {
       showError(
         caught instanceof ApiError
@@ -97,7 +97,7 @@ export function LoginPage() {
             <div className={styles["cards-row"]}>
               <div className={styles["card-antigravity"]}>
                 <div className={styles["card-img-wrap-a"]}>
-                  <img src="/static/images/antigravity.png" className={styles["card-img-a"]} alt="Antigravity" />
+                  <img src="/images/antigravity.png" className={styles["card-img-a"]} alt="Antigravity" />
                 </div>
                 <div className={styles["card-info"]}>
                   <div className={styles["card-name"]}>Antigravity</div>
@@ -116,7 +116,7 @@ export function LoginPage() {
               </div>
               <div className={styles["card-hermes"]}>
                 <div className={styles["card-img-wrap-h"]}>
-                  <img src="/static/images/hermes.png" className={styles["card-img-h"]} alt="Hermes Agent" />
+                  <img src="/images/hermes.png" className={styles["card-img-h"]} alt="Hermes Agent" />
                 </div>
                 <div className={styles["card-info"]}>
                   <div className={styles["card-name"]}>Hermes Agent</div>
@@ -143,7 +143,7 @@ export function LoginPage() {
           <div className={styles["form-wrap"]}>
             <div className={styles["form-header"]}>
               <div className={styles["form-eyebrow"]}>
-                <img src="/static/images/xanax.png" alt="Xanax" /> Xanax
+                <img src="/images/xanax.png" alt="Xanax" /> Xanax
               </div>
               <h1 className={styles["form-title"]}>Đăng nhập</h1>
               <p className={styles["form-sub"]}>Truy cập hệ thống quản lý</p>

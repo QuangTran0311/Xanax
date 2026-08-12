@@ -8,10 +8,6 @@ export default defineConfig({
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: false },
       "/ws": { target: "ws://localhost:8000", ws: true },
-      "/static": "http://localhost:8000",
-      "/hub": "http://localhost:8000",
-      "/workspace": "http://localhost:8000",
-      "/taskrunner": "http://localhost:8000",
     },
   },
 });

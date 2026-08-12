@@ -15,13 +15,12 @@ export function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/v2/login" element={<LoginPage />} />
-        <Route path="/v2/hub" element={<HubPage />} />
-        <Route path="/v2/hub/:tab/*" element={<HubPage />} />
-        <Route path="/v2/workspace" element={<WorkspacePage />} />
-        <Route path="/v2/taskrunner" element={<TaskrunnerPage />} />
-        <Route path="/v2/taskrunner/:taskId" element={<TaskrunnerPage />} />
-        <Route path="/v2" element={<Navigate to="/v2/login" replace />} />
+        <Route path="/hub" element={<HubPage />} />
+        <Route path="/hub/:tab/*" element={<HubPage />} />
+        <Route path="/workspace" element={<WorkspacePage />} />
+        <Route path="/taskrunner" element={<TaskrunnerPage />} />
+        <Route path="/taskrunner/:taskId" element={<TaskrunnerPage />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Suspense>

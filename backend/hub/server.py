@@ -7,10 +7,10 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 
@@ -20,25 +20,19 @@ from hub.events import EventType, event_bus
 console = Console()
 logger  = logging.getLogger("xanax.server")
 
-_dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dashboard")
 _frontend_dist_path = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-
-
-def _read_html(filename: str) -> str | None:
-    path = os.path.join(_dashboard_path, filename)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return None
 
 
 _NO_CACHE_HEADERS = {"Cache-Control": "no-store, must-revalidate"}
 
 
-def _html_response(html: str, status_code: int = 200) -> HTMLResponse:
-    # Trang dashboard sửa liên tục trong lúc phát triển — không cho trình duyệt/iframe
-    # cache lại bản cũ, tránh tình trạng đã sửa code nhưng vẫn thấy hành vi cũ.
-    return HTMLResponse(html, status_code=status_code, headers=_NO_CACHE_HEADERS)
+class _NoCacheStatic(StaticFiles):
+    """Static files served from a development build must never be stale."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.update(_NO_CACHE_HEADERS)
+        return response
 
 
 @asynccontextmanager
@@ -212,79 +206,17 @@ def create_app() -> FastAPI:
     app.include_router(ws_benchmark_router,                                tags=["WebSocket"])
     app.include_router(ws_workflow_router,                                 tags=["WebSocket"])
 
-    # ── Static files ──────────────────────────────────────────
-    if os.path.isdir(_dashboard_path):
-        static_path = os.path.join(_dashboard_path, "static")
-        if os.path.isdir(static_path):
-            app.mount("/static", StaticFiles(directory=static_path), name="static")
-    # React build (temporary Phase 1-5 route).
-    # Legacy pages remain the default until their React replacements are accepted.
-    # Vite emits hashed assets at /assets; /v2 serves the React shell in parallel.
+    # ── React production build ────────────────────────────────
+    # Hashed Vite assets may be cached in production. During local development,
+    # no-store avoids a stale build when testing FastAPI without the Vite server.
+    static_class = _NoCacheStatic if settings.debug else StaticFiles
     frontend_assets = _frontend_dist_path / "assets"
     if frontend_assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
+        app.mount("/assets", static_class(directory=frontend_assets), name="frontend-assets")
 
-    @app.get("/v2", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/v2/{path:path}", response_class=HTMLResponse, include_in_schema=False)
-    async def serve_react_build(path: str = ""):  # noqa: ARG001
-        index = _frontend_dist_path / "index.html"
-        if index.is_file():
-            return FileResponse(index, media_type="text/html", headers=_NO_CACHE_HEADERS)
-        return _html_response("<h1>React build not found</h1>", status_code=404)
-
-    # ── Auth helper ───────────────────────────────────────────
-    async def _is_authenticated(request: Request) -> bool:
-        from hub.database import COOKIE_NAME, validate_session
-        token = request.cookies.get(COOKIE_NAME)
-        if not token:
-            return False
-        return await validate_session(token) is not None
-
-    # ── Pages ─────────────────────────────────────────────────
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
-    async def serve_login(request: Request):
-        # If already logged in, skip login and go straight to hub
-        if await _is_authenticated(request):
-            return RedirectResponse(url="/hub", status_code=302)
-        html = _read_html("login.html")
-        if html:
-            return _html_response(html)
-        return _html_response("<h1>Login page not found</h1>", status_code=404)
-
-    @app.get("/workspace", response_class=HTMLResponse, include_in_schema=False)
-    async def serve_workspace(request: Request):
-        if not await _is_authenticated(request):
-            return RedirectResponse(url="/login", status_code=302)
-        html = _read_html("workspace.html")
-        if html:
-            return _html_response(html)
-        return _html_response("<h1>Workspace not found</h1>", status_code=404)
-
-    @app.get("/taskrunner", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/taskrunner/{workflow_id}", response_class=HTMLResponse, include_in_schema=False)
-    async def serve_taskrunner(request: Request, workflow_id: str = None):  # noqa: ARG001 (read client-side from location.pathname)
-        if not await _is_authenticated(request):
-            return RedirectResponse(url="/login", status_code=302)
-        html = _read_html("taskrunner.html")
-        if html:
-            return _html_response(html)
-        return _html_response("<h1>Task Runner not found</h1>", status_code=404)
-
-    _HUB_TABS = {"home", "agents", "skills", "tasks", "meeting", "train", "company-runner", "auto-runner", "runner", "model", "cost", "settings"}
-
-    @app.get("/hub", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/hub/{tab}", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/hub/{tab}/{subpath}", response_class=HTMLResponse, include_in_schema=False)
-    async def serve_hub(request: Request, tab: str = "agents", subpath: str = None):
-        if not await _is_authenticated(request):
-            return RedirectResponse(url="/login", status_code=302)
-        if tab not in _HUB_TABS:
-            return RedirectResponse(url="/hub", status_code=302)
-        html = _read_html("hub.html")
-        if html:
-            return _html_response(html)
-        return _html_response("<h1>Hub not found</h1>", status_code=404)
+    frontend_images = _frontend_dist_path / "images"
+    if frontend_images.is_dir():
+        app.mount("/images", static_class(directory=frontend_images), name="frontend-images")
 
     @app.get("/api", include_in_schema=False)
     async def api_root():
@@ -298,5 +230,21 @@ def create_app() -> FastAPI:
             "chat_online":   hermes_alive,
             "docs":          "/api/docs",
         }
+
+    # Keep this last. Known API/WS prefixes must never fall through to the SPA,
+    # otherwise a missing endpoint quietly returns index.html with HTTP 200.
+    @app.get("/{path:path}", response_class=HTMLResponse, include_in_schema=False)
+    async def serve_spa(path: str = ""):
+        if path == "api" or path.startswith("api/") or path == "ws" or path.startswith("ws/"):
+            raise HTTPException(status_code=404)
+
+        index = _frontend_dist_path / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html", headers=_NO_CACHE_HEADERS)
+        return HTMLResponse(
+            "<h1>React build not found</h1><p>Run npm run build in frontend/.</p>",
+            status_code=404,
+            headers=_NO_CACHE_HEADERS,
+        )
 
     return app
