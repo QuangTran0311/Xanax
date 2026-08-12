@@ -1296,6 +1296,17 @@ Chừa nguyên nhóm màu trong sidebar và ô xem trước theme — sidebar lu
 
 # PHASE 6 — Biểu đồ trang Chi phí
 
+## 6.0. Điều kiện tiên quyết — giữ token màu và bộ ba RGB đồng bộ
+
+Trước khi làm Phase 6, `--accent-rgb` của theme Sáng đã được sửa từ
+`47, 140, 104` thành `44, 132, 98` để khớp với `--accent: #2c8462`. Bộ ba cũ
+thuộc về `#2f8c68`, là màu đã bị loại khi accent được làm đậm nhưng lần đó
+token RGB đi kèm đã bị bỏ quên.
+
+**Cảnh báo cho các lần sửa sau:** khi đổi một token màu có bộ ba RGB đi kèm,
+phải đổi cả hai trong cùng một lần sửa và quy đổi hex → RGB để đối chiếu. Mọi
+chỗ dùng `rgba(var(--*-rgb), alpha)` phụ thuộc trực tiếp vào tính đồng bộ này.
+
 ## 6.1. Bối cảnh
 
 `frontend/src/pages/hub/CostPage.tsx` dòng 53-54:

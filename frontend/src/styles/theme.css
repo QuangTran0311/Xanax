@@ -107,7 +107,8 @@ body.light {
   --info: #2f6fb8;
   --purple-tone: #7c5cd6;
 
-  --accent-rgb: 47, 140, 104;
+  /* Phải luôn khớp với --accent ở trên; từng bị bỏ quên khi --accent được làm đậm. */
+  --accent-rgb: 44, 132, 98;
   --danger-rgb: 189, 80, 72;
   --warning-rgb: 173, 118, 40;
   --info-rgb: 47, 111, 184;

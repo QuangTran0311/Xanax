@@ -5,6 +5,7 @@ import { Doughnut, Line } from "react-chartjs-2";
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
 import { useLanguage } from "../../store/language";
+import { useTheme } from "../../store/theme";
 import { useHub } from "./HubContext";
 import { hubText } from "./i18n";
 import type { CostReport, CostRow } from "./types";
@@ -21,7 +22,7 @@ function formatDate(value: string): string { const [year, month, day] = value.sp
 function money(totals: Record<string, number> = {}): string { const entries = Object.entries(totals); return entries.length ? entries.map(([currency, value]) => `${Number(value).toFixed(4)} ${currency}`).join(" · ") : "0"; }
 
 export function CostPage() {
-  const { language } = useLanguage(); const { toast } = useHub();
+  const { language } = useLanguage(); const { theme } = useTheme(); const { toast } = useHub();
   const [period, setPeriod] = useState<Period>("day"); const [report, setReport] = useState<CostReport | null>(null);
   const [overview, setOverview] = useState<CostOverview | null>(null); const [loading, setLoading] = useState(true);
   const [showTokens, setShowTokens] = useState(false); const [expanded, setExpanded] = useState<string | null>(null);
@@ -50,8 +51,41 @@ export function CostPage() {
     return Array.from(result.entries());
   }, [report]);
   const byModel = useMemo(() => { const result: Record<string, number> = {}; for (const row of report?.rows || []) result[row.name] = (result[row.name] || 0) + Number(row.estimated_cost || 0); return result; }, [report]);
-  const trendData = { labels: buckets.map(([, item]) => item.from === item.to ? formatDate(item.from) : `${formatDate(item.from)} → ${formatDate(item.to)}`), datasets: [{ label: hubText(language, "cost.trend"), data: buckets.map(([, item]) => Number(item.cost.toFixed(4))), borderColor: "#5b8f7f", backgroundColor: "rgba(91,143,127,.18)", tension: .35, fill: true }] };
-  const modelData = { labels: Object.keys(byModel), datasets: [{ data: Object.values(byModel), backgroundColor: ["#5b8f7f", "#a78bfa", "#e0935a", "#6fa8d6", "#d9695c", "#e0b265"] }] };
+  // Chart.js vẽ lên canvas nên không đọc được CSS var(); đổi token màu trong theme.css thì phải đổi các bản sao này cùng lúc.
+  const chartColors = theme === "dark"
+    ? ["#52d6a0", "#a78bfa", "#d7a95e", "#5b9df0", "#e27b6f", "#6fe6b5"]
+    : ["#2c8462", "#7c5cd6", "#ad7628", "#2f6fb8", "#bd5048", "#237454"];
+  const trendData = { labels: buckets.map(([, item]) => item.from === item.to ? formatDate(item.from) : `${formatDate(item.from)} → ${formatDate(item.to)}`), datasets: [{ label: hubText(language, "cost.trend"), data: buckets.map(([, item]) => Number(item.cost.toFixed(4))), borderColor: chartColors[0], backgroundColor: theme === "dark" ? "rgba(82,214,160,.18)" : "rgba(44,132,98,.18)", tension: .35, fill: true }] };
+  const modelData = { labels: Object.keys(byModel), datasets: [{ data: Object.values(byModel), backgroundColor: chartColors, borderColor: theme === "dark" ? "#111d1a" : "#fffefa", borderWidth: 2 }] };
+  const chartOptions = useMemo(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 280 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: theme === "dark" ? "#172723" : "#173b30",
+          padding: 10,
+          cornerRadius: 8,
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: theme === "dark" ? "#9daea8" : "#5f6d67", font: { size: 10 } },
+        },
+        y: {
+          beginAtZero: true,
+          border: { display: false },
+          grid: { color: theme === "dark" ? "rgba(157,174,168,.12)" : "rgba(62,84,75,.1)" },
+          ticks: { color: theme === "dark" ? "#9daea8" : "#5f6d67", font: { size: 10 } },
+        },
+      },
+    }),
+    [theme],
+  );
   const toggleBucket = async (key: string, date: string) => {
     if (expanded === key) { setExpanded(null); return; }
     setExpanded(key); if (period !== "day" || calls[date]) return;
@@ -69,7 +103,7 @@ export function CostPage() {
     <div className={c("toolbar")}><div className={c("segmented")}>{periods.map(([key, label]) => <button key={key} className={period === key ? c("selected") : ""} onClick={() => { setPeriod(key); setExpanded(null); }}>{label}</button>)}</div><label className={c("checkLabel")}><input type="checkbox" checked={showTokens} onChange={(event) => setShowTokens(event.target.checked)} />{hubText(language, "cost.show_tokens")}</label><span className={c("range")}>{report ? `${formatDate(report.date_from)} → ${formatDate(report.date_to)}` : ""}</span></div>
     {loading ? <div className={c("loading")}><Icon name="sync" />{hubText(language, "common.loading")}</div> : <>
       <section className={c("costSummary")}><Summary label={language === "vi" ? "Hôm nay" : "Today"} value={money(overview?.today.totals)} /><Summary label={language === "vi" ? "Tuần này" : "This week"} value={money(overview?.this_week.totals)} /><Summary label={language === "vi" ? "Tháng này" : "This month"} value={money(overview?.this_month.totals)} /><Summary label={language === "vi" ? "Từ trước đến giờ" : "All time"} value={money(overview?.all_time)} /></section>
-      <section className={c("chartGrid")}><article className={c("panel")}><h2>{hubText(language, "cost.trend")}</h2><div className={c("chartBox")}><Line data={trendData} options={{ responsive: true, maintainAspectRatio: false }} /></div></article><article className={c("panel")}><h2>{hubText(language, "cost.by_model")}</h2><div className={c("chartBox")}><Doughnut data={modelData} options={{ responsive: true, maintainAspectRatio: false }} /></div></article></section>
+      <section className={c("chartGrid")}><article className={c("panel")}><h2>{hubText(language, "cost.trend")}</h2><div className={c("chartBox")}><Line data={trendData} options={chartOptions} /></div></article><article className={c("panel")}><h2>{hubText(language, "cost.by_model")}</h2><div className={c("chartBox")}><Doughnut data={modelData} options={chartOptions} /></div></article></section>
       <article className={c("panel")}><h2>{hubText(language, "cost.details")}</h2><div className={c("tableScroll")}><table className={c("dataTable")}><thead><tr><th>{language === "vi" ? "Kỳ" : "Period"}</th><th>{language === "vi" ? "Lượt gọi" : "Calls"}</th>{showTokens ? <><th>Input</th><th>Cache</th><th>Output</th></> : null}<th>{language === "vi" ? "Chi phí" : "Cost"}</th></tr></thead><tbody>{buckets.length ? buckets.map(([key, item]) => <CostBucket key={key} bucketKey={key} item={item} open={expanded === key} period={period} calls={calls[item.from]} showTokens={showTokens} onToggle={() => void toggleBucket(key, item.from)} />) : <tr><td colSpan={showTokens ? 6 : 3}>{hubText(language, "common.empty")}</td></tr>}</tbody></table></div></article>
     </>}
   </div>;

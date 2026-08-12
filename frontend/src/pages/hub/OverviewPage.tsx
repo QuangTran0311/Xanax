@@ -194,13 +194,13 @@ export function OverviewPage() {
         x: {
           grid: { display: false },
           border: { display: false },
-          ticks: { color: theme === "dark" ? "#9daea8" : "#66746e", font: { size: 10 } },
+          ticks: { color: theme === "dark" ? "#9daea8" : "#5f6d67", font: { size: 10 } },
         },
         y: {
           beginAtZero: true,
           border: { display: false },
           grid: { color: theme === "dark" ? "rgba(157,174,168,.12)" : "rgba(62,84,75,.1)" },
-          ticks: { color: theme === "dark" ? "#9daea8" : "#66746e", font: { size: 10 } },
+          ticks: { color: theme === "dark" ? "#9daea8" : "#5f6d67", font: { size: 10 } },
         },
       },
     }),
