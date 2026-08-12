@@ -24,12 +24,16 @@ ENV/
 *.sqlite
 *.sqlite3
 
-# Workflow run archives (generated per-project results, see core/project_storage.py)
-data/
+# Workflow run archives (generated per-project results, see backend/core/project_storage.py)
+backend/data/
 
-# Khoá mã hoá secret của skill (core/secret_crypto.py) — đã nằm trong data/ ở trên
+# Khoá mã hoá secret của skill (backend/core/secret_crypto.py) — đã nằm trong data/ ở trên
 # nhưng ghi tường minh vì commit nhầm file này là lộ toàn bộ token đã mã hoá.
-data/.secret_key
+backend/data/.secret_key
+
+# Frontend build output (introduced in the React migration)
+frontend/node_modules/
+frontend/dist/
 
 # IDE
 .idea/

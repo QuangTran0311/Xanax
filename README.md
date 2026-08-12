@@ -2,10 +2,10 @@
 
 Xanax là hệ thống quản lý **nhân viên AI như một công ty**: tuyển (tạo agent), giao việc, xếp thành quy trình nhiều bước, họp bàn, nghiệm thu kết quả, và theo dõi chi phí token.
 
-Chạy hoàn toàn trên máy cá nhân (Windows), viết bằng **FastAPI + SQLite + vanilla JS**, gọi LLM qua bất kỳ endpoint nào tương thích OpenAI.
+Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend. Giao diện đang được chuyển dần từ vanilla JS sang **React + TypeScript**; trong Giai đoạn 1, trang đăng nhập React chạy song song với toàn bộ giao diện cũ.
 
 ```powershell
-cd D:\xanax
+cd D:\xanax\backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -14,6 +14,21 @@ python main.py
 ```
 
 Mặc định: `http://localhost:8000` → đăng nhập → `/hub`. API docs tại `/api/docs`.
+
+Frontend React khi phát triển chạy qua Vite và proxy cùng origin tới backend:
+
+```powershell
+# Terminal 1
+cd D:\xanax\backend
+python main.py
+
+# Terminal 2
+cd D:\xanax\frontend
+npm install
+npm run dev
+```
+
+Mở `http://localhost:5173/login`. Bản build tạm được FastAPI phục vụ tại `/v2/login` sau khi chạy `npm run build`; các route `/login`, `/hub`, `/workspace` và `/taskrunner` cũ vẫn giữ nguyên.
 
 ---
 
@@ -72,7 +87,7 @@ Có xử lý riêng cho Facebook Page: tự đổi sang `/photos` khi bài đăn
 ```
 Skill "cat_anh_san_pham"  (type: mcp)
   ├─ transport: stdio
-  ├─ target: <python.exe venv rembg> d:\xanax\mcp_servers\image_cut.py
+  ├─ target: <python.exe venv rembg> d:\xanax\backend\mcp_servers\image_cut.py
   └─ tools: ["cut_product", "cut_product_batch"]   ← chọn từng tool, không phải all-or-nothing
 ```
 
@@ -81,10 +96,11 @@ Chi tiết đáng lưu ý:
 - **Đổi lựa chọn tool không cần kết nối lại** — chỉ đăng ký lại registry (0.01s thay vì ~7s).
 - `tools: []` (bỏ chọn hết) khác với không có khoá `tools` (lấy tất cả). Đây là phân biệt cố ý.
 - Kết nối được giữ bền bởi một supervisor task; `mcp_manager.close_all()` chạy khi server tắt.
-- Tool trả về ảnh (`ImageContent`) được ghi ra `data/mcp-images/YYYYMMDD/` và trả về đường dẫn file.
+- Tool trả về ảnh (`ImageContent`) được ghi ra `backend/data/mcp-images/YYYYMMDD/` và trả về đường dẫn file.
 - Tiền tố tên tool do backend sinh (`core/slugify.py`, có bóc dấu tiếng Việt) và trả về qua `GET /api/tools/mcp/status` — **frontend không được tự slugify lại**.
+- Sau khi dời backend, cập nhật target tuyệt đối trong DB bằng `python tools/migrate_mcp_server_paths.py` để xem trước, rồi thêm `--apply` để backup và ghi.
 
-### MCP server có sẵn: `mcp_servers/image_cut.py`
+### MCP server có sẵn: `backend/mcp_servers/image_cut.py`
 
 Cắt ảnh sản phẩm: tách nền → cắt sát viền → chừa lề → đưa về tỉ lệ khung bài đăng.
 
@@ -135,7 +151,7 @@ enc:v1:<base64(nonce || ciphertext)>
 SECRET_CONFIG_KEYS = ("api_key", "token")
 ```
 
-- Khoá lấy từ `XANAX_SECRET_KEY`, không có thì tự sinh vào `data/.secret_key`.
+- Khoá lấy từ `XANAX_SECRET_KEY`, không có thì tự sinh vào `backend/data/.secret_key`.
 - API trả về giá trị đã che (`••••••••`); khi lưu, giá trị che được merge lại thành giá trị cũ — sửa skill không làm mất token.
 - Đây là bảo vệ **dữ liệu khi nằm yên**, không phải bảo vệ quyền truy cập API. Ai qua được `auth_guard` vẫn dùng được skill.
 - Di trú dữ liệu cũ: `python tools/encrypt_existing_secrets.py` (mặc định chỉ xem trước, `--apply` để ghi, tự backup DB và kiểm tra giải mã khớp).
@@ -149,13 +165,14 @@ TTL 8h · idle timeout 15 phút (client) · purge cron 30 phút · cookie `xanax
 
 ```
 xanax/
-├── main.py                      # uvicorn runner + banner + tự mở trình duyệt
-├── hub/
+├── backend/
+│   ├── main.py                  # uvicorn runner + banner + tự mở trình duyệt
+│   ├── hub/
 │   ├── server.py                # create_app(): routes, middleware, lifespan, static
 │   ├── config.py                # Pydantic Settings (env prefix HUB_)
 │   ├── database.py              # aiosqlite — toàn bộ DB operations + migration
 │   └── events.py                # event bus nội bộ
-├── api/
+│   ├── api/
 │   ├── auth_guard.py            # gác xác thực /api/* và /ws/*
 │   ├── websocket.py             # /ws/chat
 │   ├── websocket_training.py    # /ws/training — live context + Xanax tool use
@@ -170,7 +187,7 @@ xanax/
 │   └── routes/                  # 20 module: auth, agents, skills_mgmt, projects,
 │                                # meetings, workflow, model_pool, knowledge, ops,
 │                                # assets, departments, tools, ...
-├── core/
+│   ├── core/
 │   ├── mcp_client.py            # MCP client: stdio/http/sse, chọn tool, ảnh
 │   ├── skill_tools.py           # skill type "api" → tool động
 │   ├── secret_crypto.py         # AES-256-GCM cho api_key/token
@@ -190,28 +207,36 @@ xanax/
 │   ├── slugify.py               # slug có bóc dấu tiếng Việt (nguồn duy nhất)
 │   └── hermes/                  # framework agent nội bộ: agent, planner,
 │                                # memory, context, tool_registry
-├── mcp_servers/
+│   ├── mcp_servers/
 │   ├── image_cut.py             # MCP server cắt ảnh sản phẩm
 │   └── xanax_skills.py          # cầu nối MCP: phơi skill api/builtin cho CLI gói
-├── dashboard/
+│   ├── dashboard/               # giao diện HTML cũ, giữ tới Giai đoạn 6
 │   ├── login.html · index.html · workspace.html · taskrunner.html
 │   ├── hub.html                 # khung SPA
 │   └── static/
 │       ├── hub.css              # ~83 KB — tách khỏi hub.html
 │       ├── hub.js               # ~239 KB — tách khỏi hub.html, nạp defer
 │       └── images/
-├── tools/                       # builtin tools + script bảo trì
-├── skills/                      # skill dạng prompt (markdown)
-├── tests/                       # 75 test
-├── data/                        # runtime: projects/, mcp-images/, .secret_key
-└── xanax.db                     # SQLite, tự tạo — 28 bảng
+│   ├── tools/                   # builtin tools + script bảo trì
+│   ├── skills/                  # skill dạng prompt (markdown)
+│   ├── tests/                   # test suite
+│   ├── data/                    # runtime: projects/, mcp-images/, .secret_key
+│   └── xanax.db                 # SQLite, tự tạo — 28 bảng
+├── deliverables/
+├── docs/
+├── frontend/
+│   ├── src/                     # React + TypeScript: API client, store, i18n, component, pages
+│   ├── package.json
+│   ├── vite.config.ts           # proxy /api, /ws và static/trang cũ tới :8000
+│   └── dist/                    # bản build có hash, không commit
+└── README.md
 ```
 
 ---
 
 ## Database — 28 bảng
 
-**File:** `hub/database.py` (schema + migration tự chạy lúc startup)
+**File:** `backend/hub/database.py` (schema + migration tự chạy lúc startup)
 
 ```
 AUTH        users · sessions
@@ -264,7 +289,7 @@ Mỗi tin nhắn tới Xanax đều kèm snapshot DB tươi (`_build_live_contex
 
 **Trong phòng họp**, chỉ Xanax được kích hoạt quy trình. `_is_workflow_command()` nhận diện câu lệnh chạy quy trình (cố ý bắt rộng) và chặn định tuyến tắt về nhân viên — nếu không, lần gọi thứ hai sẽ bị nhân viên "trả lời lại" bằng kết quả bịa thay vì thật sự chạy. Prompt của nhân viên cũng nói rõ họ không có quyền này.
 
-**Lưu trữ:** mỗi lần chạy được archive ra `data/projects/<dự_án>/<quy_trình>/<yyyymmdd_hhmmss>/` — ảnh ghi thẳng vào đó lúc sinh, text + `run_info.json` ghi thêm khi kết thúc. DB vẫn là nguồn hiển thị chính.
+**Lưu trữ:** mỗi lần chạy được archive ra `backend/data/projects/<dự_án>/<quy_trình>/<yyyymmdd_hhmmss>/` — ảnh ghi thẳng vào đó lúc sinh, text + `run_info.json` ghi thêm khi kết thúc. DB vẫn là nguồn hiển thị chính.
 
 ---
 
@@ -330,7 +355,8 @@ CLI trả về số token thật trong sự kiện kết thúc, nên trang Chi p
 ## Kiểm thử
 
 ```powershell
-python -m pytest tests/ -q      # 159 passed
+cd D:\xanax\backend
+python -m pytest tests/ -q      # 311 passed
 ```
 
 `tests/test_api.py` có `anon_client` (không đăng nhập) và `client` (tự tạo rồi xoá user tạm) — `TestAuthGuard` kiểm tra đúng cả hai chiều: endpoint bị chặn khi không có phiên, và chạy được khi có.
@@ -348,7 +374,7 @@ python -m pytest tests/ -q      # 159 passed
 
 Còn phải làm:
 - [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder trong `.env.example`)
-- [ ] Đặt `XANAX_SECRET_KEY` cố định, đừng để tự sinh trên server
+- [ ] Sau Giai đoạn 6: cho loader đọc `XANAX_SECRET_KEY` từ `backend/.env`; hiện khoá đã được ghim ở đó nhưng `core/secret_crypto.py` vẫn chỉ đọc process environment rồi fallback sang `backend/data/.secret_key`
 - [ ] `HUB_DEBUG=false` (đang `true` → uvicorn bật reload)
 - [ ] Dockerfile + reverse proxy + TLS
 - [ ] Chuyển sang Postgres nếu cần nhiều người dùng đồng thời

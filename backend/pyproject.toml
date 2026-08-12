@@ -7,7 +7,7 @@ name = "xanax"
 version = "0.1.0"
 description = "Xanax Hub Server – Multi-Agent Orchestration Platform powered by Hermes Agent"
 authors = [{ name = "Xanax Team" }]
-readme = "README.md"
+readme = "../README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 keywords = ["agent", "ai", "hub", "fastapi", "orchestration"]

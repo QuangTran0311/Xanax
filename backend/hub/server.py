@@ -5,11 +5,12 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from rich.console import Console
 
@@ -20,6 +21,7 @@ console = Console()
 logger  = logging.getLogger("xanax.server")
 
 _dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dashboard")
+_frontend_dist_path = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def _read_html(filename: str) -> str | None:
@@ -215,6 +217,20 @@ def create_app() -> FastAPI:
         static_path = os.path.join(_dashboard_path, "static")
         if os.path.isdir(static_path):
             app.mount("/static", StaticFiles(directory=static_path), name="static")
+    # React build (temporary Phase 1-5 route).
+    # Legacy pages remain the default until their React replacements are accepted.
+    # Vite emits hashed assets at /assets; /v2 serves the React shell in parallel.
+    frontend_assets = _frontend_dist_path / "assets"
+    if frontend_assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend-assets")
+
+    @app.get("/v2", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/v2/{path:path}", response_class=HTMLResponse, include_in_schema=False)
+    async def serve_react_build(path: str = ""):  # noqa: ARG001
+        index = _frontend_dist_path / "index.html"
+        if index.is_file():
+            return FileResponse(index, media_type="text/html", headers=_NO_CACHE_HEADERS)
+        return _html_response("<h1>React build not found</h1>", status_code=404)
 
     # ── Auth helper ───────────────────────────────────────────
     async def _is_authenticated(request: Request) -> bool:

@@ -2,14 +2,19 @@
 Hub Server Configuration – Pydantic Settings
 """
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+_DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(_BACKEND_DIR / 'xanax.db').as_posix()}"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         env_prefix="HUB_",
         case_sensitive=False,
@@ -32,7 +37,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     # Database
-    database_url: str = "sqlite+aiosqlite:///./xanax.db"
+    database_url: str = _DEFAULT_DATABASE_URL
 
     # Hermes Agent (internal framework)
     hermes_max_iterations: int = 10
