@@ -114,7 +114,7 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
 }
 .wf-btn svg{width:clamp(10px,2.6cqw,12px);height:clamp(10px,2.6cqw,12px);flex-shrink:0}
 .wf-btn:hover{border-color:var(--border2);color:var(--text);background:var(--surface3)}
-.wf-btn.primary{background:var(--cyan);border-color:var(--cyan);color:#04141a;font-weight:700}
+.wf-btn.primary{background:var(--cyan);border-color:var(--cyan);color:var(--on-accent);font-weight:700}
 .wf-btn.primary:hover{box-shadow:0 4px 14px rgba(var(--cyan-rgb),.3)}
 .wf-btn.icon-only{padding:7px 9px;flex:0 0 auto}
 .wf-btn.icon-only.danger:hover{border-color:var(--red);color:var(--red);background:rgba(var(--red-rgb),.08)}
@@ -127,7 +127,7 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
 :global(#add-workflow-btn){
   position:absolute;right:24px;bottom:24px;
   display:flex;align-items:center;gap:8px;
-  background:var(--cyan);color:#04141a;font-weight:700;font-size:calc(13px * var(--fs-scale));
+  background:var(--cyan);color:var(--on-accent);font-weight:700;font-size:calc(13px * var(--fs-scale));
   border:none;border-radius:999px;padding:12px 20px;cursor:pointer;
   box-shadow:0 6px 20px rgba(var(--cyan-rgb),.3);transition:all .15s;
   font-family:inherit;
@@ -174,7 +174,7 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
 }
 .editor-btn svg{width:14px;height:14px}
 .editor-btn:hover{border-color:var(--cyan);color:var(--text)}
-.editor-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.editor-btn.primary{background:var(--blue);border-color:var(--blue);color:var(--on-info);font-weight:700}
 .editor-btn.primary:hover{box-shadow:0 4px 14px rgba(var(--blue-rgb),.4)}
 
 /* ── Editor body layout ── */
@@ -324,9 +324,9 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
 .modal-actions{display:flex;justify-content:flex-end;gap:8px}
 .modal-btn{background:none;border:1px solid var(--border2);color:var(--text2);font-size:calc(12.5px * var(--fs-scale));font-weight:500;border-radius:8px;padding:8px 16px;cursor:pointer;font-family:inherit;transition:all .15s}
 .modal-btn:hover{border-color:var(--cyan);color:var(--text)}
-.modal-btn.danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
+.modal-btn.danger{background:var(--red);border-color:var(--red);color:var(--on-danger);font-weight:700}
 .modal-btn.danger:hover{box-shadow:0 4px 14px rgba(var(--red-rgb),.4)}
-.modal-btn.primary{background:var(--cyan);border-color:var(--cyan);color:#fff;font-weight:700}
+.modal-btn.primary{background:var(--cyan);border-color:var(--cyan);color:var(--on-accent);font-weight:700}
 .modal-input{
   width:100%;box-sizing:border-box;resize:vertical;min-height:96px;
   background:var(--surface2);border:1px solid var(--border2);border-radius:8px;

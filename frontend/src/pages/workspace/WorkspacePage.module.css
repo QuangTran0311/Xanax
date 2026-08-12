@@ -129,7 +129,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .btn-new {
   background: var(--cyan);
   border: none;
-  color: #fff;
+  color: var(--on-accent);
   width: 26px;
   height: 26px;
   border-radius: 6px;
@@ -250,7 +250,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .sdot.idle { background: var(--status-idle); }
 .msg-user .msg-avatar {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .msg-assistant .msg-avatar {
   background: var(--mint);
@@ -383,7 +383,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   background: var(--cyan);
   border: none;
   border-radius: 10px;
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -602,7 +602,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   background: var(--cyan);
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: var(--on-accent);
   font-family: inherit;
   font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
@@ -635,7 +635,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .cp-title {
   font-size:calc(15px * var(--fs-scale));
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
 }
 .cp-body {
   font-size:calc(13px * var(--fs-scale));
@@ -657,10 +657,10 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .cp-btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
 .cp-btn-confirm {
   padding: 8px 20px;
-  background: #ef4444;
+  background: var(--danger);
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: var(--on-danger);
   font-family: inherit;
   font-size:calc(13px * var(--fs-scale));
   font-weight: 600;
@@ -710,7 +710,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   background: none;
   border: 1px solid rgba(var(--red-rgb),0.2);
   border-radius: 8px;
-  color: #ef4444;
+  color: var(--danger);
   font-family: inherit;
   font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
@@ -781,7 +781,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   background: var(--cyan);
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: var(--on-accent);
   font-family: inherit;
   font-size:calc(13px * var(--fs-scale));
   font-weight: 600;

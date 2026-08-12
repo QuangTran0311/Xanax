@@ -45,6 +45,8 @@
   --danger: #e27b6f;
   /* Chữ trắng trên nút đỏ tối chỉ 2.88:1; gần-đen đạt 6.60:1 */
   --on-danger: #1a0d0b;
+  /* Chữ trắng trên nút xanh dương tối chỉ 2.79:1; gần-đen đạt trên 7:1 */
+  --on-info: #06121f;
   --warning: #d7a95e;
   --info: #5b9df0;
   --purple-tone: #a78bfa;
@@ -100,6 +102,7 @@ body.light {
   --on-accent: #ffffff;
   --danger: #bd5048;
   --on-danger: #ffffff;
+  --on-info: #ffffff;
   --warning: #ad7628;
   --info: #2f6fb8;
   --purple-tone: #7c5cd6;

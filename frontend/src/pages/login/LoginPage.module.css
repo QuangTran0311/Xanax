@@ -133,14 +133,14 @@
     .submit-btn {
       width: 100%; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
       background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm);
-      color: #fff; font: 700 14px 'Quicksand', sans-serif; font-size: calc(14px * var(--fs-scale)); letter-spacing: .04em;
+      color: var(--on-accent); font: 700 14px 'Quicksand', sans-serif; font-size: calc(14px * var(--fs-scale)); letter-spacing: .04em;
       cursor: pointer; transition: filter .2s, transform .2s;
     }
     .submit-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
     .submit-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
     .spinner {
-      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35);
-      border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+      width: 16px; height: 16px; border: 2px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
+      border-top-color: var(--on-accent); border-radius: 50%; animation: spin .7s linear infinite;
     }
     .panel-footer { position: absolute; bottom: 28px; color: var(--ink-muted); font-size:calc(11px * var(--fs-scale)); text-align: center; letter-spacing: .04em; }
     .page-footer {
