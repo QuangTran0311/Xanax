@@ -50,13 +50,20 @@ export async function api<TResponse>(
 ): Promise<TResponse> {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  const isFormData = body instanceof FormData;
+  if (!isFormData) {
+    headers.set("Content-Type", "application/json");
+  }
 
   const response = await fetch(`${API_PREFIX}${normalized}`, {
     ...init,
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined
+      ? undefined
+      : isFormData
+        ? body
+        : JSON.stringify(body),
   });
 
   if (response.status === 401 && normalized !== "/auth/login") {
@@ -82,6 +89,8 @@ export async function api<TResponse>(
 export const apiClient = {
   get: <TResponse>(path: string, init?: RequestInit) => api<TResponse>("GET", path, undefined, init),
   post: <TResponse>(path: string, body?: unknown, init?: RequestInit) =>
+    api<TResponse>("POST", path, body, init),
+  postForm: <TResponse>(path: string, body: FormData, init?: RequestInit) =>
     api<TResponse>("POST", path, body, init),
   put: <TResponse>(path: string, body?: unknown, init?: RequestInit) =>
     api<TResponse>("PUT", path, body, init),
