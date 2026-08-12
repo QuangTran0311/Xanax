@@ -42,6 +42,31 @@ Có ba nhóm mã hex trông "cần dọn" nhưng thực ra là **cố ý**. Đ�
 | Ô xem trước theme | `.themePreviewLight`, `.themePreviewDark` (`#f4eee6 #fff #221e1a #2c2721`) | Đây là **mẫu màu minh hoạ** trong trang Cài đặt. Chúng phải trông giống theme mà chúng đại diện, bất kể theme đang bật. |
 | Icon trên node | `TaskrunnerPage.module.css` `.flow-node .node-icon`, `.pick-node-item .node-icon`, `.inspector-header .node-icon`, `.se-card-icon`, `.editor-logo`, `.flow-node.node-running::before` (`#fff`) | Nền của các phần tử này do inline style đặt theo loại node, luôn là màu đậm bão hoà. |
 
+### 0.3-bis. ⚠ SỐ DÒNG TRONG TÀI LIỆU NÀY LÀ THAM KHẢO, KHÔNG PHẢI ĐỊA CHỈ
+
+Mọi số dòng trong các bảng "Dòng | Selector" được tính ở mốc `e7bb3d7`, **trước
+Phase 1**. Phase 1 xoá các khối token rỗng nên số dòng đã trôi:
+
+| File | Độ lệch sau Phase 1 |
+|---|---|
+| `pages/hub/HubPage.module.css` | **−22** |
+| `pages/workspace/WorkspacePage.module.css` | −12 |
+| `pages/taskrunner/TaskrunnerPage.module.css` | −20 |
+| `pages/login/LoginPage.module.css` | 0 (Phase 1 không đụng) |
+| `styles/theme.css` | +4 |
+
+Và mỗi phase sau lại làm trôi tiếp.
+
+**LUẬT: định vị bằng SELECTOR, không bằng số dòng.** Mọi bảng trong tài liệu đều
+có cột selector — đó mới là địa chỉ thật. Cách làm đúng:
+
+```bash
+grep -n '<selector>' <file>      # tìm vị trí HIỆN TẠI rồi mới sửa
+```
+
+Nếu selector tìm không ra, hoặc ra nhiều hơn một chỗ — **DỪNG và báo**. Đừng đoán
+theo số dòng ghi trong tài liệu.
+
 ### 0.4-bis. Khi lệnh kiểm chứng mâu thuẫn với chính kế hoạch
 
 Các con số "KỲ VỌNG" trong tài liệu này do người soạn tính tay và **có thể sai**.
@@ -81,8 +106,27 @@ lệnh grep với con số kỳ vọng. Con số không khớp = chưa xong ho�
 
 ### 0.5. Kiểm tra bằng mắt
 
-Sau mỗi phase có sửa hiển thị, chạy `npm run dev` và tự mở, ở **cả hai theme**
-(nút mặt trăng góc phải trên) và **cả hai ngôn ngữ** (Cài đặt → Ngôn ngữ):
+> ## ⚠ XEM ĐÚNG CỔNG — dự án này có HAI đường vào cùng lúc
+>
+> | URL | Phục vụ cái gì | Dùng để kiểm mắt? |
+> |---|---|---|
+> | `http://127.0.0.1:5173` | **Dev server Vite** — đọc thẳng từ `src/`, có HMR | ✅ **DÙNG CÁI NÀY** |
+> | `http://localhost:8000` | Backend phục vụ thư mục `dist/` — bản **đã build** | ❌ Chỉ đúng sau `npm run build` |
+>
+> Đây là bẫy đã sập một lần thật ở Phase 2: kiểm mắt trên `:8000` cho thấy nút vẫn
+> hỏng y như trước, vì `dist/` là bản build từ trước khi sửa. Kế hoạch chỉ yêu cầu
+> `npm run typecheck` sau mỗi phase, **không** yêu cầu `npm run build`, nên `dist/`
+> gần như luôn cũ hơn `src/`.
+>
+> **Kiểm mắt LUÔN LUÔN trên `:5173`.** Nếu vì lý do gì phải xem ở `:8000` thì bắt
+> buộc `npm run build` ngay trước đó, và nói rõ trong báo cáo là đã build.
+>
+> Cách nhận biết bạn đang xem bản cũ: sửa xong mà giao diện **không đổi gì hết** —
+> kiểm cổng trước khi kết luận là sửa không ăn.
+
+Sau mỗi phase có sửa hiển thị, chạy `npm run dev` và tự mở **trên `127.0.0.1:5173`**,
+ở **cả hai theme** (nút mặt trăng góc phải trên) và **cả hai ngôn ngữ**
+(Cài đặt → Ngôn ngữ):
 
 ```
 /hub            /hub/agents     /hub/skills     /hub/tasks
@@ -310,7 +354,8 @@ và nút `.buttonDanger`/`.primaryButton`. Nút là phần tử **duy nhất** k
 
 ### Bước 2.2.a — Sửa toàn cục cho mọi nút
 
-Tại luật gộp `.primaryButton,.buttonDanger,.buttonGhost` (dòng ~134), **thêm** hai
+Tìm luật gộp bằng `grep -n 'primaryButton,\.buttonDanger,\.buttonGhost' src/pages/hub/HubPage.module.css`
+(sau Phase 1 nó ở **dòng 112**; xem mục 0.3-bis về việc số dòng trôi). **Thêm** hai
 thuộc tính vào cuối khối, giữ nguyên mọi thứ đang có:
 
 ```css
@@ -323,7 +368,8 @@ Sửa ở luật gộp thì mọi nút chính/nguy hiểm/phụ đều được,
 
 ### Bước 2.2.b — Cho tiêu đề phòng họp co được
 
-Tiêu đề dài cũng góp phần ép nút. Tại `.meetingRoomHeader h2`, **thêm**:
+Tiêu đề dài cũng góp phần ép nút. Tại `.meetingRoomHeader h2` (sau Phase 1 ở **dòng 149**,
+tìm bằng `grep -n 'meetingRoomHeader h2'`), **thêm**:
 
 ```css
 overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -363,6 +409,183 @@ chữ tách hai dòng, cao gấp đôi mọi nút khác. --fs-scale 1.15 làm n�
 Thêm white-space:nowrap và flex-shrink:0 vào luật gộp của cả ba loại nút —
 nhãn nút trong app đều 1-3 từ, không nút nào cần xuống dòng. Tiêu đề h2 nay
 cụt bằng ellipsis giống đoạn phụ đề p ngay dưới nó.
+```
+
+**DỪNG. Chờ duyệt.**
+
+---
+
+# PHASE 2-BIS — Ô nhập tin nhắn Phòng họp nằm sát đáy
+
+**PHẢI LÀM TRƯỚC PHASE 3.** Lý do ở mục 2b.2.
+
+## 2b.1. Bối cảnh
+
+`.meetingLayout` trong `HubPage.module.css`:
+
+```css
+.meetingLayout { display:grid;grid-template-columns:285px minmax(0,1fr);gap:14px;height:calc(100vh - 155px);min-height:590px; }
+```
+
+`155px` là ước lượng **cứng** cho chiều cao mọi thứ nằm trên khung họp. Chiều cao thật,
+đo ở viewport 1920px:
+
+| Thành phần | Cao |
+|---|---|
+| `.workspace` topbar (`grid-template-rows: 58px ...`) | 58px |
+| `.page` padding-top | 28px |
+| `.pageHeader h1` — `clamp(24px,3vw,32px)` × line-height 1.15 | 36.8px |
+| `.pageHeader h1` margin-bottom | 5px |
+| `.pageHeader p` — `calc(12px × 1.15)` × line-height 1.55 | 21.4px |
+| `.pageHeader` margin-bottom | 24px |
+| **TỔNG** | **173.2px** |
+
+Trừ 155 trong khi thật là 173.2 → khung họp cao dư **18.2px**. Cộng
+`.page { padding-bottom: 50px }` → tổng **~68px** vượt quá vùng nhìn. `.content` sinh
+thanh cuộn và ô nhập tin bị đẩy lên khỏi đáy đúng chừng đó.
+
+**Đây là lỗi có sẵn từ trước, không phải do Phase 2 gây ra.** Đối chiếu ảnh chụp
+trước Phase 2: ô nhập tin ở đúng vị trí đó với khoảng trống bên dưới y hệt.
+
+## 2b.2. Vì sao phải làm TRƯỚC Phase 3
+
+`155px` mã hoá cứng chiều cao `.pageHeader`, mà `.pageHeader p` phụ thuộc `--fs-scale`.
+Phase 3 mở rộng `--fs-scale` ra thêm 23 chỗ nữa, và mục đích của cái núm đó là để
+người dùng chỉnh. **Mọi lần chỉnh `--fs-scale` đều làm lệch thêm con số này.**
+
+Vá bằng cách đổi `155px` thành `173px` chỉ là đổi số ma này lấy số ma khác — **KHÔNG
+ĐƯỢC LÀM THẾ.** Phải bỏ hẳn cơ chế trừ chiều cao.
+
+## 2b.3. Cách làm — tái dùng cơ chế đã có sẵn trong repo
+
+Ba tab `train` / `company-runner` / `auto-runner` đã giải đúng bài này bằng
+`.tabPanelFull`. Cho `meeting` dùng chung cơ chế đó.
+
+### Bước 2b.3.a — `HubPage.tsx`
+
+Trong `HubShell`, tìm biến `fullHeight`:
+
+```tsx
+const fullHeight = item.tab === "train"
+  || item.tab === "company-runner"
+  || item.tab === "auto-runner";
+```
+
+Thêm `meeting`:
+
+```tsx
+const fullHeight = item.tab === "train"
+  || item.tab === "company-runner"
+  || item.tab === "auto-runner"
+  || item.tab === "meeting";
+```
+
+**Chỉ sửa đúng biểu thức này.** Không đụng `navigation[]`, không đụng `HubTabContent`,
+không đụng thứ tự tab.
+
+### Bước 2b.3.b — `HubPage.module.css`
+
+Thêm ba luật mới. `.tabPanelFull` và `.page` cùng nằm trong một CSS module nên
+selector con hoạt động bình thường (tên hash khớp nhau).
+
+```css
+/* Phòng họp lấp đúng chiều cao còn lại thay vì trừ đi một con số đoán trước.
+   `155px` cũ mã hoá cứng chiều cao topbar + padding + pageHeader; sai 18px ngay
+   từ đầu, và lệch thêm mỗi lần đổi --fs-scale. */
+.tabPanelFull .page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 18px; }
+.tabPanelFull .pageHeader { flex-shrink: 0; }
+.tabPanelFull .meetingLayout { height: auto; flex: 1; min-height: 0; }
+```
+
+> **Vì sao `padding-bottom: 18px` chứ không phải 0:** để khung họp không dính sát
+> mép dưới cửa sổ. `.page` gốc có `padding-bottom: 50px` — trong bố cục cuộn thì hợp
+> lý, trong bố cục lấp đầy thì đó là 50px chết.
+
+> **`.tabPanelFull .page` KHÔNG ảnh hưởng ba tab kia** — `train` và hai runner render
+> `WorkspacePage`/`TaskrunnerPage`, không dùng class `.page` của Hub. Kiểm lại bằng
+> `grep -n 'c("page")' src/pages/hub/*.tsx` — chỉ các trang Hub có, và trong số đó
+> chỉ `MeetingsPage` chạy dưới `.tabPanelFull`.
+
+### Bước 2b.3.c — `min-height: 590px` biến đi đâu
+
+Luật gốc có `min-height:590px` để khung họp không bị bóp trên màn thấp. Trong bố cục
+mới, `.tabPanelFull` có `overflow:hidden` nên `min-height` sẽ gây **cắt cụt** thay vì
+sinh thanh cuộn. Vì vậy `.tabPanelFull .meetingLayout` đặt `min-height: 0`.
+
+Đánh đổi: trên cửa sổ **rất thấp** (dưới ~600px chiều cao), khung họp bị nén. Ba tab
+kia đã chịu đánh đổi y hệt và chạy ổn. **Bắt buộc kiểm mắt ở cửa sổ cao ~600px** —
+xem mục 2b.5.
+
+## 2b.4. Không được làm
+
+- **KHÔNG** đổi `155px` thành một số khác. Đó là quay lại đúng vấn đề.
+- **KHÔNG** xoá luật `.meetingLayout` gốc — luật gốc vẫn phục vụ media query 720px
+  (`.meetingLayout{height:auto;min-height:0}`) và trường hợp chưa vào tabPanelFull.
+  Chỉ **thêm** luật `.tabPanelFull .meetingLayout` đè lên.
+- **KHÔNG** đụng `.meetingRoom` (`grid-template-rows:auto auto auto minmax(190px,1fr) auto`).
+  Hàng cuối `auto` chính là ô nhập tin — nó đã đúng.
+- **KHÔNG** dùng `position:absolute`/`fixed` để ghim ô nhập tin xuống đáy. Nó phải là
+  hàng cuối của grid, nếu không sẽ đè lên tin nhắn.
+
+## 2b.5. Kiểm chứng
+
+```bash
+cd frontend
+
+# 1. Không còn chiều cao tính bằng 100vh trừ số ma trong khối phòng họp dùng
+#    tabPanelFull. KỲ VỌNG: chỉ còn 1 dòng — luật gốc, dành cho media query.
+grep -n 'meetingLayout' src/pages/hub/HubPage.module.css
+
+# 2. meeting đã vào danh sách fullHeight. KỲ VỌNG: có dòng `|| item.tab === "meeting"`.
+grep -n -A4 'const fullHeight' src/pages/hub/HubPage.tsx
+
+# 3. Chỉ MeetingsPage dùng c("page") và chạy dưới tabPanelFull.
+grep -n 'c("page")' src/pages/hub/*.tsx
+
+npm run typecheck && npm run build      # BẮT BUỘC build — xem mục 0.5 về cổng
+```
+
+## 2b.6. Kiểm mắt — cửa chính của phase này
+
+Trên `:5173`, **hoặc** `:8000` sau khi đã `npm run build`:
+
+| Việc | Kỳ vọng |
+|---|---|
+| `/hub/meeting`, chọn cuộc họp | Ô nhập tin **sát đáy vùng nội dung**, không còn khoảng trống dưới nó |
+| Cùng lúc | **Không** còn thanh cuộn dọc ở `.content` (mép phải ngoài cùng) |
+| Vùng tin nhắn | Vẫn cuộn được **riêng nó**, thanh cuộn nằm trong khung họp |
+| Thu hẹp cửa sổ **cao ~600px** | Khung họp bị nén nhưng ô nhập tin **vẫn thấy được** |
+| Thu hẹp ngang **~700px** | Media query 720px vào cuộc, bố cục xếp dọc, vẫn dùng được |
+| **Đi hết 11 tab còn lại** | Không tab nào đổi bố cục — `.tabPanelFull .page` chỉ được chạm tới ở tab Phòng họp |
+| Đổi theme | Không đổi gì về bố cục |
+
+Tab cần soi kỹ nhất sau Phòng họp: `/hub/tasks`, `/hub/agents`, `/hub/model` — chúng
+dùng `.page` nhiều nhất. Nếu chúng đổi bố cục thì `.tabPanelFull .page` đang rò sang
+chỗ không mong muốn → **DỪNG và báo**.
+
+## 2b.7. CHỐT PHASE 2-BIS
+
+```
+fix(ui): ô nhập tin Phòng họp nằm sát đáy, bỏ chiều cao đoán trước
+
+.meetingLayout dùng height:calc(100vh - 155px). 155px là ước lượng cứng cho
+topbar + padding + pageHeader, mà chiều cao thật ở 1920px là 173.2px — sai 18px
+ngay từ đầu. Cộng .page{padding-bottom:50px} thành ~68px vượt vùng nhìn, nên
+.content sinh thanh cuộn và ô nhập tin bị đẩy lên khỏi đáy đúng chừng đó.
+
+Đổi 155 thành 173 chỉ là đổi số ma này lấy số ma khác: con số đó mã hoá chiều
+cao .pageHeader, mà .pageHeader phụ thuộc --fs-scale — cái núm sinh ra để người
+dùng chỉnh. Nên bỏ hẳn cơ chế trừ chiều cao.
+
+Cho tab Phòng họp dùng .tabPanelFull như ba tab train/company-runner/auto-runner
+đã dùng: .page thành flex column lấp đầy, .meetingLayout flex:1 min-height:0.
+Khung họp tự lấp chỗ còn lại, không phụ thuộc cỡ chữ hay chiều cao topbar.
+
+Đánh đổi: min-height:590px cũ bị bỏ trong nhánh tabPanelFull vì overflow:hidden
+sẽ cắt cụt thay vì sinh thanh cuộn. Trên cửa sổ cao dưới ~600px khung họp bị
+nén — ba tab kia đã chịu đánh đổi y hệt.
+
+Lỗi này có sẵn từ trước, không phải do phase sửa nút gây ra.
 ```
 
 **DỪNG. Chờ duyệt.**
@@ -1356,6 +1579,32 @@ Vì `/` luôn chuyển hướng về `/login`, reset của Login gần như ch�
 | `LoginPage.module.css:152` | `@media(max-width:860px){ :global(body){overflow:auto} }` | Bỏ theo, vì `overflow` không còn ở body. |
 | `TaskrunnerPage.module.css:23` | `:global(html),:global(body){height:100%; font-family:'Inter'}` | `font-family` **xoá** (theme.css đã đặt). `height:100%` chuyển sang `theme.css`. |
 | `WorkspacePage.module.css:35-37` | `:global(body){font-family:'Inter'}` | **Xoá cả khối.** theme.css đã đặt. |
+| `theme.css:81` | `:global(body.light),` (dòng đứng trước `body.light {`) | **Xoá đúng một dòng** — xem cảnh báo dưới. |
+
+> ### ⚠ `:global(body.light)` trong theme.css — xoá NHẦM DÒNG là chết cả theme Sáng
+>
+> `theme.css` **không phải** CSS module (nhập toàn cục ở `main.tsx:17`), nên `:global()`
+> ở đây là selector không hợp lệ. Phát hiện qua cảnh báo build:
+> `[lightningcss minify] 'global' is not recognized as a valid pseudo-class`.
+>
+> lightningcss tách danh sách selector thành hai luật riêng trong bản build:
+> ```css
+> body.light{--bg:#f5f5ef; ...}            /* hợp lệ — đang gánh toàn bộ theme Sáng */
+> :global(body.light){--bg:#f5f5ef; ...}   /* không hợp lệ — trình duyệt bỏ cả khối */
+> ```
+>
+> **PHẢI XOÁ DÒNG `:global(body.light),`, GIỮ DÒNG `body.light {`.**
+>
+> Ngược lại là mất sạch 23 token của theme Sáng cùng lúc. Đây đúng loại bẫy Phase 1
+> vừa gỡ: một selector chết đứng cạnh một selector sống, và bản sống trông như bản thừa.
+>
+> Kết quả đúng sau khi sửa:
+> ```css
+> body.light {
+>   --bg: #f5f5ef;
+> ```
+> Kiểm ngay: `npm run build` phải **hết** cảnh báo lightningcss, và
+> `grep -c '#f5f5ef' dist/assets/index-*.css` vẫn phải ra 1.
 
 > ### ⚠ CẢNH BÁO VỀ `:global(*){margin:0;padding:0}`
 >
@@ -1404,6 +1653,15 @@ grep -rn ':global(body)\|:global(html)\|:global(\*)' src/pages/
 
 # 4. Reset đã về theme.css. KỲ VỌNG: có.
 grep -n 'box-sizing' src/styles/theme.css
+
+# 5. theme.css hết :global. KỲ VỌNG: không in ra gì.
+grep -n ':global' src/styles/theme.css
+
+# 6. Theme Sáng còn nguyên sau khi xoá dòng :global. KỲ VỌNG: 1.
+grep -c '#f5f5ef' dist/assets/index-*.css
+
+# 7. Build hết cảnh báo lightningcss. KỲ VỌNG: không in ra gì.
+npm run build 2>&1 | grep -i 'lightningcss'
 
 npm run typecheck && npm run build
 npm run verify:graphs && npm run verify:workflow-protocol
@@ -1456,6 +1714,12 @@ vào head rồi ở lại vĩnh viễn nên thứ tự thắng thua phụ thuộ
 ghé thăm. Gom hết về theme.css. Riêng :global(*){margin:0;padding:0} được
 CHUYỂN chứ không xoá — xoá hẳn là mọi h1/h2/p/ul khắp app có lại margin mặc
 định cùng lúc.
+
+theme.css có `:global(body.light), body.light {` — mà theme.css không phải CSS
+module nên :global() ở đó là selector không hợp lệ; lightningcss tách đôi danh
+sách và nửa :global bị trình duyệt bỏ. Theme Sáng vẫn chạy nhờ nửa còn lại,
+nhưng bundle mang thêm ~600 byte CSS chết và ai đó xoá nhầm nửa đang sống là
+mất cả 23 token theme Sáng. Xoá đúng dòng :global.
 
 ID trùng khi cả hai runner tab cùng mounted: mới chỉ thêm chú thích cảnh báo.
 Đổi sang class động vào ~40 luật CSS, cần phase riêng.
