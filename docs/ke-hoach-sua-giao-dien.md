@@ -2314,3 +2314,11 @@ giữ nguyên toàn bộ handler, lịch chạy, trạng thái và token tương
 ```
 
 **DỪNG. Không commit. Hard refresh rồi chờ người dùng kiểm mắt và duyệt Phase 11.**
+
+---
+
+## Hàng đợi tinh chỉnh sau khi hoàn tất UI
+
+- **2026-08-13:** Người dùng đánh giá thẻ quy trình sau Phase 11 chưa thật ưng nhưng chấp nhận để ưu
+  tiên tiến độ. Cần quay lại tinh chỉnh sau khi hoàn tất toàn bộ UI. Chưa có chi tiết cụ thể nào được
+  nêu, nên khi quay lại phải hỏi người dùng điểm nào còn lấn cấn.
