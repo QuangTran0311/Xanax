@@ -2124,3 +2124,193 @@ sidebar z-index 20 theo thang lớp sẵn có.
 ```
 
 **DỪNG. Không commit. Chờ người dùng kiểm mắt và duyệt Phase 10.**
+
+---
+
+# PHASE 11 — Thu gọn và thiết kế lại thẻ quy trình Taskrunner
+
+## 11.1. Bối cảnh
+
+Tại `/hub/company-runner`, thẻ `.workflow-card` bị vỡ chữ và có cỡ chữ không đồng đều sau các phase
+chuẩn hoá trước. Chẩn đoán phải được giữ lại đầy đủ vì đây không phải một lỗi đơn lẻ:
+
+1. Nhãn `.wf-stat-label` đồng thời dùng `font-family:var(--mono)`, `text-transform:uppercase`,
+   `letter-spacing:.6px` và `font-weight:700`. Riêng ba thuộc tính mono + uppercase + letter-spacing
+   cộng dồn đã làm nhãn tiếng Việt dài gần gấp đôi; đây là bẫy dễ tái phạm. Hậu quả là “TỶ LỆ THÀNH
+   CÔNG” và “LẦN CHẠY CUỐI” xuống dòng.
+2. `.wf-stats` dùng `display:flex; justify-content:space-between` cho ba mục có độ dài khác nhau.
+   Các cột không bằng nhau nên cột nhãn dài đẩy cột khác và làm giá trị như “2 ngày trước” xuống dòng.
+3. `.wf-flow` chỉ có năm chấm màu nối bằng đường kẻ; ý nghĩa nằm trong thuộc tính `title`, nên người
+   dùng phải rê chuột mới biết dãy chấm đại diện cho các bước.
+4. `.wf-btn` dùng `font-size:clamp(9.5px,2.6cqw,12px)` theo container query. Ở thẻ rộng khoảng
+   `380px`, cỡ thực tế chỉ khoảng `9.9px`, nhỏ hơn mọi chữ khác trên thẻ.
+5. Phase 3 đã nhân mọi cỡ chữ với `--fs-scale`; các vị trí trước đó chỉ vừa khít vì dùng cỡ nhỏ nay bị
+   tràn. Không được sửa ngược bằng cách thay `--fs-scale` hoặc tiếp tục bóp riêng chữ trong thẻ.
+
+`WorkflowList.tsx` hiện dùng chuỗi tiếng Việt trực tiếp và không gọi hàm dịch. Phase này phải giữ đúng
+quy ước đang có trong file, không tự tạo một cơ chế i18n mới chỉ cho vài nhãn.
+
+## 11.2. Việc phải làm
+
+1. Rút gọn đúng ba nhãn hiển thị: “Tỷ lệ thành công” thành “Thành công”, “Tổng lần chạy” thành
+   “Lần chạy”, và “Lần chạy cuối” thành “Chạy cuối”.
+2. Bỏ `font-family:var(--mono)`, uppercase và letter-spacing khỏi `.wf-stat-label`. Giữ
+   `font-family:var(--mono)` cho hai giá trị số “Thành công” và “Lần chạy” để số liệu vẫn thẳng cột,
+   dễ đọc. Giá trị chữ của “Chạy cuối” phải nối thêm class `muted`; biến thể có sẵn này thu chữ còn
+   `calc(12px * var(--fs-scale))`, giảm độ đậm/màu và đặt `font-family:inherit` thay vì mono. Riêng
+   thẻ quy trình gọi `cardRelativeTime()` để bỏ hậu tố “trước” khỏi các chuỗi phút/giờ/ngày vì nhãn
+   “Chạy cuối” ngay phía trên đã hàm ý quan hệ thời gian. Không sửa `relativeTime()`: danh sách lịch sử
+   chạy vẫn phải gọi hàm này trực tiếp và giữ chuỗi đầy đủ có “trước”, do ở đó không có nhãn hàm ý.
+3. Đổi `.wf-stats` thành grid ba cột bằng nhau với
+   `grid-template-columns:repeat(3,minmax(0,1fr))`. Thêm `white-space:nowrap` cho cả nhãn và giá trị;
+   mỗi `.wf-stat` phải có `min-width:0` để cột grid co đúng cách. Giá trị có thêm
+   `overflow:hidden;text-overflow:ellipsis` làm lưới an toàn cho dữ liệu dài bất ngờ.
+4. Tính `const dots = flowDots(task)` đúng một lần cho mỗi thẻ, dùng cùng mảng đó để dựng chấm và
+   hiển thị nhãn bên phải dạng `{dots.length} bước`. Chỉ thêm nhãn số bước, không biến dãy chấm thành
+   sơ đồ chi tiết.
+5. Đổi font nút sang `calc(12px * var(--fs-scale))`. Giữ nút “Chạy” là nút primary dùng
+   `var(--on-accent)`. Cho riêng footer được xuống hàng khi thiếu chỗ để nhãn không bị bóp; nút xoá
+   có kích thước theo nội dung và được đẩy sang mép phải.
+6. Giữ container query của `.wf-footer`: sau khi kiểm tra, trong cùng footer vẫn còn `cqw` cho gap,
+   padding và kích thước icon, nên `container-type`/`container-name` chưa phải CSS chết.
+7. Thu `.workflow-card` từ `padding:18px; gap:12px` xuống `padding:16px; gap:10px`; đổi cột grid từ
+   `minmax(300px,1fr)` thành `minmax(290px,1fr)`.
+8. Giữ nguyên toàn bộ handler `onClick`, `stopPropagation`, lịch chạy `.wf-schedule` và các trạng thái
+   `.wf-status.active`, `.paused`, `.draft`, `.failed`.
+
+> ### ⚠ `nowrap` KHÔNG TỰ GIẢI QUYẾT CHỮ DÀI
+>
+> `white-space:nowrap` chỉ đổi lỗi xuống dòng thành lỗi tràn nếu nội dung vẫn rộng hơn cột và không có
+> biện pháp thu gọn/cắt gọn. Riêng “Chạy cuối” là chữ do `relativeTime()` sinh ra, không phải số liệu
+> cần canh bằng mono: phải dùng biến thể `.wf-stat-value.muted` nhỏ hơn, nhẹ hơn, font thường và giữ
+> `overflow:hidden;text-overflow:ellipsis` làm lưới an toàn.
+>
+> `.wf-stat-value.muted` đã tồn tại sẵn trước Phase 11 nhưng chưa được nối vào `WorkflowList.tsx`.
+> Sau khi class `muted` được gắn cho giá trị “Chạy cuối”, đây là **luật sống**, không được liệt kê hay
+> xoá như CSS chết trong phase dọn dẹp về sau.
+>
+> Quyết định đã duyệt: chỉ trên thẻ quy trình, chuỗi tương đối bỏ hậu tố “trước” (`24 ngày trước` →
+> `24 ngày`, `45 phút trước` → `45 phút`, `2 giờ trước` → `2 giờ`); “Vừa xong”, “Chưa chạy” và ngày
+> tháng đầy đủ từ `toLocaleDateString()` giữ nguyên. Lý do là nhãn “Chạy cuối” đã hàm ý “trước”. Danh
+> sách lịch sử là ngoại lệ bắt buộc: vẫn dùng `relativeTime()` và chuỗi đầy đủ vì không có nhãn đó.
+>
+> Đo lại bằng đúng Inter 500 ở `12px × 1.15 = 13.8px`, cộng tổng advance width không kerning: nhóm
+> tương đối dài nhất là “24 ngày” `53.87px` (“45 phút” `50.89px`, “2 giờ” `32.51px`); nhóm trạng thái
+> cố định dài nhất là “Chưa chạy” `70.71px` (“Vừa xong” `62.91px`); ngày mười ký tự như
+> “13/08/2026” là `76.78px`. Ở thẻ `290px`, bề rộng mỗi cột là
+> `(290 - 32 - 16) / 3 = 80.67px`. Cả ba nhóm đều lọt: biên còn lại lần lượt ít nhất `26.80px`,
+> `9.96px` và `3.88px`. Vẫn giữ `overflow:hidden;text-overflow:ellipsis` làm lưới an toàn cho dữ liệu
+> bất ngờ; không đổi bố cục ba cột.
+
+## 11.3. Không được làm
+
+- Không sửa file nào trong `backend/`.
+- Không sửa `--fs-scale`, không hoàn tác kết quả Phase 3.
+- Không đổi các trang ngoài `frontend/src/pages/taskrunner/`.
+- Không mở rộng `.wf-flow` thành sơ đồ chi tiết, tooltip mới hoặc legend màu.
+- Không đổi hành vi chạy, bật/tạm dừng, chỉnh sửa, lịch sử, xoá hay cơ chế chặn click nổi bọt ở footer.
+- Không đổi `.wf-schedule` hoặc các biến thể status active/paused/draft/failed.
+- Không hardcode chữ trắng trên nền màu; nếu đụng màu chữ phải dùng `--on-accent`, `--on-danger` hoặc
+  `--on-info` theo Phase 4.
+- Không tạo cơ chế song ngữ mới trong riêng `WorkflowList.tsx`; giữ quy ước chuỗi trực tiếp hiện có.
+- Không commit trong lượt thực thi này; dừng ở cổng kiểm mắt để người dùng duyệt.
+
+## 11.4. Kiểm chứng máy
+
+```bash
+cd frontend
+
+# 1. Ba nhãn mới có mặt đúng một lần. KỲ VỌNG: mỗi lệnh in 1.
+grep -F -c '>Thành công</span>' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '>Lần chạy</span>' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '>Chạy cuối</span>' src/pages/taskrunner/WorkflowList.tsx
+
+# 2. Ba nhãn dài cũ đã biến mất. KỲ VỌNG: mỗi lệnh in 0.
+grep -F -c '>Tỷ lệ thành công</span>' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '>Tổng lần chạy</span>' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '>Lần chạy cuối</span>' src/pages/taskrunner/WorkflowList.tsx
+
+# 3. Stats là grid ba cột; label không còn mono/uppercase/tracking; hai số vẫn mono;
+#    giá trị Chạy cuối dùng biến thể muted/font thường; mọi value có lưới an toàn ellipsis.
+#    KỲ VỌNG: sáu lệnh đầu in 1; ba lệnh kiểm thuộc tính cũ in 0.
+grep -F -c 'grid-template-columns:repeat(3,minmax(0,1fr))' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c '.wf-stat-label{font-size:calc(9px * var(--fs-scale));font-weight:700;color:var(--text3);white-space:nowrap}' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'className={`${c("wf-stat-value")} ${c("muted")}`}' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '.wf-stat-value.muted{color:var(--text2);font-size:calc(12px * var(--fs-scale));font-weight:500;font-family:inherit}' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'overflow:hidden;text-overflow:ellipsis' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F '.wf-stat-label' src/pages/taskrunner/TaskrunnerPage.module.css | grep -F -c 'font-family:var(--mono)'
+grep -F '.wf-stat-label' src/pages/taskrunner/TaskrunnerPage.module.css | grep -F -c 'text-transform:uppercase'
+grep -F '.wf-stat-label' src/pages/taskrunner/TaskrunnerPage.module.css | grep -F -c 'letter-spacing:.6px'
+
+# 3b. Chỉ thẻ dùng chuỗi rút gọn; lịch sử vẫn gọi relativeTime trực tiếp. KỲ VỌNG: mỗi lệnh in 1.
+grep -F -c 'function cardRelativeTime(value?: string): string' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c 'cardRelativeTime(task.runs[0]?.created_at)' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '<small>{relativeTime(run.created_at)}</small>' src/pages/taskrunner/WorkflowList.tsx
+
+# 4. flowDots chỉ được gọi một lần trong vòng lặp và nhãn dùng chính dots.length.
+#    KỲ VỌNG: mỗi lệnh in 1.
+grep -F -c 'const dots = flowDots(task);' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c '{dots.length} bước' src/pages/taskrunner/WorkflowList.tsx
+
+# 5. Nút dùng cỡ cố định theo --fs-scale, footer được wrap và nút xoá nằm bên phải.
+#    KỲ VỌNG: bốn lệnh đầu in 1; clamp font-size cũ in 0.
+grep -A3 '^\.wf-btn{' src/pages/taskrunner/TaskrunnerPage.module.css | grep -F -c 'font-size:calc(12px * var(--fs-scale))'
+grep -A2 '^\.wf-footer{' src/pages/taskrunner/TaskrunnerPage.module.css | grep -F -c 'flex-wrap:wrap'
+grep -F -c '.wf-footer .wf-btn.danger{flex:0 0 auto;margin-left:auto}' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'container-type:inline-size;container-name:wf-footer' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'font-size:clamp(9.5px,2.6cqw,12px)' src/pages/taskrunner/TaskrunnerPage.module.css
+
+# 6. Kích thước thẻ/grid đúng phương án. KỲ VỌNG: mỗi lệnh in 1.
+grep -F -c 'minmax(290px,1fr)' src/pages/taskrunner/TaskrunnerPage.module.css
+grep -F -c 'padding:16px;display:flex;flex-direction:column;gap:10px' src/pages/taskrunner/TaskrunnerPage.module.css
+
+# 7. Hành vi bắt buộc còn nguyên. KỲ VỌNG: stopPropagation in 1; schedule/status đều có kết quả.
+grep -F -c 'onClick={(event) => event.stopPropagation()}' src/pages/taskrunner/WorkflowList.tsx
+grep -F -c 'task.schedule_enabled' src/pages/taskrunner/WorkflowList.tsx
+grep -E -c '^\.wf-status\.(active|paused|draft|failed)' src/pages/taskrunner/TaskrunnerPage.module.css
+
+npm.cmd run typecheck
+npm.cmd run build
+
+# 8. Build chỉ có đúng một CSS chunk của TaskrunnerPage. KỲ VỌNG: 1.
+find dist/assets -maxdepth 1 -name 'TaskrunnerPage-*.css' | wc -l
+
+# 9. Backend phục vụ đúng dist/assets vừa build. KỲ VỌNG: mỗi lệnh in 1.
+cd ..
+grep -F -c 'parents[2] / "frontend" / "dist"' backend/hub/server.py
+grep -F -c 'frontend_assets = _frontend_dist_path / "assets"' backend/hub/server.py
+```
+
+## 11.5. Kiểm mắt
+
+Hard refresh trình duyệt trước khi kiểm, rồi xác nhận tại `/hub/company-runner`:
+
+- Nhãn “Thành công”, “Lần chạy”, “Chạy cuối” và mọi giá trị đều nằm trên một dòng; ba cột thẳng hàng.
+- Dãy chấm có nhãn “N bước” bên phải, đúng với số chấm/bước đang hiển thị và không cần rê chuột mới
+  hiểu ý nghĩa tổng quát.
+- Chữ trên các nút không nhỏ hơn chữ xung quanh; nút “Chạy” nổi bật, nút xoá nằm tách ở bên phải;
+  ở thẻ hẹp các nút xuống hàng gọn, không bị cắt chữ hay tràn thẻ.
+- Kiểm cả thẻ có lịch chạy và thẻ không có lịch chạy: footer không nhảy lệch, khoảng cách trong thẻ gọn.
+- Nếu tạo được dữ liệu, kiểm đủ status active, paused, draft và failed: chấm, màu và nhãn trạng thái giữ
+  nguyên; nút bật/tạm dừng vẫn đúng trạng thái.
+- Bấm thử thẻ và từng nút footer để xác nhận mở/chạy/bật-tạm dừng/chỉnh sửa/lịch sử/xoá vẫn giữ đúng
+  hành vi, click nút không đồng thời mở thẻ.
+- Kiểm ít nhất ở theme sáng và tối, cùng một bề rộng desktop và một bề rộng hẹp gần ngưỡng `290px`.
+
+## 11.6. CHỐT PHASE 11
+
+```text
+fix(taskrunner): thu gọn và cân lại thẻ quy trình
+
+Rút gọn nhãn thống kê, bỏ tổ hợp mono/uppercase/tracking trên nhãn và đổi hàng thống kê thành grid
+ba cột không xuống dòng; giữ mono cho hai số, nối biến thể muted/font thường có sẵn cho “Chạy cuối”
+và cắt ellipsis nếu gặp dữ liệu dài bất ngờ. Dùng cùng dữ liệu flowDots để thêm nhãn số bước cạnh dãy
+chấm, giúp người dùng hiểu ý nghĩa mà không phải rê chuột.
+
+Đưa cỡ chữ nút về calc() theo --fs-scale, cho footer xuống hàng khi thẻ hẹp, giữ nút Chạy là primary
+và tách nút xoá sang phải. Đồng thời thu padding/gap của thẻ và giảm min-width cột grid xuống 290px;
+giữ nguyên toàn bộ handler, lịch chạy, trạng thái và token tương phản Phase 4.
+```
+
+**DỪNG. Không commit. Hard refresh rồi chờ người dùng kiểm mắt và duyệt Phase 11.**

@@ -28,6 +28,10 @@ function relativeTime(value?: string): string {
   return date.toLocaleDateString("vi-VN");
 }
 
+function cardRelativeTime(value?: string): string {
+  return relativeTime(value).replace(/ trước$/, "");
+}
+
 function flowDots(task: WorkflowTask): Array<{ title: string; color: string }> {
   try {
     const graph = JSON.parse(task.graph_json || "null") as { nodes?: Array<Record<string, unknown>> } | null;
@@ -142,11 +146,12 @@ export function WorkflowList({
       {filtered.length ? filtered.map((task) => {
         const completed = task.runs.filter((run) => run.status === "completed").length;
         const success = task.runs.length ? Math.round(completed / task.runs.length * 1000) / 10 : 0;
+        const dots = flowDots(task);
         return <article className={c("workflow-card")} key={task.id} data-task-id={task.id} onClick={() => onOpen(task.id)}>
           <div className={c("wf-card-top")}><div className={c("wf-name")}>{task.name}</div><div className={`${c("wf-status")} ${c(task.status)}`}><span className={c("dot")} />{STATUS_LABEL[task.status] || task.status}</div></div>
           <div className={c("wf-desc")}>{task.description || "Chưa có mô tả."}</div>
-          <div className={c("wf-flow")}>{flowDots(task).map((dot, index, dots) => <span key={`${dot.title}-${index}`} title={dot.title} className={c("flow-fragment")}><span className={c("wf-flow-node")} style={{ background: dot.color }} />{index < dots.length - 1 ? <span className={c("wf-flow-line")} style={{ background: dot.color }} /> : null}</span>)}</div>
-          <div className={c("wf-stats")}><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Tỷ lệ thành công</span><span className={c("wf-stat-value")}>{task.runs.length ? `${success}%` : "—"}</span></div><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Tổng lần chạy</span><span className={c("wf-stat-value")}>{task.runs.length}</span></div><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Lần chạy cuối</span><span className={c("wf-stat-value")}>{relativeTime(task.runs[0]?.created_at)}</span></div></div>
+          <div className={c("wf-flow")}>{dots.map((dot, index) => <span key={`${dot.title}-${index}`} title={dot.title} className={c("flow-fragment")}><span className={c("wf-flow-node")} style={{ background: dot.color }} />{index < dots.length - 1 ? <span className={c("wf-flow-line")} style={{ background: dot.color }} /> : null}</span>)}<span className={c("wf-flow-label")}>{dots.length} bước</span></div>
+          <div className={c("wf-stats")}><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Thành công</span><span className={c("wf-stat-value")}>{task.runs.length ? `${success}%` : "—"}</span></div><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Lần chạy</span><span className={c("wf-stat-value")}>{task.runs.length}</span></div><div className={c("wf-stat")}><span className={c("wf-stat-label")}>Chạy cuối</span><span className={`${c("wf-stat-value")} ${c("muted")}`}>{cardRelativeTime(task.runs[0]?.created_at)}</span></div></div>
           {task.schedule_enabled ? <div className={c("wf-schedule")}><Icon name="clock" /> {task.schedule_cron}</div> : null}
           <footer className={c("wf-footer")} onClick={(event) => event.stopPropagation()}>
             <button className={`${c("wf-btn")} ${c("primary")}`} onClick={() => onOpen(task.id, true)}><Icon name="play" size={14} /> Chạy</button>
