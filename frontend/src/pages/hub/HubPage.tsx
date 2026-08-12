@@ -207,7 +207,8 @@ function HubShell() {
               const subpath = isActive ? currentSubpath : savedSubpaths[item.tab] || "";
               const fullHeight = item.tab === "train"
                 || item.tab === "company-runner"
-                || item.tab === "auto-runner";
+                || item.tab === "auto-runner"
+                || item.tab === "meeting";
               return (
                 <section
                   key={item.tab}

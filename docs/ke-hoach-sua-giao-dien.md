@@ -20,6 +20,32 @@ Mỗi phase kết thúc bằng mục **"CHỐT PHASE"**. Khi tới đó:
 Nếu một bước trong phase không làm được, **không tự ý bỏ qua và cũng không tự ý
 làm cách khác** — dừng lại, báo rõ vướng ở đâu, chờ chỉ đạo.
 
+### 0.1-bis. AI KHÔNG KIỂM MẮT — kiểm mắt là việc của con người
+
+**Agent thực thi (Codex) và agent soạn kế hoạch (Claude) đều KHÔNG có công cụ trình
+duyệt.** Cả hai đều không mở được trang, không chụp được màn hình, và **không cấp
+được phiên Browser cho bên kia.** Đừng hỏi xin — câu trả lời sẽ luôn là không.
+
+Chỉ **người dùng** kiểm mắt được. Vì vậy quy trình chốt phase là:
+
+| Bước | Ai làm |
+|---|---|
+| 1. Sửa code | Codex |
+| 2. `npm run typecheck` + `npm run build` | Codex |
+| 3. Chạy lệnh "Kiểm chứng máy", dán output | Codex |
+| 4. **BÀN GIAO**: dán checklist kiểm mắt của phase + URL, rồi dừng | Codex |
+| 5. **Kiểm mắt** | **NGƯỜI DÙNG** |
+| 6. Người dùng nói "đạt" hoặc mô tả cái lệch | Người dùng |
+| 7. Commit theo message của phase, rồi dừng chờ duyệt phase sau | Codex |
+
+**Bước 4 không phải là "bị chặn".** Đó là bàn giao có chủ đích, và là trạng thái
+đúng để dừng. Báo cáo phải ghi rõ: *"Đã xong bước 1-3. Chờ người dùng kiểm mắt theo
+checklist mục X.Y tại <URL>."* — **không** viết "không hoàn tất được cửa kiểm mắt"
+và **không** yêu cầu ai mở trình duyệt hộ.
+
+Nếu người dùng nói bỏ qua kiểm mắt cho một phase, cứ commit và **ghi vào báo cáo
+phase** rằng kiểm mắt đã được hoãn theo chỉ đạo — để lần duyệt sau còn biết.
+
 ### 0.2. Phạm vi tuyệt đối không đụng tới
 
 - **Không** sửa file trong `backend/`.
@@ -492,10 +518,43 @@ selector con hoạt động bình thường (tên hash khớp nhau).
 /* Phòng họp lấp đúng chiều cao còn lại thay vì trừ đi một con số đoán trước.
    `155px` cũ mã hoá cứng chiều cao topbar + padding + pageHeader; sai 18px ngay
    từ đầu, và lệch thêm mỗi lần đổi --fs-scale. */
-.tabPanelFull .page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 18px; }
+.tabPanelFull .page { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; padding-bottom: 18px; }
 .tabPanelFull .pageHeader { flex-shrink: 0; }
 .tabPanelFull .meetingLayout { height: auto; flex: 1; min-height: 0; }
 ```
+
+> ### ⚠ `width: 100%` LÀ BẮT BUỘC, KHÔNG ĐƯỢC BỎ
+>
+> `.page` gốc có `max-width: 1500px; margin: 0 auto`. Khi nó là **block** trong
+> `.tabPanel`, `margin:0 auto` nghĩa là "chiếm hết bề rộng khả dụng đến 1500px rồi
+> căn giữa" — đúng ý.
+>
+> Nhưng `.tabPanelFull` là flex container, nên `.page` thành **flex item**. Với flex
+> item, **margin `auto` theo trục ngang vô hiệu hoá `align-self: stretch`**: hộp co
+> về đúng bề rộng nội dung rồi căn giữa. Kết quả là cả trang teo lại còn ~710px giữa
+> màn hình, thừa hai bên.
+>
+> `width: 100%` khôi phục hành vi cũ: hộp giãn hết khung, `max-width` chặn ở 1500px,
+> `margin: 0 auto` căn giữa phần dư. `box-sizing: border-box` đã đặt toàn cục ở dòng 1
+> nên `width:100%` cộng padding không tràn.
+>
+> Đây là lỗi đã xảy ra thật một lần khi kiểm mắt Phase 2-bis. Nếu sau khi sửa mà
+> trang Phòng họp hẹp bất thường — kiểm dòng này trước tiên.
+
+> ### ⚠ KHÔNG ĐẾM CỨNG SỐ CON CỦA `.meetingRoom`
+>
+> Kiểm mắt lần 1 của Phase 2-bis phát hiện ô nhập tin của cuộc họp đang diễn ra
+> còn cách đáy panel khoảng 200px. Nguyên nhân là `grid-template-rows` khai báo năm
+> hàng theo giả định luôn có đủ header, participantPanel, meetingRecord,
+> meetingMessages và meetingComposer. Trong thực tế `meetingRecord` chỉ render khi
+> cuộc họp không active, còn `meetingComposer` chỉ render khi active; hai khối loại
+> trừ nhau nên `.meetingRoom` luôn chỉ có bốn con trực tiếp. Ở trạng thái active,
+> composer vì thế rơi vào hàng `minmax(190px,1fr)` và bị kéo giãn.
+>
+> Cách sửa bền vững là dùng flex column cho `.meetingRoom`, cho
+> `.meetingMessages { flex:1; min-height:190px }`, và giữ header, participantPanel,
+> meetingRecord, meetingComposer ở `flex-shrink:0`. Như vậy vùng tin nhắn tự nhận
+> phần chiều cao dư, không phụ thuộc vị trí hay số lượng phần tử tùy điều kiện.
 
 > **Vì sao `padding-bottom: 18px` chứ không phải 0:** để khung họp không dính sát
 > mép dưới cửa sổ. `.page` gốc có `padding-bottom: 50px` — trong bố cục cuộn thì hợp
@@ -522,10 +581,11 @@ xem mục 2b.5.
 - **KHÔNG** xoá luật `.meetingLayout` gốc — luật gốc vẫn phục vụ media query 720px
   (`.meetingLayout{height:auto;min-height:0}`) và trường hợp chưa vào tabPanelFull.
   Chỉ **thêm** luật `.tabPanelFull .meetingLayout` đè lên.
-- **KHÔNG** đụng `.meetingRoom` (`grid-template-rows:auto auto auto minmax(190px,1fr) auto`).
-  Hàng cuối `auto` chính là ô nhập tin — nó đã đúng.
+- **KHÔNG** đưa `.meetingRoom` trở lại `grid-template-rows` đếm cứng số con.
+  `meetingRecord` và `meetingComposer` loại trừ nhau; vùng co giãn phải gắn trực
+  tiếp vào `.meetingMessages`, không gắn vào thứ tự phần tử.
 - **KHÔNG** dùng `position:absolute`/`fixed` để ghim ô nhập tin xuống đáy. Nó phải là
-  hàng cuối của grid, nếu không sẽ đè lên tin nhắn.
+  flex child cuối không co giãn, nếu không sẽ đè lên tin nhắn.
 
 ## 2b.5. Kiểm chứng
 
@@ -586,6 +646,14 @@ sẽ cắt cụt thay vì sinh thanh cuộn. Trên cửa sổ cao dưới ~600px
 nén — ba tab kia đã chịu đánh đổi y hệt.
 
 Lỗi này có sẵn từ trước, không phải do phase sửa nút gây ra.
+
+Kiểm mắt lần 1 còn làm lộ một lỗi có sẵn khác sau khi khung họp lấp đầy chiều
+cao: .meetingRoom khai grid-template-rows cho 5 con, nhưng meetingRecord (chỉ
+khi status != active) và meetingComposer (chỉ khi status == active) loại trừ
+nhau nên thực tế luôn chỉ có 4 con. Khi họp đang diễn ra, composer rơi vào hàng
+minmax(190px,1fr), bị kéo giãn khoảng 200px và tạo mảng trống dưới ô nhập. Đổi
+.meetingRoom sang flex column, cho .meetingMessages{flex:1;min-height:190px},
+và đặt bốn phần tử tĩnh ở flex-shrink:0 để chỉ vùng tin nhắn nhận chiều cao dư.
 ```
 
 **DỪNG. Chờ duyệt.**
@@ -1797,3 +1865,27 @@ Console phải **0 lỗi** ở mọi tổ hợp.
 | Khối luật ID chết trong Taskrunner | 10 | 0 |
 | `:global(body)` trong CSS module | 4 | 0 |
 | Tab có `<h1>` | 8/12 | 12/12 |
+
+---
+
+# HÀNG ĐỢI VIỆC PHÁT SINH TỪ KIỂM MẮT — CHƯA DUYỆT, CHƯA CÓ SỐ PHASE CHÍNH THỨC
+
+## 2026-08-13 — Cân nhắc bỏ tiêu đề trang Phòng họp
+
+Người dùng nhận xét phần tiêu đề ở góc trên bên trái trang Phòng họp không có
+nhiều tác dụng: thanh bên trái đã đánh dấu “Phòng họp” là mục đang active, nên
+`h1` “Phòng họp” và dòng mô tả “Trao đổi cùng Xanax và nhân viên...” trong
+`.pageHeader` của `MeetingsPage` bị lặp thông tin và chiếm chiều cao của khung họp.
+
+**Phạm vi còn mở, phải được người dùng chốt trước khi làm:** xoá cả khối
+`.pageHeader`, hay chỉ xoá `h1` và dòng mô tả? Nút **“Cuộc họp mới”** hiện nằm
+trong chính `.pageHeader` nên bắt buộc phải giữ lại. Nếu bỏ phần tiêu đề, gợi ý
+đặt nút vào đầu cột danh sách cuộc họp bên trái, trong một hàng thao tác gọn ngay
+trên danh sách, để hành động tạo mới vẫn dễ thấy mà không chiếm thêm một hàng
+toàn chiều rộng phía trên khung họp.
+
+Nếu xoá hẳn khối `.pageHeader`, luật
+`.tabPanelFull .pageHeader{flex-shrink:0}` sẽ thành thừa và cần được dọn cùng.
+
+Mục này chỉ là hàng đợi phát sinh từ kiểm mắt, **chưa được duyệt để triển khai**
+và **chưa có số phase chính thức**. Không đổi số các Phase 1–9 hiện có.
