@@ -10,6 +10,7 @@
     "verify:graphs": "tsx scripts/verify-graph-roundtrip.ts",
     "verify:workflow-protocol": "tsx scripts/verify-workflow-protocol.ts",
     "verify:meeting-protocol": "tsx scripts/verify-meeting-protocol.ts",
+    "verify:hub-integration": "tsx scripts/verify-hub-integration.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "tsc -b --pretty false"
   },

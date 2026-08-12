@@ -21,7 +21,18 @@ export function AssetsPage() {
   const { language } = useLanguage(); const { toast, confirm } = useHub();
   const [assets, setAssets] = useState<AssetRecord[]>([]); const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true); const [uploading, setUploading] = useState(false); const inputRef = useRef<HTMLInputElement>(null);
-  const load = useCallback(async () => { setLoading(true); try { setAssets((await apiClient.get<{ assets: AssetRecord[] }>("/assets/")).assets || []); } catch (error) { toast(error instanceof Error ? error.message : "Không tải được tài sản", "error"); } finally { setLoading(false); } }, [toast]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await apiClient.get<{ assets: AssetRecord[] }>("/assets/");
+      setAssets(response.assets || []);
+    } catch (error) {
+      const fallback = language === "vi" ? "Không tải được tài sản" : "Could not load assets";
+      toast(error instanceof Error ? error.message : fallback, "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [language, toast]);
   useEffect(() => { void load(); }, [load]);
 
   const upload = async (files: FileList | File[]) => {

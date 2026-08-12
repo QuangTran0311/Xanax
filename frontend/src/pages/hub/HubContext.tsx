@@ -2,7 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { apiClient } from "../../api/client";
 import { STORAGE_KEYS } from "../../store/keys";
-import type { AgentRecord, MeetingRecord, ModelRecord, ProjectRecord, SkillRecord, ToastKind } from "./types";
+import type {
+  AgentRecord,
+  MeetingRecord,
+  ModelRecord,
+  ProjectRecord,
+  ProjectSubtab,
+  SkillRecord,
+  ToastKind,
+} from "./types";
 
 interface HubCollections {
   agents: AgentRecord[];
@@ -20,6 +28,8 @@ interface HubContextValue extends HubCollections {
   loading: boolean;
   currentProjectId: number | null;
   setCurrentProjectId: (id: number | null) => void;
+  currentProjectSubtab: ProjectSubtab;
+  setCurrentProjectSubtab: (subtab: ProjectSubtab) => void;
   sidebarCompact: boolean;
   setSidebarCompact: (value: boolean) => void;
   animations: boolean;
@@ -44,6 +54,7 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
   const [username, setUsername] = useState("—");
   const [loading, setLoading] = useState(true);
   const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const [currentProjectSubtab, setCurrentProjectSubtab] = useState<ProjectSubtab>("overview");
   const [sidebarCompact, setSidebarCompactState] = useState(() => localStorage.getItem(STORAGE_KEYS.sidebarIconMode) === "1");
   const [animations, setAnimationsState] = useState(() => localStorage.getItem(STORAGE_KEYS.animations) !== "0");
   const [toastState, setToastState] = useState<ToastState | null>(null);
@@ -94,10 +105,11 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HubContextValue>(() => ({
     ...collections, username, loading, currentProjectId, setCurrentProjectId,
+    currentProjectSubtab, setCurrentProjectSubtab,
     sidebarCompact, setSidebarCompact, animations, setAnimations,
     refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll,
     toast, confirm, toastState, confirmState, answerConfirm,
-  }), [collections, username, loading, currentProjectId, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, toast, confirm, toastState, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
+  }), [collections, username, loading, currentProjectId, currentProjectSubtab, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, toast, confirm, toastState, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
 
   return <HubContext.Provider value={value}>{children}</HubContext.Provider>;
 }

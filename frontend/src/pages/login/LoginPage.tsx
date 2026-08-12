@@ -61,7 +61,9 @@ export function LoginPage() {
     setLoading(true);
     try {
       await sessionApi.login({ username: cleanUsername, password });
-      window.location.assign("/hub");
+      // Login is now a standalone route in the single React app. A normal
+      // window navigation is correct; there is no parent frame to escape.
+      window.location.assign("/v2/hub");
     } catch (caught) {
       showError(
         caught instanceof ApiError

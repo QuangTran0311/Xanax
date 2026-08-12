@@ -1,6 +1,6 @@
-:global(*),:global(*::before),:global(*::after){box-sizing:border-box;margin:0;padding:0}
+.taskrunner-root,.taskrunner-root *,.taskrunner-root *::before,.taskrunner-root *::after{box-sizing:border-box;margin:0;padding:0}
 svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;vertical-align:-4px}
-:global(:root){
+.taskrunner-root{
   /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
   --bg-card:#2C2721; --ink:#F0EAE0; --ink-muted:#A99E8E; --ink-soft:#C7BCAC;
   --accent:#5B8F7F; --accent-soft:rgba(95,143,127,0.18);
@@ -21,7 +21,7 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
   --mono:'JetBrains Mono',monospace;
 }
 /* ── Token gốc — bản Sáng (mặc định, đúng brief) ── */
-:global(body.light){
+:global(body.light) .taskrunner-root{
   --bg-card:#FFFFFF; --ink:#2B2620; --ink-muted:#948A7C; --ink-soft:#5C5548;
   --accent:#4F7C6F; --accent-soft:#E4EEEA;
   --gold:#D9A552; --gold-soft:#FBF0DE;
@@ -36,10 +36,9 @@ svg.icon{width:20px;height:20px;stroke-linecap:round;stroke-linejoin:round;flex-
   --red-rgb:193,68,58;--amber-rgb:217,165,82;--blue-rgb:74,127,166;
   --text:var(--ink);--text2:var(--ink-muted);--text3:var(--ink-muted);
 }
-:global(html),:global(body){height:100%;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden}
-:global(body){display:flex;flex-direction:column}
+:global(html),:global(body){height:100%;font-family:'Inter',sans-serif}
 
-/* ── Topbar (standalone only, ẩn khi nhúng qua iframe) ── */
+/* ── Topbar (standalone route only) ── */
 :global(#topbar){
   height:52px;background:var(--surface);border-bottom:1px solid var(--border);
   display:flex;align-items:center;padding:0 20px;gap:8px;flex-shrink:0;
@@ -712,6 +711,7 @@ textarea.se-input,.se-textarea{resize:vertical;line-height:1.5}
 
 /* React Taskrunner additions; legacy selectors above remain the visual baseline. */
 .taskrunner-root{height:100vh;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.taskrunner-embedded{height:100%;width:100%}
 .task-list-page{height:100%;display:flex;flex-direction:column;overflow:hidden;min-height:0;position:relative}
 .topbar-user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text3)}
 .topbar-user button{border:1px solid var(--border);background:var(--bg3);color:var(--text2);border-radius:7px;padding:5px 10px;cursor:pointer}
@@ -721,6 +721,7 @@ textarea.se-input,.se-textarea{resize:vertical;line-height:1.5}
 .modal-wide{width:min(960px,calc(100vw - 40px));max-height:88vh;overflow:auto}
 .modal-box .se-input{width:100%;margin:5px 0 12px}
 .history-layout{display:grid;grid-template-columns:minmax(210px,280px) 1fr;gap:16px;min-height:300px}
+.run-project-nav{display:flex;justify-content:flex-end;margin-bottom:10px}
 .history-runs{border-right:1px solid var(--border);padding-right:12px;overflow:auto}
 .history-row{width:100%;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);padding:10px 4px;display:flex;align-items:center;justify-content:space-between;text-align:left;cursor:pointer}
 .history-row.active{background:rgba(var(--cyan-rgb),.1)}

@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
 import { useWebSocket } from "../../ws/useWebSocket";
+import type { ProjectSubtab } from "../hub/types";
 import { Modal } from "./Modal";
 import {
   createEmptyGraph,
@@ -150,16 +151,18 @@ export function WorkflowEditor(props: {
   runOnOpen: boolean;
   onBack: () => void;
   onSaved: () => Promise<void>;
+  onOpenProject?: (projectId: number, subtab: ProjectSubtab) => void;
   toast: (text: string, kind?: "success" | "error" | "info") => void;
 }) {
   return <ReactFlowProvider><WorkflowEditorInner {...props} /></ReactFlowProvider>;
 }
 
-function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
+function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, onOpenProject, toast }: {
   taskId: number;
   runOnOpen: boolean;
   onBack: () => void;
   onSaved: () => Promise<void>;
+  onOpenProject?: (projectId: number, subtab: ProjectSubtab) => void;
   toast: (text: string, kind?: "success" | "error" | "info") => void;
 }) {
   const [task, setTask] = useState<WorkflowTask | null>(null);
@@ -177,6 +180,7 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
   const [inputModal, setInputModal] = useState<null | { test: boolean }>(null);
   const [runInput, setRunInput] = useState("");
   const [running, setRunning] = useState(false);
+  const [runCompleted, setRunCompleted] = useState(false);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<WorkflowSocketMessage[]>([]);
   const [imageSource, setImageSource] = useState<WorkflowSocketMessage | null>(null);
@@ -206,6 +210,7 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
     }
     const result = reduceWorkflowEvent(message, activeNodeRef.current);
     if (result.reset) {
+      setRunCompleted(false);
       activeNodeRef.current = undefined;
       setNodes((current) => current.map((node) => ({ ...node, data: { ...node.data, run: undefined } })));
       setApprovalQueue([]);
@@ -223,6 +228,7 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
       setImageSource(null);
       setNodes((current) => current.map((node) => node.data.run && ["running", "paused"].includes(node.data.run.state) ? { ...node, data: { ...node.data, run: result.terminal === "done" ? { state: "done", detail: "Đã hoàn thành" } : result.terminal === "error" ? { state: "error", detail: "Thất bại" } : undefined } } : node));
       setRunning(false);
+      setRunCompleted(result.terminal === "done");
     }
     if (result.forgetRun) setRunId(null);
     if (result.toast) toast(result.toast.text, result.toast.kind);
@@ -339,7 +345,7 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
   const startRun = async () => {
     if (!task || !(await save(true))) return;
     setNodes((current) => current.map((node) => ({ ...node, data: { ...node.data, run: undefined } })));
-    setRunId(null); setRunning(true);
+    setRunId(null); setRunning(true); setRunCompleted(false);
     const input = inputModal?.test ? `[CHẠY THỬ]\n${runInput}` : runInput;
     socket.send({ action: "run", task_id: task.id, input, project_id: task.project_id || null });
     setInputModal(null); setRunInput("");
@@ -377,6 +383,15 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, toast }: {
       <input className={c("editor-title-input")} value={task.name} onChange={(event) => setTask({ ...task, name: event.target.value })} />
       <div className={c("editor-topbar-spacer")} />
       <span className={c("connection-state")}>{socket.isOpen ? "Đã kết nối" : socket.state === "auth-error" ? "Hết phiên" : `Đang nối${socket.reconnectAttempt ? ` (${socket.reconnectAttempt}/5)` : ""}`}</span>
+      {runCompleted && task.project_id && onOpenProject ? (
+        <button
+          data-testid="open-completed-run-project"
+          className={c("editor-btn")}
+          onClick={() => onOpenProject(task.project_id!, "runs")}
+        >
+          <Icon name="folder" /> Xem kết quả dự án
+        </button>
+      ) : null}
       <button className={c("editor-btn")} data-testid="save-graph" onClick={() => void save()}><Icon name="save" /> Lưu</button>
       <button className={c("editor-btn")} onClick={() => setInputModal({ test: true })}><Icon name="flask" /> Chạy thử</button>
       {!running ? <button className={`${c("editor-btn")} ${c("primary")}`} onClick={() => setInputModal({ test: false })}><Icon name="play" /> Chạy</button> : <button className={c("editor-btn")} onClick={cancel}><Icon name="stop" /> Huỷ</button>}

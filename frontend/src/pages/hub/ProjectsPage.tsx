@@ -5,7 +5,7 @@ import { Icon } from "../../components/Icon";
 import { useLanguage } from "../../store/language";
 import { Dialog } from "./Dialog";
 import { useHub } from "./HubContext";
-import type { AgentRecord, ProjectRecord } from "./types";
+import type { AgentRecord, ProjectRecord, ProjectSubtab } from "./types";
 import styles from "./HubPage.module.css";
 
 const c = (name: string) => styles[name] ?? name;
@@ -13,12 +13,21 @@ interface WorkItem { id: number; title: string; description?: string; status: st
 interface OpsItem { id: number; projectId: number; workflowName: string; status: string; runStatus?: string; outputType?: string; agentName?: string; agents?: Array<{ agentName?: string }>; priority?: string; startedAt?: string; finishedAt?: string; summary?: string; feedback?: string; readyForNext?: boolean; }
 interface HistoryItem { id: number; ts?: string; type?: string; text: string; runId?: number; }
 interface KnowledgeDoc { id: number; title: string; content?: string; tags?: string; project_id?: number; }
-type ProjectSubtab = "overview" | "runs" | "review" | "kanban" | "work" | "knowledge" | "history";
-
 export function ProjectsPage() {
   const { language } = useLanguage(); const vi = language === "vi";
-  const { projects, agents, refreshProjects, currentProjectId, setCurrentProjectId, toast, confirm } = useHub();
-  const [query, setQuery] = useState(""); const [projectDraft, setProjectDraft] = useState<Partial<ProjectRecord> | null>(null); const [subtab, setSubtab] = useState<ProjectSubtab>("overview");
+  const {
+    projects,
+    agents,
+    refreshProjects,
+    currentProjectId,
+    setCurrentProjectId,
+    currentProjectSubtab: subtab,
+    setCurrentProjectSubtab: setSubtab,
+    toast,
+    confirm,
+  } = useHub();
+  const [query, setQuery] = useState("");
+  const [projectDraft, setProjectDraft] = useState<Partial<ProjectRecord> | null>(null);
   const project = projects.find((item) => item.id === currentProjectId);
   const saveProject = async () => { if (!projectDraft?.name?.trim()) return; const body = { name: projectDraft.name.trim(), description: projectDraft.description || "", status: projectDraft.status }; if (projectDraft.id) await apiClient.patch(`/projects/${projectDraft.id}`, body); else await apiClient.post("/projects/", body); await refreshProjects(); setProjectDraft(null); toast(vi ? "Đã lưu dự án" : "Project saved", "success"); };
   const removeProject = async () => { if (!project || !(await confirm(vi ? "Xoá dự án và toàn bộ công việc liên quan?" : "Delete this project and its work items?"))) return; await apiClient.delete(`/projects/${project.id}`); setCurrentProjectId(null); await refreshProjects(); };

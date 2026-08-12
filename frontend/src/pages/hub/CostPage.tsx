@@ -27,9 +27,21 @@ export function CostPage() {
   const [showTokens, setShowTokens] = useState(false); const [expanded, setExpanded] = useState<string | null>(null);
   const [calls, setCalls] = useState<Record<string, CostCall[]>>({});
   const load = useCallback(async () => {
-    setLoading(true); try { const [nextReport, nextOverview] = await Promise.all([apiClient.get<CostReport>(`/model-pool/cost/report?period=${period}`), apiClient.get<CostOverview>("/model-pool/cost/overview")]); setReport(nextReport); setOverview(nextOverview); }
-    catch (error) { toast(error instanceof Error ? error.message : "Không tải được báo cáo", "error"); } finally { setLoading(false); }
-  }, [period, toast]);
+    setLoading(true);
+    try {
+      const [nextReport, nextOverview] = await Promise.all([
+        apiClient.get<CostReport>(`/model-pool/cost/report?period=${period}`),
+        apiClient.get<CostOverview>("/model-pool/cost/overview"),
+      ]);
+      setReport(nextReport);
+      setOverview(nextOverview);
+    } catch (error) {
+      const fallback = language === "vi" ? "Không tải được báo cáo" : "Could not load report";
+      toast(error instanceof Error ? error.message : fallback, "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [language, period, toast]);
   useEffect(() => { void load(); }, [load]);
 
   const buckets = useMemo(() => {
@@ -43,7 +55,13 @@ export function CostPage() {
   const toggleBucket = async (key: string, date: string) => {
     if (expanded === key) { setExpanded(null); return; }
     setExpanded(key); if (period !== "day" || calls[date]) return;
-    try { const data = await apiClient.get<{ calls: CostCall[] }>(`/model-pool/cost/report-calls?date=${date}`); setCalls((current) => ({ ...current, [date]: data.calls || [] })); } catch (error) { toast(error instanceof Error ? error.message : "Không tải được chi tiết", "error"); }
+    try {
+      const data = await apiClient.get<{ calls: CostCall[] }>(`/model-pool/cost/report-calls?date=${date}`);
+      setCalls((current) => ({ ...current, [date]: data.calls || [] }));
+    } catch (error) {
+      const fallback = language === "vi" ? "Không tải được chi tiết" : "Could not load details";
+      toast(error instanceof Error ? error.message : fallback, "error");
+    }
   };
   const periods: Array<[Period, string]> = [["day", hubText(language, "cost.day")], ["week", hubText(language, "cost.week")], ["month", hubText(language, "cost.month")]];
   return <div className={c("page")}>

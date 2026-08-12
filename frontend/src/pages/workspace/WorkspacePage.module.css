@@ -1,7 +1,7 @@
-:global(*), :global(*::before), :global(*::after) { box-sizing: border-box; margin: 0; padding: 0; }
+.workspace-page-root, .workspace-page-root *, .workspace-page-root *::before, .workspace-page-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
 svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; vertical-align: -4px; }
 
-:global(:root) {
+.workspace-page-root {
   /* Token gốc "Quản lý một đội ngũ" — bản Tối ấm (tự soạn) */
   --bg-card:#2C2721; --ink:#F0EAE0; --ink-muted:#A99E8E;
   --accent:#5B8F7F; --accent-soft:rgba(95,143,127,0.18);
@@ -32,7 +32,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   --info:     300px;
 }
 /* ── Token gốc — bản Sáng (mặc định, đúng brief) ── */
-:global(body.light) {
+:global(body.light) .workspace-page-root {
   --bg-card:#FFFFFF; --ink:#2B2620; --ink-muted:#948A7C;
   --accent:#4F7C6F; --accent-soft:#E4EEEA;
   --gold:#D9A552; --gold-soft:#FBF0DE;
@@ -61,13 +61,17 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 
 :global(body) {
   font-family: 'Inter', sans-serif;
-  background: var(--bg);
-  color: var(--text);
+}
+
+.workspace-page-root {
   height: 100vh;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
 }
+.workspace-page-embedded { height: 100%; width: 100%; }
 
 /* ── Top bar ── */
 .topbar {

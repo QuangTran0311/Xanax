@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "../../components/Icon";
+import type { ProjectSubtab } from "../hub/types";
 import { Modal } from "./Modal";
 import { workflowApi } from "./workflowApi";
 import type { ProjectOption, WorkflowOutput, WorkflowRun, WorkflowTask } from "./types";
@@ -70,13 +71,25 @@ function OutputReview({ output, onChange }: { output: WorkflowOutput; onChange: 
   </article>;
 }
 
-export function WorkflowList({ kind, tasks, projects, onKind, onReload, onOpen, toast }: {
+export function WorkflowList({
+  kind,
+  tasks,
+  projects,
+  showKindTabs = true,
+  onKind,
+  onReload,
+  onOpen,
+  onOpenProject,
+  toast,
+}: {
   kind: "company" | "automation";
   tasks: TaskSummary[];
   projects: ProjectOption[];
+  showKindTabs?: boolean;
   onKind: (kind: "company" | "automation") => void;
   onReload: () => Promise<void>;
   onOpen: (id: number, run?: boolean) => void;
+  onOpenProject?: (projectId: number, subtab: ProjectSubtab) => void;
   toast: (text: string, kind?: "success" | "error" | "info") => void;
 }) {
   const [status, setStatus] = useState<(typeof FILTERS)[number]>("all");
@@ -116,10 +129,10 @@ export function WorkflowList({ kind, tasks, projects, onKind, onReload, onOpen, 
   };
 
   return <div className={c("task-list-page")} data-testid="taskrunner-list">
-    <div className={c("main-tabs")}>
+    {showKindTabs ? <div className={c("main-tabs")}>
       <button className={`${c("main-tab-btn")} ${kind === "company" ? c("active") : ""}`} onClick={() => onKind("company")}><Icon name="people" /> Quy trình</button>
       <button className={`${c("main-tab-btn")} ${kind === "automation" ? c("active") : ""}`} onClick={() => onKind("automation")}><Icon name="robot" /> Tác vụ tự động</button>
-    </div>
+    </div> : null}
     <div className={c("filter-tabs")}>
       <div className={c("filter-tabs-list")}>{FILTERS.map((filter) => <button key={filter} className={`${c("filter-tab")} ${filter === status ? c("active") : ""}`} onClick={() => setStatus(filter)}>{FILTER_LABEL[filter]} <span className={c("count")}>{filter === "all" ? tasks.length : tasks.filter((task) => task.status === filter).length}</span></button>)}</div>
       <div className={c("filter-search")}><Icon name="search" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Tìm ${noun}...`} /></div>
@@ -155,7 +168,21 @@ export function WorkflowList({ kind, tasks, projects, onKind, onReload, onOpen, 
 
     <Modal open={Boolean(historyTask)} title={`Lịch sử — ${historyTask?.name || ""}`} onClose={() => { setHistoryTask(null); setRunDetail(null); }} wide>
       <div className={c("history-layout")}><div className={c("history-runs")}>{history.length ? history.map((run) => <button key={run.id} className={`${c("history-row")} ${run.id === runDetail?.id ? c("active") : ""}`} onClick={() => void inspectRun(run.id)}><span><strong>#{run.id}</strong> · {run.triggered_by || "manual"}<small>{relativeTime(run.created_at)}</small></span><span className={`${c("wf-status")} ${c(run.status === "completed" ? "active" : run.status === "failed" ? "failed" : "paused")}`}>{run.status}</span></button>) : <div className={c("modal-desc")}>Chưa được chạy lần nào.</div>}</div>
-        <div className={c("history-detail")}>{runDetail ? (runDetail.outputs?.length ? runDetail.outputs.map((output) => <OutputReview key={output.id} output={output} onChange={(next) => setRunDetail((current) => current ? { ...current, outputs: current.outputs?.map((item) => item.id === next.id ? next : item) } : current)} />) : <div className={c("modal-desc")}>Lần chạy chưa có output.</div>) : <div className={c("modal-desc")}>Chọn một lần chạy để xem và nghiệm thu output.</div>}</div></div>
+        <div className={c("history-detail")}>
+          {runDetail && historyTask?.project_id && onOpenProject ? <div className={c("run-project-nav")}>
+            <button
+              data-testid="open-run-project"
+              className={`${c("wf-btn")} ${c("primary")}`}
+              onClick={() => onOpenProject(
+                historyTask.project_id!,
+                runDetail.outputs?.some((output) => output.review_status === "waiting_review") ? "review" : "runs",
+              )}
+            >
+              <Icon name="folder" size={14} /> Mở kết quả trong dự án
+            </button>
+          </div> : null}
+          {runDetail ? (runDetail.outputs?.length ? runDetail.outputs.map((output) => <OutputReview key={output.id} output={output} onChange={(next) => setRunDetail((current) => current ? { ...current, outputs: current.outputs?.map((item) => item.id === next.id ? next : item) } : current)} />) : <div className={c("modal-desc")}>Lần chạy chưa có output.</div>) : <div className={c("modal-desc")}>Chọn một lần chạy để xem và nghiệm thu output.</div>}
+        </div></div>
     </Modal>
   </div>;
 }

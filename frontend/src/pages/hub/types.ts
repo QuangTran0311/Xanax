@@ -28,6 +28,8 @@ export interface ProjectRecord extends HubRecord {
   description?: string;
 }
 
+export type ProjectSubtab = "overview" | "runs" | "review" | "kanban" | "work" | "knowledge" | "history";
+
 export interface MeetingRecord extends HubRecord {
   topic?: string;
   participants?: number[];

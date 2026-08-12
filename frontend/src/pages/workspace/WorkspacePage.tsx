@@ -47,7 +47,7 @@ function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function WorkspacePage() {
+export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
@@ -386,15 +386,15 @@ export function WorkspacePage() {
   const currentProject = selected?.project_id ? selected.project_name || `#${selected.project_id}` : null;
 
   return (
-    <>
-      <header className={c("topbar")}>
+    <div className={cx(c("workspace-page-root"), embedded && c("workspace-page-embedded"))}>
+      {!embedded ? <header className={c("topbar")}>
         <span className={c("topbar-logo")}><span className={c("dot")} />Xanax</span>
         <nav className={c("topbar-nav")}>
           <a className={c("active")} href="/v2/workspace">Training</a>
-          <a href="/taskrunner">Quy trình</a>
+          <a href="/v2/taskrunner">Quy trình</a>
         </nav>
         <div className={c("topbar-user")}><span>{user?.username ?? "—"}</span><button className={c("btn-logout")} onClick={() => void logout()}>Đăng xuất</button></div>
-      </header>
+      </header> : null}
 
       <main className={c("workspace")} data-testid="workspace-page">
         <aside className={c("sessions-panel")}>
@@ -464,7 +464,7 @@ export function WorkspacePage() {
         </aside>
       </main>
 
-      <footer className={c("page-footer")}>© 2025 Xanax — Personal AI Agent</footer>
+      {!embedded ? <footer className={c("page-footer")}>© 2025 Xanax — Personal AI Agent</footer> : null}
 
       <Modal visible={sessionModal} className="modal-overlay" onBackdrop={() => setSessionModal(false)}><div className={c("modal")}><h3><Icon name="chat" className={c("icon")} size={15} /> Tạo Phiên Dạy Học Mới</h3><input value={newTitle} maxLength={100} autoFocus onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSession(); }} placeholder="Tên phiên dạy học" /><label className={c("field-label")} htmlFor="new-agent">Học viên của buổi dạy</label><select id="new-agent" value={newAgent} onChange={(event) => setNewAgent(event.target.value)}><option value="">Dạy chính Xanax (như trước)</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.role ? ` — ${agent.role}` : ""}</option>)}</select><div className={c("field-hint")}>Mỗi phòng dạy đúng một nhân viên. Chọn xong không đổi được.</div><label className={c("field-label")} htmlFor="new-project">Dự án của buổi dạy</label><select id="new-project" value={newProject} onChange={(event) => setNewProject(event.target.value)}><option value="">Không gắn dự án nào</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><textarea value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Mô tả yêu cầu nhiệm vụ huấn luyện (không bắt buộc)" /><div className={c("modal-footer")}><button className={c("btn-cancel")} onClick={() => setSessionModal(false)}>Huỷ</button><button className={c("btn-create")} onClick={() => void createSession()}>Tạo phiên</button></div></div></Modal>
 
@@ -473,7 +473,7 @@ export function WorkspacePage() {
       <Modal visible={confirmDelete} className="cp-overlay" onBackdrop={() => setConfirmDelete(false)}><div className={c("cp-box")}><div className={c("cp-title")}><Icon name="warning" className={c("icon")} size={15} /> Xác nhận xoá</div><div className={c("cp-body")}>Xoá session này? Hành động không thể hoàn tác.</div><div className={c("cp-footer")}><button className={c("cp-btn-cancel")} onClick={() => setConfirmDelete(false)}>Huỷ</button><button className={c("cp-btn-confirm")} onClick={() => void deleteSession()}>Xoá</button></div></div></Modal>
 
       <div className={cx(c("toast"), toastState.text && c("show"), toastState.kind && c(toastState.kind))}>{toastState.text}</div>
-    </>
+    </div>
   );
 }
 
