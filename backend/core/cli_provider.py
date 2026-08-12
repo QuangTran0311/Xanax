@@ -162,7 +162,8 @@ _MCP_SERVER_NAME = "xanax_skills"
 _BRIDGE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mcp_servers", "xanax_skills.py")
 
 
-async def build_mcp_config(skill_ids: list[int]) -> tuple[str, list[str]]:
+async def build_mcp_config(skill_ids: list[int],
+                           tool_filter: dict[int, list[str]] | None = None) -> tuple[str, list[str]]:
     """Dựng cấu hình `--mcp-config` phơi kỹ năng của nhân viên ra cho CLI.
 
     Trả về (json_config, danh_sách_tên_tool_cho_phép). Rỗng nếu nhân viên không
@@ -176,7 +177,7 @@ async def build_mcp_config(skill_ids: list[int]) -> tuple[str, list[str]]:
         return "", []
 
     from core.hermes.tool_registry import tool_registry
-    from core.mcp_client import sync_mcp_skill_tools, tool_prefix_for_skill
+    from core.mcp_client import filter_mcp_tool_names, sync_mcp_skill_tools, tool_prefix_for_skill
     from core.slugify import slugify
     from hub.database import get_skill
     from mcp_servers.xanax_skills import load_tool_names
@@ -211,10 +212,15 @@ async def build_mcp_config(skill_ids: list[int]) -> tuple[str, list[str]]:
         server_name = slugify(skill["name"]).replace("-", "_")
         servers[server_name] = entry
         prefix = tool_prefix_for_skill(skill)
-        for tool in tool_registry.list_tools(tag="mcp"):
-            if tool.name.startswith(prefix):
-                # Tên bên trong server gốc, không phải tên đã gắn tiền tố của Xanax.
-                allowed.append(f"mcp__{server_name}__{tool.name[len(prefix):]}")
+        names = [t.name for t in tool_registry.list_tools(tag="mcp")
+                 if t.name.startswith(prefix)]
+        # Chỉ phơi những công cụ Papa đã tích chọn trong nhóm. `--allowedTools`
+        # của CLI là hàng rào duy nhất ở đây: server MCP vẫn được khai báo nguyên
+        # vẹn nên nếu không lọc, CLI thấy hết mọi công cụ của server.
+        names = filter_mcp_tool_names(names, prefix, (tool_filter or {}).get(skill["id"]))
+        for name in names:
+            # Tên bên trong server gốc, không phải tên đã gắn tiền tố của Xanax.
+            allowed.append(f"mcp__{server_name}__{name[len(prefix):]}")
 
     if not servers:
         return "", []
@@ -253,6 +259,7 @@ async def stream_claude_cli(
     config_dir: str | None = None,
     cwd: str | None = None,
     skill_ids: list[int] | None = None,
+    tool_filter: dict[int, list[str]] | None = None,
 ) -> AsyncIterator[str]:
     """Stream câu trả lời từ `claude -p`, dùng đăng nhập gói.
 
@@ -261,12 +268,15 @@ async def stream_claude_cli(
 
     `skill_ids` là kỹ năng của nhân viên; chúng được phơi ra cho CLI qua MCP để
     nhân viên thật sự hành động được, thay vì chỉ mô tả hành động.
+
+    `tool_filter` thu hẹp lại còn đúng những công cụ Papa tích chọn trong từng
+    nhóm MCP (xem core/mcp_client.parse_skill_tools).
     """
     system_text, prompt = flatten_messages(messages)
     if not prompt:
         return
 
-    mcp_config, allowed_tools = await build_mcp_config(skill_ids or [])
+    mcp_config, allowed_tools = await build_mcp_config(skill_ids or [], tool_filter)
 
     cmd = [
         _resolve_bin("claude", _CLAUDE_FALLBACK),

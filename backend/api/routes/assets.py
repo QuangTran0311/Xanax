@@ -45,7 +45,12 @@ async def upload_asset(file: UploadFile = File(...), note: str = Form("")):
         source="upload",
         note=note,
     )
-    return await get_asset(asset_id)
+    asset = await get_asset(asset_id)
+    # Kèm đường dẫn tuyệt đối: công cụ MCP (cut_product…) nhận input_path tuyệt
+    # đối, nên nơi gọi phải biết file nằm ở đâu trên đĩa. Không trả ra thì Papa
+    # upload xong vẫn phải mở Explorer mò tên file có tiền tố uuid.
+    return {**asset, "abs_path": str(dest.resolve()),
+            "download_url": f"/api/assets/{asset_id}/download"}
 
 
 @router.get("/")

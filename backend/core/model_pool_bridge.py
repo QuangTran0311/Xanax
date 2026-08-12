@@ -97,6 +97,7 @@ async def stream_from_pool(
     messages: list[dict],
     tools: list[dict] | None = None,
     skill_ids: list[int] | None = None,
+    tool_filter: dict[int, list[str]] | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a completion from the model pool entry identified by model_pool_id.
@@ -130,7 +131,8 @@ async def stream_from_pool(
                     "Model %s chạy qua CLI; CLI có bộ công cụ riêng nên không nhận tools[] theo JSON Schema. Bỏ qua tools.",
                     model_id,
                 )
-            agen = _stream_cli(api_style, model_id, messages, usage_state, entry, skill_ids)
+            agen = _stream_cli(api_style, model_id, messages, usage_state, entry, skill_ids,
+                               tool_filter)
         elif api_style == "anthropic_native":
             if tools:
                 logger.warning(
@@ -180,6 +182,7 @@ async def stream_from_agent_models(
     messages: list[dict],
     tools: list[dict] | None = None,
     skill_ids: list[int] | None = None,
+    tool_filter: dict[int, list[str]] | None = None,
 ) -> AsyncIterator[str]:
     """Thử lần lượt các model theo đúng thứ tự ưu tiên đã cấu hình cho nhân viên
     (tab Nhân sự). Nếu 1 model lỗi trước khi có nội dung đầu tiên (hết quota,
@@ -217,7 +220,7 @@ async def stream_from_agent_models(
             continue
 
         pid = entry["id"]
-        gen = stream_from_pool(pid, messages, tools, skill_ids)
+        gen = stream_from_pool(pid, messages, tools, skill_ids, tool_filter)
         try:
             first_chunk = await gen.__anext__()
         except StopAsyncIteration:
@@ -315,6 +318,11 @@ async def _stream_openai(
     from core.hermes.tool_registry import tool_registry
     from core.skill_tools import record_tool_invocation
 
+    # Tên tool thật sự được cấp cho lượt này, suy từ chính schema đã gửi lên model.
+    granted = {
+        (t.get("function") or {}).get("name") or t.get("name")
+        for t in (tools or [])
+    }
     tool_calls = []
     tool_messages = []
     for index in sorted(tool_call_parts):
@@ -328,6 +336,15 @@ async def _stream_openai(
         # khỏi sổ và bước lại trông như "chưa hề gọi".
         record_tool_invocation(name)
         try:
+            # Chỉ cho gọi đúng những tool đã cấp cho lượt này. Registry là kho
+            # CHUNG của cả hệ thống, nên không chặn ở đây thì model nêu tên tool
+            # nào cũng chạy được — kể cả tool của nhân viên khác, kể cả tool đăng
+            # bài thật trong một buổi dạy chỉ định cho phép cắt ảnh.
+            if name not in granted:
+                raise PermissionError(
+                    f"Lượt này không được cấp công cụ '{name}'. "
+                    f"Chỉ có: {', '.join(sorted(granted)) or '(không có)'}"
+                )
             args = json.loads(raw_args)
             if not isinstance(args, dict):
                 raise ValueError("tool arguments must be a JSON object")
@@ -371,6 +388,7 @@ async def _stream_cli(
     usage_state: dict,
     entry: dict,
     skill_ids: list[int] | None = None,
+    tool_filter: dict[int, list[str]] | None = None,
 ) -> AsyncIterator[str]:
     """Stream qua CLI của gói thuê bao — không đụng tới provider bên thứ 3.
 
@@ -384,7 +402,8 @@ async def _stream_cli(
     if api_style == "claude_cli":
         # Kỹ năng của nhân viên đi xuống qua MCP (xem mcp_servers/xanax_skills.py).
         async for text in stream_claude_cli(
-            model_id, messages, usage_state, config_dir, skill_ids=skill_ids
+            model_id, messages, usage_state, config_dir, skill_ids=skill_ids,
+            tool_filter=tool_filter,
         ):
             yield text
         return

@@ -238,13 +238,19 @@ async def clear_all_sessions() -> None:
 # ── Training sessions ────────────────────────────────────────────────────────
 
 async def create_training_session(title: str, task_description: str = "",
-                                  agent_id: int | None = None) -> int:
+                                  agent_id: int | None = None,
+                                  project_id: int | None = None) -> int:
     """agent_id = học viên của buổi dạy, chọn lúc tạo và không đổi về sau.
-    None = dạy chính Xanax (hành vi cũ)."""
+    None = dạy chính Xanax (hành vi cũ).
+
+    project_id = dự án của buổi dạy; quyết định bài học phạm vi "dự án" đi về soul
+    dự án nào. None = buổi dạy không gắn dự án, chỉ ghi được vào nhân viên/kỹ năng.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO training_sessions (title, task_description, agent_id) VALUES (?, ?, ?)",
-            (title, task_description, agent_id),
+            "INSERT INTO training_sessions (title, task_description, agent_id, project_id) "
+            "VALUES (?, ?, ?, ?)",
+            (title, task_description, agent_id, project_id),
         )
         await db.commit()
         return cur.lastrowid
@@ -255,11 +261,13 @@ async def list_training_sessions() -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
-            "       s.agent_id, s.lessons_json, s.closed, s.created_at, s.updated_at, "
+            "       s.agent_id, s.project_id, s.lessons_json, s.closed, "
+            "       s.allowed_tools_json, s.created_at, s.updated_at, "
             "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
-            "       a.avatar_icon AS agent_avatar_icon "
+            "       a.avatar_icon AS agent_avatar_icon, p.name AS project_name "
             "FROM training_sessions s "
             "LEFT JOIN agent_configs a ON a.id = s.agent_id "
+            "LEFT JOIN projects p ON p.id = s.project_id "
             "ORDER BY s.created_at DESC"
         ) as cur:
             rows = await cur.fetchall()
@@ -271,11 +279,13 @@ async def get_training_session(session_id: int) -> dict | None:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
-            "       s.agent_id, s.lessons_json, s.closed, s.created_at, s.updated_at, "
+            "       s.agent_id, s.project_id, s.lessons_json, s.closed, "
+            "       s.allowed_tools_json, s.created_at, s.updated_at, "
             "       a.name AS agent_name, a.avatar_color AS agent_avatar_color, "
-            "       a.avatar_icon AS agent_avatar_icon "
+            "       a.avatar_icon AS agent_avatar_icon, p.name AS project_name "
             "FROM training_sessions s "
             "LEFT JOIN agent_configs a ON a.id = s.agent_id "
+            "LEFT JOIN projects p ON p.id = s.project_id "
             "WHERE s.id = ?",
             (session_id,),
         ) as cur:
@@ -294,6 +304,7 @@ async def update_training_session(
     task_description: str | None = None,
     lessons_json: str | None = None,
     closed: bool | None = None,
+    allowed_tools_json: str | None = None,
 ) -> bool:
     fields, values = [], []
     if status is not None:
@@ -308,6 +319,8 @@ async def update_training_session(
         fields.append("lessons_json = ?"); values.append(lessons_json)
     if closed is not None:
         fields.append("closed = ?"); values.append(1 if closed else 0)
+    if allowed_tools_json is not None:
+        fields.append("allowed_tools_json = ?"); values.append(allowed_tools_json)
     if not fields:
         return False
     fields.append("updated_at = datetime('now')")
@@ -760,6 +773,15 @@ async def _run_migrations(db) -> None:
         "ALTER TABLE agent_configs ADD COLUMN model_pool_id INTEGER",
         "ALTER TABLE agent_configs ADD COLUMN model_pool_ids_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE agent_configs ADD COLUMN avatar_icon TEXT NOT NULL DEFAULT 'bot'",
+        # Chọn lẻ công cụ bên trong một skill MCP: {"<skill_id>": ["cut_product"]}.
+        # Vắng mặt hoặc danh sách rỗng = lấy hết công cụ của skill đó, nên nhân viên
+        # cũ không đổi hành vi (xem core/mcp_client.parse_skill_tools).
+        "ALTER TABLE agent_configs ADD COLUMN skill_tools_json TEXT NOT NULL DEFAULT '{}'",
+        # Công cụ học viên được phép dùng trong ĐÚNG buổi dạy này. Mặc định rỗng =
+        # không có công cụ nào, giữ nguyên hành vi cũ. Cấp theo từng buổi chứ không
+        # theo nhân viên: một buổi dạy cắt ảnh không có lý do gì được cầm luôn
+        # công cụ đăng bài của cùng nhân viên đó.
+        "ALTER TABLE training_sessions ADD COLUMN allowed_tools_json TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE workflow_tasks ADD COLUMN graph_json TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE workflow_tasks ADD COLUMN trigger_type TEXT NOT NULL DEFAULT 'manual'",
         "ALTER TABLE workflow_tasks ADD COLUMN trigger_config_json TEXT NOT NULL DEFAULT '{}'",
@@ -772,6 +794,9 @@ async def _run_migrations(db) -> None:
         "ALTER TABLE meetings ADD COLUMN decision_text TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE meetings ADD COLUMN decided_at TEXT",
         "ALTER TABLE meetings ADD COLUMN project_id INTEGER",
+        # Cuộc họp đã kích hoạt lần chạy — để mở lại phòng họp là thấy lại các
+        # cửa duyệt còn đang chờ (xem list_pending_approvals).
+        "ALTER TABLE workflow_runs ADD COLUMN meeting_id INTEGER",
         # Project Ops Dashboard (Overview/Runs/Review Queue/Kanban/History) — mỗi
         # workflow_outputs = 1 "item" trên bảng ops; review_status là vòng đời
         # duyệt của CEO, tách biệt với status kỹ thuật (running/done/error) ở trên.
@@ -813,6 +838,10 @@ async def _run_migrations(db) -> None:
         # chưng cất, chờ Papa duyệt rồi mới ghi vào soul của nhân viên đó.
         "ALTER TABLE training_sessions ADD COLUMN agent_id INTEGER",
         "ALTER TABLE training_sessions ADD COLUMN lessons_json TEXT NOT NULL DEFAULT ''",
+        # Dự án của buổi dạy (NULL = dạy chung, không gắn thương hiệu nào). Có nó
+        # thì bài học về giọng thương hiệu mới biết đường về soul dự án thay vì
+        # bị nhét vào soul nhân viên rồi theo nhân viên đó sang dự án khác.
+        "ALTER TABLE training_sessions ADD COLUMN project_id INTEGER",
         # (cột `closed` được thêm trong _backfill_closed_sessions, xem lý do ở đó)
         # Biên bản nháp Xanax tự tổng hợp khi kết thúc họp — CEO xem/sửa rồi mới chốt
         # (decision_text/decided_at) qua endpoint finalize hiện có.
@@ -1056,15 +1085,15 @@ async def create_agent_config(
     system_prompt: str = "", avatar_color: str = "#9366ff", avatar_icon: str = "bot",
     skills_json: str = "[]",
     model_pool_id: int | None = None, model_pool_ids_json: str = "[]",
-    department_id: int | None = None,
+    department_id: int | None = None, skill_tools_json: str = "{}",
 ) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             """INSERT INTO agent_configs
-               (name,role,model,system_prompt,avatar_color,avatar_icon,skills_json,model_pool_id,model_pool_ids_json,department_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+               (name,role,model,system_prompt,avatar_color,avatar_icon,skills_json,model_pool_id,model_pool_ids_json,department_id,skill_tools_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (name, role, model, system_prompt, avatar_color, avatar_icon, skills_json, model_pool_id,
-             model_pool_ids_json, department_id),
+             model_pool_ids_json, department_id, skill_tools_json),
         )
         await db.commit()
         return cur.lastrowid
@@ -1072,7 +1101,7 @@ async def create_agent_config(
 
 async def update_agent_config(agent_id: int, **kwargs) -> bool:
     allowed = {"name", "role", "model", "system_prompt", "avatar_color", "avatar_icon", "skills_json", "enabled",
-               "model_pool_id", "model_pool_ids_json", "department_id"}
+               "model_pool_id", "model_pool_ids_json", "department_id", "skill_tools_json"}
     nullable = {"model_pool_id", "department_id"}  # được phép set về None để gỡ liên kết
     fields, values = [], []
     for k, v in kwargs.items():
@@ -1281,9 +1310,24 @@ async def delete_work_item(item_id: int) -> bool:
 # ── Meetings ─────────────────────────────────────────────────────────────────
 
 async def list_meetings() -> list[dict]:
+    """Kèm `pending_approvals` = số cửa duyệt còn treo của cuộc họp đó.
+
+    Không có con số này thì phải mở lần lượt từng phòng họp mới biết chỗ nào đang
+    chờ mình duyệt. Đếm được ngay ở DB vì recover_interrupted_runs() lúc khởi động
+    đã đánh 'failed' cho mọi lần chạy đứt giữa chừng — hàng còn 'running' là còn
+    thật sự chờ (xem list_pending_approvals).
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM meetings ORDER BY created_at DESC") as cur:
+        async with db.execute(
+            "SELECT m.*, ("
+            "  SELECT COUNT(*) FROM workflow_outputs o"
+            "  JOIN workflow_runs r ON r.id = o.run_id"
+            "  WHERE r.meeting_id = m.id AND r.status = 'running'"
+            "    AND o.review_status = 'waiting_review' AND o.agent_id IS NULL"
+            ") AS pending_approvals "
+            "FROM meetings m ORDER BY m.created_at DESC"
+        ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
@@ -1647,15 +1691,51 @@ async def delete_workflow_task(task_id: int) -> bool:
 
 async def create_workflow_run(
     task_id: int, project_id: int | None = None,
-    task_name: str = "", triggered_by: str = "manual"
+    task_name: str = "", triggered_by: str = "manual",
+    meeting_id: int | None = None,
 ) -> int:
+    """meeting_id = cuộc họp đã kích hoạt lần chạy này.
+
+    Cần lưu xuống DB chứ không giữ trong RAM: yêu cầu duyệt trước đây chỉ được đẩy
+    một lần qua WebSocket, nên đóng phòng họp rồi mở lại là mất thẻ duyệt. Có cột
+    này mới tìm ngược được "cuộc họp đang có bao nhiêu việc chờ tôi duyệt".
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO workflow_runs (task_id,project_id,task_name,triggered_by) VALUES (?,?,?,?)",
-            (task_id, project_id, task_name, triggered_by),
+            "INSERT INTO workflow_runs (task_id,project_id,task_name,triggered_by,meeting_id) "
+            "VALUES (?,?,?,?,?)",
+            (task_id, project_id, task_name, triggered_by, meeting_id),
         )
         await db.commit()
         return cur.lastrowid
+
+
+async def list_pending_approvals(meeting_id: int | None = None) -> list[dict]:
+    """Các cửa duyệt (node approval_gate) đang đứng chờ người duyệt.
+
+    Nhận diện bằng agent_id IS NULL: mọi bước do nhân viên chạy đều có agent_id,
+    riêng output của cửa duyệt thì không. Lọc theo tên "Chờ ... duyệt" là hỏng ngay
+    khi ai đó đổi tên người duyệt trong cấu hình node.
+
+    Chỉ lấy lần chạy còn 'running' — lần chạy đã xong/thất bại thì cửa duyệt của nó
+    không còn ý nghĩa gì.
+    """
+    sql = (
+        "SELECT o.id AS output_id, o.run_id, o.agent_name, o.output_content, "
+        "       o.created_at, r.task_name, r.meeting_id, r.project_id "
+        "FROM workflow_outputs o JOIN workflow_runs r ON r.id = o.run_id "
+        "WHERE o.review_status = 'waiting_review' AND o.agent_id IS NULL "
+        "  AND r.status = 'running'"
+    )
+    params: tuple = ()
+    if meeting_id is not None:
+        sql += " AND r.meeting_id = ?"
+        params = (meeting_id,)
+    sql += " ORDER BY o.id ASC"
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(sql, params)).fetchall()
+        return [dict(r) for r in rows]
 
 
 async def list_workflow_runs(

@@ -73,13 +73,16 @@ async def _build_skills_content(agent: dict) -> str:
         skill_ids = json.loads(agent.get("skills_json") or "[]")
     except Exception:
         skill_ids = []
+    from core.skill_soul import skill_soul_for_prompt
     parts = []
     for sid in skill_ids:
         skill = await get_skill(sid)
         if skill:
             content = json.loads(skill.get("config_json") or "{}").get("content", "")
-            if content:
-                parts.append(content)
+            # Phụ lục kỹ năng Papa dạy trong phòng dạy — xem core/skill_soul.py.
+            appendix = skill_soul_for_prompt(sid, skill["name"])
+            if content or appendix:
+                parts.append("\n\n".join(filter(None, [content, appendix])))
     return "\n\n---\n".join(parts)
 
 
@@ -101,8 +104,9 @@ async def _build_agent_tools(agent: dict) -> list[dict]:
         return []
 
     from api.websocket_workflow import _build_agent_tools as _build_tools_shared
+    from core.mcp_client import parse_skill_tools
 
-    schemas = await _build_tools_shared(skill_ids)
+    schemas = await _build_tools_shared(skill_ids, parse_skill_tools(agent))
     return schemas
 
 
@@ -160,8 +164,14 @@ async def _department_head_context(agent: dict) -> str:
     return "\n".join(lines)
 
 
-async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict]) -> str:
-    """Call LLM with agent persona, stream chunks to client, return full response."""
+async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict],
+                        project_id: int | None = None) -> str:
+    """Call LLM with agent persona, stream chunks to client, return full response.
+
+    project_id = dự án của cuộc họp (meetings.project_id). Có nó thì nhân viên
+    trong phòng họp nói đúng giọng thương hiệu của dự án đang bàn, giống hệt lúc
+    chạy quy trình — xem core/project_soul.py.
+    """
     persona_prompt = agent["system_prompt"] or (
         f"You are {agent['name']}, working as {agent['role']}. "
         "Respond concisely and helpfully in the context of the meeting."
@@ -173,6 +183,8 @@ async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict]) -> str
     # bài học ĐẠT/KHÔNG ĐẠT từ các lần làm việc trước, để nhân viên tự cải thiện.
     await sync_agent_soul(agent)
     soul_content = soul_for_prompt(agent["id"])
+    from core.project_soul import project_prompt
+    project_content = await project_prompt(project_id, mode="conversation")
     # Lịch sử hội thoại format "[Tên]: nội dung" (xem conv_context) khiến model dễ bắt
     # chước tự thêm tiền tố "[TênMình]: " vào đầu câu trả lời của chính mình — thừa và
     # xấu vì UI đã hiển thị sẵn tên người nói ở avatar/header rồi.
@@ -181,6 +193,7 @@ async def _stream_agent(ws: WebSocket, agent: dict, messages: list[dict]) -> str
         skills_content,
         dept_context,
         soul_content,
+        project_content,
         # Hàng phòng thủ cuối: dù routing có sai (CEO tag thẳng tên nhân viên trong câu lệnh
         # chạy quy trình chẳng hạn), nhân viên vẫn không được bịa kết quả. Lịch sử hội thoại
         # có sẵn kết quả của lần chạy trước nên model rất dễ chép lại thành "kết quả mới".
@@ -716,7 +729,8 @@ async def push_meeting_progress(meeting_id: int, payload: dict) -> None:
 def wf_noun(kind: str, cap: bool = False) -> str:
     """'company' = quy trình (luồng phối hợp đầy đủ), 'automation' = tác vụ (một
     việc tự động đơn lẻ). Cột kind trong workflow_tasks chính là ranh giới này —
-    xem wfNoun() ở dashboard/taskrunner.html, hai nơi phải gọi giống nhau."""
+    xem biến `noun` trong frontend/src/pages/taskrunner/WorkflowList.tsx, hai nơi
+    phải gọi giống nhau."""
     noun = "tác vụ" if kind == "automation" else "quy trình"
     return noun.capitalize() if cap else noun
 
@@ -755,6 +769,7 @@ async def _build_workflow_roster_text() -> str:
 
 async def _run_workflows_from_meeting(
     meeting_id: int, project_id: int | None, requests: list[dict],
+    user_message: str = "",
 ) -> list[str]:
     """Chạy các quy trình Xanax vừa quyết định gọi, mỗi cái kèm chủ đề riêng.
 
@@ -763,7 +778,21 @@ async def _run_workflows_from_meeting(
 
     Không cần tham số `ws`: thông báo đi qua `push_meeting_notice`, vốn phát cho
     MỌI client đang mở cuộc họp này chứ không riêng người vừa gõ lệnh.
+
+    `user_message` là nguyên văn tin nhắn của người dùng. Cần nó để chuyển khối
+    ảnh đính kèm xuống lần chạy: `item["input"]` là chủ đề do Xanax tự tóm tắt,
+    mà Xanax thì không có lý do gì để chép lại một khối chú thích HTML dài
+    ngoằng vào đó. Ghép ở đây, bằng code, thì có ảnh là chắc chắn tới nơi —
+    không phụ thuộc việc model có nhớ hay không.
     """
+    from core.image_gen import attached_image_paths
+
+    khoi_anh = ""
+    if attached_image_paths(user_message):
+        match = re.search(r"<!--\s*FILE PAPA GỬI KÈM.*?-->", user_message,
+                          re.DOTALL | re.IGNORECASE)
+        if match:
+            khoi_anh = "\n\n" + match.group(0)
     from api.websocket_workflow import execute_workflow_headless
 
     notes: list[str] = []
@@ -786,7 +815,7 @@ async def _run_workflows_from_meeting(
             continue
         topic = str(item.get("input") or "").strip()
         asyncio.create_task(execute_workflow_headless(
-            task_id, user_input=topic, triggered_by="meeting_chat",
+            task_id, user_input=topic + khoi_anh, triggered_by="meeting_chat",
             project_id=project_id, meeting_id=meeting_id,
         ))
         notes.append(
@@ -940,6 +969,54 @@ async def _generate_draft_minutes(meeting_id: int) -> str:
     return draft.strip()
 
 
+_APPROVER_RE = re.compile(r"^Chờ\s+(.+?)\s+duyệt$")
+
+
+async def _resend_pending_approvals(ws: WebSocket, meeting_id: int) -> None:
+    """Đẩy lại thẻ duyệt cho các cửa duyệt còn đang đứng chờ của cuộc họp này.
+
+    Chỉ đẩy cửa nào waiter còn sống trong RAM (`is_awaiting_approval`). Hàng trong
+    DB vẫn ghi "waiting_review" kể cả khi server đã khởi động lại và lần chạy đã
+    chết — hiện một thẻ bấm vào không chạy tiếp được thì còn tệ hơn không hiện.
+    """
+    try:
+        from hub.database import list_pending_approvals
+        from api.websocket_workflow import (
+            _extract_image_markdown, _IMAGE_MARKDOWN_RE, _strip_image_processing,
+            is_awaiting_approval,
+        )
+        pending = await list_pending_approvals(meeting_id)
+    except Exception:
+        logger.exception("Không đọc được danh sách chờ duyệt của cuộc họp %s", meeting_id)
+        return
+
+    for row in pending:
+        if not is_awaiting_approval(row["output_id"]):
+            continue
+        content = row.get("output_content") or ""
+        images = _extract_image_markdown(content)
+        review_text = _IMAGE_MARKDOWN_RE.sub("", _strip_image_processing(content)).strip()
+        m = _APPROVER_RE.match(row.get("agent_name") or "")
+        try:
+            await ws.send_json({
+                "type": "approval_request",
+                "run_id": row["run_id"],
+                "output_id": row["output_id"],
+                "task_name": row.get("task_name") or "Quy trình",
+                "approver": m.group(1) if m else "CEO",
+                # `note` của node không được lưu xuống DB nên bản dựng lại không có.
+                # Thà thiếu một dòng ghi chú còn hơn bịa ra một dòng khác lúc đầu.
+                "note": "",
+                "content": review_text,
+                "images": images,
+                "deadline_note": "",
+                "restored": True,
+            })
+        except Exception:
+            logger.exception("Không đẩy lại được thẻ duyệt %s", row["output_id"])
+            return
+
+
 @router.websocket("/ws/meeting/{meeting_id}")
 async def meeting_ws(ws: WebSocket, meeting_id: int):
     await ws.accept()
@@ -956,6 +1033,14 @@ async def meeting_ws(ws: WebSocket, meeting_id: int):
     # Send history
     history = await get_meeting_messages(meeting_id)
     await ws.send_json({"type": "history", "messages": history})
+
+    # Dựng lại các thẻ chờ duyệt còn treo của cuộc họp này.
+    #
+    # Yêu cầu duyệt trước đây chỉ được đẩy MỘT LẦN qua WebSocket lúc quy trình dừng
+    # lại. Đóng phòng họp rồi mở lại là thẻ biến mất, trong khi lần chạy vẫn đang
+    # đứng chờ — không còn chỗ nào bấm duyệt, mà cũng không có dấu hiệu gì là nó
+    # đang chờ. Lịch sử họp chỉ còn một dòng chữ của "Hệ thống".
+    await _resend_pending_approvals(ws, meeting_id)
 
     # Track conversation context for LLM
     conv_context: list[dict] = [
@@ -1086,7 +1171,7 @@ async def meeting_ws(ws: WebSocket, meeting_id: int):
                         meeting_row = await get_meeting(meeting_id)
                         notes = await _run_workflows_from_meeting(
                             meeting_id, (meeting_row or {}).get("project_id"),
-                            decision["run_workflows"],
+                            decision["run_workflows"], content,
                         )
                         for note in notes:
                             conv_context.append({"role": "assistant", "content": f"[Hệ thống]: {note}"})
@@ -1102,7 +1187,8 @@ async def meeting_ws(ws: WebSocket, meeting_id: int):
                     active_agent_id = call_ids[0] if call_ids else None
 
                 for agent in (await get_agent_configs_by_ids(call_ids) if call_ids else []):
-                    response = await _stream_agent(ws, agent, conv_context)
+                    response = await _stream_agent(ws, agent, conv_context,
+                                                   meeting_now.get("project_id"))
                     if response:
                         # Chỉ dọn phần lưu lại/đưa vào context tương lai — chunk đã stream ra
                         # UI ở live turn này không thể thu hồi, nhưng tránh lỗi lặp lại ở lượt sau.

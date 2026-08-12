@@ -31,6 +31,12 @@ Protocol (server → client):
                             "content": "...", "images": ["/api/..."], "note": "...", "approver": "CEO"}
                             — content: chỉ nội dung bài (đã bỏ khối IMAGE PROMPT/TỶ LỆ và
                               markdown ảnh); images: URL ảnh để client hiện ảnh thật
+  {"type": "run_paused_for_image_source", "run_id": N, "node_id": "...", "task_name": "...",
+                            "assets": [{"id": N, "filename": "...", "url": "...", "note": "..."}],
+                            "timeout_minutes": N}
+                            — bước agent có bật "hỏi nguồn ảnh"; trả lời qua
+                              POST /api/workflow/runs/{run_id}/image-source
+  {"type": "image_source_chosen", "run_id": N, "node_id": "...", "mode": "generate"|"asset"}
   {"type": "approval_rejected", "run_id": N, "node_id": "...", "output_id": N, "attempt": N}
   {"type": "approval_resumed",  "run_id": N, "node_id": "...", "output_id": N}
   {"type": "run_done",     "run_id": N}
@@ -44,14 +50,16 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 from collections.abc import Callable, Awaitable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from hub.database import (
-    get_workflow_task, get_agent_config, get_project, get_skill,
+    get_workflow_task, get_agent_config, get_skill,
     create_workflow_run, update_workflow_run_status, get_workflow_run,
     create_workflow_output, update_workflow_output, list_workflow_outputs,
     list_workflow_tasks_by_trigger, create_ops_history, add_meeting_message,
@@ -321,16 +329,242 @@ async def _notify_approval_needed(
     logger.info("Approval needed: run=%s output=%s approver=%s", run_id, output_id, approver)
 
 
-def signal_workflow_approval(output_id: int, approved: bool = True, edited_content: str | None = None) -> bool:
+def is_awaiting_approval(output_id: int) -> bool:
+    """Cửa duyệt này có thật sự còn một lần chạy đang đứng chờ không.
+
+    Hàng trong DB nói "waiting_review" là chưa đủ: waiter nằm trong RAM, nên sau khi
+    server khởi động lại thì hàng vẫn còn mà lần chạy thì chết rồi. Hiện lại một
+    thẻ duyệt bấm vào không có tác dụng gì còn tệ hơn là không hiện.
+    """
+    return output_id in _approval_waiters
+
+
+def signal_workflow_approval(output_id: int, approved: bool = True, edited_content: str | None = None,
+                             notes: str = "") -> bool:
     """Resume an in-process approval_gate (CEO duyệt/từ chối) — approved=False khiến
-    node approval_gate chạy lại node trước đó thay vì đi tiếp."""
+    node approval_gate chạy lại node trước đó thay vì đi tiếp.
+
+    `notes` là lý do từ chối do Papa gõ vào thẻ duyệt. Nó đi vào hai chỗ (xem nhánh
+    từ chối trong _execute_graph_run): brief của lần chạy lại ngay sau đó, và soul
+    của nhân viên đã viết ra bản bị chê. Không có nó thì "Không duyệt" chỉ là chạy
+    lại y hệt — nhân viên không biết mình sai chỗ nào.
+    """
     waiter = _approval_waiters.get(output_id)
     if not waiter:
         return False
     waiter["approved"] = approved
     waiter["edited_content"] = edited_content
+    waiter["notes"] = (notes or "").strip()
     waiter["event"].set()
     return True
+
+
+async def _record_rejection(*, author: dict | None, reason: str, review_text: str,
+                            task_name: str, approver: str) -> None:
+    """Biến một lần bấm "Không duyệt" thành bài học nằm lại trong soul nhân viên.
+
+    Trước đây từ chối chỉ chạy lại bước trước rồi thôi: Papa chê bao nhiêu lần thì
+    lần chạy sau nhân viên vẫn xuất phát từ đúng chỗ cũ, vì không có đường nào dẫn
+    lời chê về soul. Đường duy nhất có sẵn là nút ĐẠT/KHÔNG ĐẠT ở màn chấm output
+    (api/routes/workflow.py), mà cửa duyệt lại không đi qua đó.
+
+    Ghi vào soul RIÊNG của nhân viên chứ không vào SOUL.md chung: bài bị chê là
+    sản phẩm của một người cụ thể, không phải bài học chung của cả công ty.
+
+    Không có lý do kèm theo thì KHÔNG ghi gì — một mục "KHÔNG ĐẠT" trơ trọi trong
+    soul chỉ dạy được nhân viên rằng bài đó sai, không dạy được sai ở đâu, và lần
+    sau nó vẫn phải đoán.
+    """
+    if not author or not author.get("agent_id") or not reason:
+        return
+
+    # Đánh dấu luôn lên chính output đã bị chê, để lịch sử chạy của nhân viên
+    # (list_agent_run_history → soul) hiện đúng "lần đó bị trả lại".
+    if author.get("output_id"):
+        try:
+            await update_workflow_output(
+                author["output_id"], pass_fail="fail", notes=reason,
+                review_status="needs_revision",
+            )
+        except Exception:
+            logger.exception("Không ghi được pass_fail cho output %s", author.get("output_id"))
+
+    try:
+        from core.agent_soul import append_feedback
+        await asyncio.get_running_loop().run_in_executor(
+            None, append_feedback, author["agent_id"], author.get("agent_name", ""),
+            f"{task_name} — {approver} không duyệt", "fail", review_text, reason,
+        )
+    except Exception:
+        logger.exception("Không ghi được lời chê vào soul nhân viên %s", author.get("agent_id"))
+
+
+# Cửa hỏi nguồn ảnh, khoá theo "run_id:node_id". Cùng cơ chế với _approval_waiters:
+# waiter nằm trong RAM nên server khởi động lại là lần chạy đó chết — đúng như cửa
+# duyệt, và cũng phải nói thẳng ra thay vì treo im lặng.
+_image_source_waiters: dict[str, dict] = {}
+
+# Chờ quá lâu thì tự sinh ảnh. Cố ý KHÔNG chờ vô hạn như cửa duyệt: cửa duyệt đứng
+# ở cuối, chờ mãi thì cùng lắm là bài chưa đăng; cửa này đứng giữa quy trình, treo
+# vô hạn là giữ luôn cả lần chạy và Papa không thấy gì ngoài một node đang quay.
+_IMAGE_SOURCE_TIMEOUT_MINUTES = 10
+
+
+def _image_gate_key(run_id: int, node_id: str) -> str:
+    return f"{run_id}:{node_id}"
+
+
+def is_awaiting_image_source(run_id: int, node_id: str) -> bool:
+    return _image_gate_key(run_id, node_id) in _image_source_waiters
+
+
+def signal_image_source(run_id: int, node_id: str, mode: str,
+                        asset_id: int | None = None) -> bool:
+    """Papa đã chọn nguồn ảnh cho bước này: 'generate' hoặc 'asset'."""
+    waiter = _image_source_waiters.get(_image_gate_key(run_id, node_id))
+    if not waiter:
+        return False
+    waiter["mode"] = "asset" if mode == "asset" else "generate"
+    waiter["asset_id"] = asset_id
+    waiter["event"].set()
+    return True
+
+
+async def _copy_asset_into_run(run_id: int, asset_id: int) -> str | None:
+    """Chép ảnh Papa chọn vào thư mục lưu trữ của lần chạy, trả đường dẫn file.
+
+    Vì sao phải chép chứ không trỏ thẳng vào data/assets: mọi thứ phía sau đã
+    quen với ảnh nằm trong thư mục run — thẻ chờ duyệt xem ảnh qua
+    /api/workflow/runs/{id}/archive-file, `resolve_workflow_image_path` chỉ nhận
+    URL của chính lần chạy đó, và bước đăng Facebook lấy file từ đúng chỗ ấy.
+    Chép một lần ở đây thì ảnh upload và ảnh máy vẽ đi chung một đường, không
+    phải sửa gì phía sau.
+    """
+    from hub.database import get_asset
+    from core.project_storage import get_or_create_run_dir
+
+    asset = await get_asset(asset_id)
+    if not asset:
+        return None
+    try:
+        from api.routes.assets import ASSETS_DIR
+        src = ASSETS_DIR / asset["stored_path"]
+        if not src.is_file():
+            logger.warning("Ảnh %s không còn trên đĩa: %s", asset_id, src)
+            return None
+        run_dir = await get_or_create_run_dir(run_id)
+        dest = run_dir / f"00_anh_papa_chon{src.suffix or '.png'}"
+        await asyncio.get_running_loop().run_in_executor(
+            None, shutil.copyfile, str(src), str(dest))
+        return str(dest)
+    except Exception:
+        logger.exception("Không chép được ảnh %s vào lần chạy %s", asset_id, run_id)
+        return None
+
+
+async def _ask_image_source(
+    *, run_id: int, node_id: str, task_name: str, project_id: int | None,
+    meeting_id: int | None, send: Callable[[dict], Awaitable[None]],
+) -> str | None:
+    """Dừng lại hỏi Papa: để nhân viên tự vẽ, hay dùng ảnh có sẵn / vừa upload.
+
+    Trả về đường dẫn file ảnh nếu Papa chọn ảnh có sẵn, None nếu để tự vẽ (hoặc
+    hết giờ chờ, hoặc ảnh chọn bị hỏng — mọi ngả nghi ngờ đều rơi về hành vi cũ
+    là tự vẽ, để cửa này không bao giờ làm hỏng một quy trình đang chạy được).
+    """
+    from hub.database import list_assets
+
+    assets = [
+        {"id": a["id"], "filename": a["filename"],
+         "url": f"/api/assets/{a['id']}/download", "note": a.get("note") or ""}
+        for a in await list_assets()
+        if (a.get("mime_type") or "").startswith("image/")
+    ]
+
+    key = _image_gate_key(run_id, node_id)
+    waiter = {"event": asyncio.Event(), "mode": None, "asset_id": None}
+    _image_source_waiters[key] = waiter
+
+    payload = {
+        "type": "run_paused_for_image_source", "run_id": run_id, "node_id": node_id,
+        "task_name": task_name, "assets": assets,
+        "timeout_minutes": _IMAGE_SOURCE_TIMEOUT_MINUTES,
+    }
+    await send(payload)
+    if meeting_id:
+        # Chạy nền từ phòng họp thì không có client nào nghe socket quy trình —
+        # phải đẩy thẳng vào phòng họp, giống _notify_approval_needed.
+        try:
+            from api.websocket_meeting import push_meeting_progress
+            await add_meeting_message(
+                meeting_id, "Hệ thống", "system",
+                f'Quy trình "{task_name}" đang hỏi: dùng ảnh có sẵn hay để nhân viên tự vẽ?')
+            await push_meeting_progress(meeting_id, {**payload, "type": "image_source_request"})
+        except Exception:
+            logger.exception("Không hỏi được nguồn ảnh trong cuộc họp %s", meeting_id)
+    if project_id:
+        try:
+            await create_ops_history(
+                project_id, None, "waiting_review",
+                f'Quy trình "{task_name}" đang chờ chọn nguồn ảnh', run_id=run_id)
+        except Exception:
+            logger.exception("Không ghi được ops_history cho cửa nguồn ảnh %s", run_id)
+
+    waited = 0.0
+    try:
+        while not waiter["event"].is_set() and not _cancel_flags.get(run_id):
+            try:
+                await asyncio.wait_for(waiter["event"].wait(), timeout=_APPROVAL_POLL_SECONDS)
+            except asyncio.TimeoutError:
+                waited += _APPROVAL_POLL_SECONDS
+                if waited >= _IMAGE_SOURCE_TIMEOUT_MINUTES * 60:
+                    break
+    finally:
+        _image_source_waiters.pop(key, None)
+
+    if waiter["mode"] != "asset" or not waiter["asset_id"]:
+        await send({"type": "image_source_chosen", "run_id": run_id,
+                    "node_id": node_id, "mode": "generate"})
+        return None
+
+    path = await _copy_asset_into_run(run_id, int(waiter["asset_id"]))
+    await send({"type": "image_source_chosen", "run_id": run_id, "node_id": node_id,
+                "mode": "asset" if path else "generate"})
+    return path
+
+
+async def _record_approval(*, author: dict | None, project_id: int | None,
+                           approved_text: str, original: str) -> None:
+    """Ghi lại một lần Papa bấm Duyệt, đối xứng với `_record_rejection`.
+
+    Không có hàm này thì hệ thống chỉ học được từ lời chê: soul đầy mục KHÔNG ĐẠT,
+    không mục nào nói bài nào là đạt. Nhân viên đọc một danh sách toàn điều cấm thì
+    nước đi an toàn nhất là viết ngắn và nhạt — đo được thật trên 6 lần chạy.
+
+    Bài mẫu ghi vào SOUL DỰ ÁN chứ không vào soul nhân viên: nó dạy giọng thương
+    hiệu, nên đổi người viết vẫn phải còn. Soul nhân viên chỉ nhận dấu "lần chạy đó
+    đạt" qua pass_fail, không chép lại nguyên bài — chép cả hai chỗ là cùng một bài
+    đăng nằm hai lần trong mỗi prompt.
+    """
+    if author and author.get("output_id"):
+        try:
+            await update_workflow_output(author["output_id"], pass_fail="pass",
+                                         review_status="approved")
+        except Exception:
+            logger.exception("Không ghi được pass_fail cho output %s", author.get("output_id"))
+
+    if not project_id:
+        return
+    try:
+        from hub.database import get_project
+        from core.project_soul import append_approved_example
+        project = await get_project(project_id)
+        await asyncio.get_running_loop().run_in_executor(
+            None, append_approved_example, project_id,
+            (project or {}).get("name", ""), approved_text, original, _now()[:16],
+        )
+    except Exception:
+        logger.exception("Không ghi được bài đã duyệt vào soul dự án %s", project_id)
 
 
 def _now() -> str:
@@ -415,6 +649,27 @@ def _compose_run_result(outputs: list[dict]) -> str:
     return body
 
 
+def _last_author_of(outputs: list[dict]) -> dict | None:
+    """Nhân viên đã viết ra phần CHỮ mà `_compose_run_result` chọn giữ lại.
+
+    Phải soi đúng một kiểu với hàm đó, nếu không lời chê sẽ vào nhầm soul: bước
+    cuối của tác vụ tạo post là bước sinh ảnh, output của nó rỗng chữ sau khi bóc
+    ảnh ra — lấy "nhân viên của bước cuối" là chê nhầm người vẽ ảnh về một cái
+    caption họ không viết.
+    """
+    author = None
+    for out in outputs:
+        content = out.get("output_content") or ""
+        text = _IMAGE_MARKDOWN_RE.sub("", _strip_image_processing(content)).strip()
+        if text and out.get("agent_id"):
+            author = {
+                "agent_id": out.get("agent_id"),
+                "agent_name": out.get("agent_name") or "",
+                "output_id": out.get("id"),
+            }
+    return author
+
+
 def _estimate_tokens_rough(text: str) -> int:
     """1 token ≈ 4 ký tự — khớp với ước lượng trong core/model_pool_bridge.py."""
     return max(0, len(text or "") // 4)
@@ -441,14 +696,20 @@ async def _required_tool_names(skill_ids: list[int]) -> set[str]:
     return names
 
 
-async def _build_agent_tools(skill_ids: list[int]) -> list[dict]:
-    """Build OpenAI function schemas for the agent's built-in skills."""
+async def _build_agent_tools(skill_ids: list[int],
+                             tool_filter: dict[int, list[str]] | None = None) -> list[dict]:
+    """Build OpenAI function schemas for the agent's built-in skills.
+
+    `tool_filter` = {skill_id: [tên công cụ được chọn]} cho skill loại 'mcp' — xem
+    core/mcp_client.parse_skill_tools. Không truyền, hoặc skill không có trong map,
+    thì nhân viên được dùng hết công cụ của server đó.
+    """
     if not skill_ids:
         return []
 
     import tools as _registered_tools  # noqa: F401 - ensure registry is populated
     from core.hermes.tool_registry import tool_registry
-    from core.mcp_client import sync_mcp_skill_tools, tool_prefix_for_skill
+    from core.mcp_client import filter_mcp_tool_names, sync_mcp_skill_tools, tool_prefix_for_skill
     from core.skill_tools import sync_api_skill_tools, tool_name_for_skill
 
     # Đồng bộ skill loại 'api' và 'mcp' (cấu hình qua giao diện, không cần code)
@@ -473,13 +734,23 @@ async def _build_agent_tools(skill_ids: list[int]) -> list[dict]:
         elif skill_type == "api":
             tool_names = [tool_name_for_skill(skill)]
         elif skill_type == "mcp":
-            # Một MCP server phơi ra nhiều tool, nên 1 skill nở thành N tool.
+            # Một MCP server phơi ra nhiều tool, nên 1 skill nở thành N tool —
+            # trừ khi Papa chỉ tích chọn vài cái trong nhóm.
             prefix = tool_prefix_for_skill(skill)
-            tool_names = [t.name for t in tool_registry.list_tools(tag="mcp")
-                          if t.name.startswith(prefix)]
-            if not tool_names:
+            server_names = [t.name for t in tool_registry.list_tools(tag="mcp")
+                            if t.name.startswith(prefix)]
+            picked = (tool_filter or {}).get(sid)
+            tool_names = filter_mcp_tool_names(server_names, prefix, picked)
+            if not server_names:
                 logger.warning(
                     "Skill %s (mcp) chưa có tool nào — MCP server chưa kết nối được?", sid,
+                )
+            elif not tool_names:
+                # Phân biệt hẳn với ca trên: server chạy tốt, nhưng những công cụ
+                # Papa đã tích chọn không còn tồn tại trong server nữa.
+                logger.warning(
+                    "Skill %s (mcp): công cụ đã chọn (%s) không có trong server; server đang có %s",
+                    sid, ", ".join(picked or []), ", ".join(n[len(prefix):] for n in server_names),
                 )
         else:
             continue
@@ -508,8 +779,15 @@ async def _maybe_generate_image(
     run_id: int, step_num: int, output_id: int, skill_ids: list[int],
     full_output: str, model_pool_ids: list[int],
     send: Callable[[dict], Awaitable[None]], agent_name: str = "",
+    fallback_overlay: str = "",
 ) -> str | None:
-    """Chạy skill generate_post_image nếu agent có gắn skill này. Trả về None nếu lỗi cứng."""
+    """Chạy skill generate_post_image nếu agent có gắn skill này. Trả về None nếu lỗi cứng.
+
+    `fallback_overlay` — ảnh sản phẩm đã cắt sẵn ở một node trước đó. Dùng khi
+    nhân viên quên viết khối ẢNH SẢN PHẨM: quy trình đã bỏ công cắt nền rồi, để
+    một lần model đãng trí làm hỏng cả tấm ảnh thì phí. Khối do nhân viên khai
+    báo vẫn được ưu tiên — nó có thể trỏ tới ảnh khác một cách có chủ ý.
+    """
     has_image_skill = False
     for sid in skill_ids:
         s = await get_skill(sid)
@@ -520,7 +798,10 @@ async def _maybe_generate_image(
     if not has_image_skill or not full_output:
         return full_output
 
-    from core.image_gen import generate_image, extract_image_prompt, extract_image_ratio, ImageGenError
+    from core.image_gen import (
+        extract_image_prompt, extract_image_ratio, extract_product_image,
+        extract_product_placement, generate_with_agent_models, safe_product_path,
+    )
     from core.project_storage import get_or_create_run_dir
     from core.slugify import slugify
 
@@ -529,190 +810,209 @@ async def _maybe_generate_image(
         return full_output
 
     ratio = extract_image_ratio(full_output)
-    ratio_str = f"{ratio[0]}:{ratio[1]}"
+    # Khai báo "ẢNH SẢN PHẨM" thì IMAGE PROMPT là mô tả CÁI NỀN, còn sản phẩm là
+    # ảnh chụp thật đã tách nền, dán lên sau khi vẽ xong.
+    data_root = Path(__file__).parent.parent / "data"
+    overlay = safe_product_path(extract_product_image(full_output), data_root)
+    if not overlay and fallback_overlay:
+        overlay = safe_product_path(fallback_overlay, data_root)
+        if overlay:
+            logger.info(
+                "Bước %s quên khối ẢNH SẢN PHẨM — dùng ảnh đã cắt ở node trước: %s",
+                step_num, overlay,
+            )
 
     # Tạo ảnh dùng đúng model đã cấu hình cho nhân viên (tab Nhân sự), không có
-    # model riêng cho skill và không phân loại text/ảnh. Luồng ảnh và text dùng
-    # chung một helper để giữ nguyên thứ tự ưu tiên, trạng thái và hạn mức ngày.
-    from core.model_pool_bridge import CLI_API_STYLES, iter_usable_pool_entries
-    from hub.database import (
-        record_model_usage,
-        record_model_usage_hourly,
-        record_model_call_log,
+    # model riêng cho skill và không phân loại text/ảnh. Phần chọn model, bỏ qua
+    # model không vẽ được và thử lại nằm trong core/image_gen để phòng dạy dùng
+    # chung — xem generate_with_agent_models.
+    run_dir = await get_or_create_run_dir(run_id)
+    agent_slug = slugify(agent_name, fallback=f"buoc-{step_num}")
+    save_path = run_dir / f"{step_num:02d}_{agent_slug}.png"
+
+    async def _notice(text: str) -> None:
+        await send({"type": "agent_chunk", "run_id": run_id, "step": step_num,
+                    "content": f"\n\n{text}"})
+
+    err = await generate_with_agent_models(
+        prompt=img_prompt, ratio=ratio, model_pool_ids=model_pool_ids or [],
+        save_path=save_path, notify=_notice, product_overlay=overlay,
+        placement=extract_product_placement(full_output),
     )
-
-    attempt_errors: list[str] = []
-    attempted_any = False
-    announced = False
-    save_path = None
-    skipped_cli: list[str] = []
-
-    for round_index in range(2):
-        failed_label: str | None = None
-        async for pool_entry in iter_usable_pool_entries(model_pool_ids or []):
-            model_label = f"{pool_entry['name']} · {pool_entry['model_id']}"
-
-            api_style = pool_entry.get("api_style") or ""
-            # `claude` CLI không sinh được ảnh, và entry CLI cố tình để trống
-            # base_url. Không chặn ở đây thì nó ghép thành URL tương đối rồi văng
-            # "Request URL is missing an 'http://' or 'https://' protocol", che
-            # mất nguyên nhân thật.
-            #
-            # `codex` CLI thì SINH ĐƯỢC — nó có skill hệ thống `imagegen` chạy
-            # bằng gói ChatGPT, nên không cần mua image model riêng.
-            if api_style in CLI_API_STYLES and api_style != "codex_cli":
-                if model_label not in skipped_cli:
-                    skipped_cli.append(model_label)
-                continue
-            if not announced:
-                await send({
-                    "type": "agent_chunk",
-                    "run_id": run_id,
-                    "step": step_num,
-                    "content": f"\n\n⏳ Đang tạo ảnh ({ratio_str})...",
-                })
-                run_dir = await get_or_create_run_dir(run_id)
-                agent_slug = slugify(agent_name, fallback=f"buoc-{step_num}")
-                save_path = run_dir / f"{step_num:02d}_{agent_slug}.png"
-                announced = True
-            if failed_label:
-                await send({
-                    "type": "agent_chunk",
-                    "run_id": run_id,
-                    "step": step_num,
-                    "content": f"\n\n⚠️ {failed_label} lỗi, đang thử {model_label}...",
-                })
-
-            attempted_any = True
-            usage_state = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
-            try:
-                if api_style == "codex_cli":
-                    # Codex tự chọn nơi lưu rồi ta copy về; không có usage trả về
-                    # nên bảng chi phí ghi 0 cho lượt này — đúng bản chất, ảnh
-                    # nằm trong gói thuê bao chứ không tính theo token.
-                    from core.cli_provider import generate_image_via_codex
-                    await generate_image_via_codex(
-                        prompt=img_prompt,
-                        save_path=save_path,
-                        model_id=pool_entry["model_id"],
-                        codex_home=(pool_entry.get("cli_config_dir") or "").strip() or None,
-                        ratio=ratio,
-                    )
-                else:
-                    await generate_image(
-                        prompt=img_prompt,
-                        base_url=pool_entry["base_url"],
-                        api_key=pool_entry["api_key"],
-                        model=pool_entry["model_id"],
-                        save_path=save_path,
-                        ratio=ratio,
-                        usage_state=usage_state,
-                    )
-            except ImageGenError as img_err:
-                logger.warning(
-                    "Tạo ảnh bằng model %s thất bại ở vòng %s: %s",
-                    model_label,
-                    round_index + 1,
-                    img_err,
-                )
-                attempt_errors.append(f"• {model_label}: {img_err}")
-                failed_label = model_label
-                continue
-
-            try:
-                await record_model_usage(
-                    pool_entry["id"],
-                    usage_state["tokens_in"],
-                    usage_state["tokens_out"],
-                    usage_state["tokens_cache"],
-                )
-                await record_model_usage_hourly(
-                    pool_entry["id"],
-                    usage_state["tokens_in"],
-                    usage_state["tokens_out"],
-                    usage_state["tokens_cache"],
-                )
-                await record_model_call_log(
-                    pool_entry["id"],
-                    usage_state["tokens_in"],
-                    usage_state["tokens_out"],
-                    usage_state["tokens_cache"],
-                )
-            except Exception:
-                logger.exception("Không thể ghi usage cho lần tạo ảnh bằng model %s", model_label)
-
-            img_url = f"/api/workflow/runs/{run_id}/archive-file?path={save_path.name}"
-            clean_text = _strip_image_processing(full_output)
-            full_output = clean_text + f"\n\n![Ảnh đã tạo]({img_url})"
-            await send({"type": "agent_image", "run_id": run_id, "step": step_num, "url": img_url})
-            return full_output
-
-        if round_index == 0:
-            if not attempted_any:
-                if skipped_cli:
-                    err = (
-                        "Nhân viên này chỉ có model không sinh được ảnh ("
-                        + ", ".join(skipped_cli)
-                        + "). Claude CLI không có khả năng tạo ảnh — hãy gán thêm cho nhân "
-                        "viên này một model Codex CLI (dùng skill imagegen của gói ChatGPT, "
-                        "không tốn thêm tiền) hoặc một image model qua API."
-                    )
-                else:
-                    err = (
-                        "Nhân viên chưa được gán model khả dụng nào. Vui lòng chọn model cho "
-                        "nhân viên này ở tab Nhân sự rồi chạy lại."
-                    )
-                await send({
-                    "type": "agent_chunk",
-                    "run_id": run_id,
-                    "step": step_num,
-                    "content": f"\n\n❌ {err}",
-                })
-                await update_workflow_output(
-                    output_id,
-                    status="error",
-                    output_content=full_output + f"\n\n❌ {err}",
-                    review_status="failed",
-                    finished_at=_now(),
-                )
-                await send({
-                    "type": "agent_error",
-                    "run_id": run_id,
-                    "step": step_num,
-                    "content": err,
-                })
-                return None
-
-            await send({
-                "type": "agent_chunk",
-                "run_id": run_id,
-                "step": step_num,
-                "content": "\n\n⚠️ Tất cả model đều lỗi, chờ 5 giây rồi thử lại một vòng...",
-            })
-            await asyncio.sleep(5)
-
-    err = (
-        "Tạo ảnh thất bại sau khi thử hết model của nhân viên:\n"
-        + "\n".join(attempt_errors)
-    )
-    if skipped_cli:
-        err += (
-            "\n\n(Đã bỏ qua model không sinh được ảnh: " + ", ".join(skipped_cli) + ")"
+    if err:
+        await _notice(f"❌ {err}")
+        await update_workflow_output(
+            output_id, status="error", output_content=full_output + f"\n\n❌ {err}",
+            review_status="failed", finished_at=_now(),
         )
-    await send({"type": "agent_chunk", "run_id": run_id, "step": step_num, "content": f"\n\n❌ {err}"})
-    await update_workflow_output(
-        output_id, status="error", output_content=full_output + f"\n\n❌ {err}",
-        review_status="failed", finished_at=_now(),
-    )
-    await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": err})
-    return None
+        await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": err})
+        return None
+
+    img_url = f"/api/workflow/runs/{run_id}/archive-file?path={save_path.name}"
+    full_output = _strip_image_processing(full_output) + f"\n\n![Ảnh đã tạo]({img_url})"
+    await send({"type": "agent_image", "run_id": run_id, "step": step_num, "url": img_url})
+    return full_output
+
+
+# Dòng CUỐI CÙNG trong system prompt của mọi bước quy trình.
+#
+# Ca thật: Celexa trả về "Sếp, em dùng skill imagegen vì lần này cần tạo ảnh đi kèm
+# post. Em đọc nhanh hướng dẫn skill rồi..." và cả lời dẫn đó bị lưu nguyên văn
+# thành nội dung bài đăng chờ Papa duyệt.
+#
+# Vì sao phải là luật cứng chứ không phải chỉnh câu chữ: prompt của một bước dài
+# hơn 13 nghìn ký tự và có tới bốn nguồn cùng nói (tính cách, kỹ năng, soul, dự
+# án). Tính cách của nhân viên vốn là giọng nói chuyện, nên chỉ cần một chỗ nào đó
+# nhắc tới trò chuyện là model có xác suất trượt sang lời dẫn. Không nêu luật thì
+# nó đúng phần lớn số lần — và "phần lớn" là không đủ khi output đi thẳng vào hàng
+# chờ duyệt rồi được bước sau dùng nguyên văn.
+#
+# Cố ý KHÔNG cấm giải thích: có bước mà việc phải làm chính là phân tích hay lập
+# kế hoạch. Chỉ cấm lời chào và lời kể lể về quá trình làm.
+_WORKFLOW_OUTPUT_RULE = (
+    "ĐÂY LÀ MỘT LƯỢT CHẠY QUY TRÌNH TỰ ĐỘNG, KHÔNG PHẢI CUỘC TRÒ CHUYỆN. Không có "
+    "ai đang đọc bạn nói chuyện: câu trả lời của bạn được lưu NGUYÊN VĂN làm kết quả "
+    "của bước này, đưa vào hàng chờ duyệt và bước sau dùng lại y hệt.\n"
+    "- Trả về ĐÚNG sản phẩm được yêu cầu, không thêm gì bao quanh nó.\n"
+    "- KHÔNG lời chào, không xưng hô với Papa/Sếp, không \"em đã làm xong\", không "
+    "\"em dùng kỹ năng X\", không kể lại bạn đã đọc gì hay định làm gì.\n"
+    "- KHÔNG hỏi lại, không đề xuất phương án tiếp theo, không thêm nhãn kiểu "
+    "\"Bài đăng:\" hay \"Kết quả:\".\n"
+    "Nếu bước này yêu cầu phân tích hay lập kế hoạch thì bản phân tích CHÍNH LÀ sản "
+    "phẩm — vẫn viết thẳng vào, không bọc bằng lời dẫn."
+)
+
+
+# Lời dẫn ở ĐẦU output: "Sếp, em dùng skill imagegen...", "Để em chạy luôn ahh —",
+# "Okee, em hiểu rồi Sếp!". Đo thật trên model đang dùng: prompt không có luật cứng
+# thì 3/5 lượt dính, có luật cứng vẫn còn 1/5. Luật trong prompt không bao giờ chặn
+# hết được, mà output này đi thẳng vào hàng chờ duyệt rồi bước sau dùng nguyên văn.
+#
+# Cố ý CHỈ soi dòng đầu tiên và chỉ khớp mẫu chắc chắn. Bắt rộng hơn thì có ngày
+# cắt nhầm câu mở bài thật — nhiều shop mở bài bằng "Em xin giới thiệu...".
+_PREAMBLE_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:thưa\s+)?(?:sếp|papa)\b"                    # gọi thẳng người dùng
+    r"|(?:dạ|vâng|ok+e*|okay|sẵn sàng|được rồi|được sếp|rõ rồi|xin lỗi|để em)\b"
+    r"|em\s+(?:sẽ|xin|đã|đang|dùng|xử|bắt đầu|chạy|làm|viết|gửi|cần|hiểu)\b"
+    r"|(?:mình|tôi)\s+(?:sẽ|đã|xin)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_preamble(text: str) -> bool:
+    for line in (text or "").splitlines():
+        if line.strip():
+            return bool(_PREAMBLE_RE.match(line))
+    return False
+
+
+# Câu nhắc phải phủ HAI kiểu hỏng khác nhau, vì bộ dò bắt cả hai:
+#
+# 1. Lời dẫn rồi mới tới sản phẩm — "Sếp, em dùng skill imagegen vì...".
+# 2. Hỏi ngược lại thay vì làm — "Sếp ơi, em cần hỏi một chút để viết bài chuẩn
+#    chứ không phải bịa bả". Ca này đo được thật, và câu nhắc chỉ nói về lời dẫn
+#    thì không cứu nổi: model xin lỗi rồi hỏi lại lần nữa.
+_NO_PREAMBLE_RETRY = (
+    "Câu trả lời vừa rồi không dùng được. Đây là một bước quy trình tự động: câu trả "
+    "lời của bạn được lưu NGUYÊN VĂN làm kết quả và bước sau dùng lại y hệt — không có "
+    "ai đọc để trả lời bạn.\n"
+    "Hãy trả lời lại, CHỈ gồm đúng sản phẩm được yêu cầu:\n"
+    "- Không lời chào, không xưng hô với Papa/Sếp, không kể bạn dùng kỹ năng gì hay "
+    "định làm gì. Bắt đầu ngay bằng câu đầu tiên của chính sản phẩm.\n"
+    "- KHÔNG hỏi lại và không xin thêm thông tin. Thiếu chi tiết nào thì tự chọn "
+    "phương án hợp lý nhất rồi làm — một bản tự quyết còn dùng được, một câu hỏi thì "
+    "không ai trả lời."
+)
+
+# Hai lần, không nhiều hơn. Đo thật: có ca lần hai vẫn hỏi lại lần nữa. Nhưng mỗi
+# lần thêm là một lượt gọi model, và nếu lần ba vẫn hỏng thì vấn đề nằm ở cấu hình
+# bước chứ không phải ở chỗ nhắc thêm một câu.
+_MAX_PREAMBLE_RETRY = 2
+
+
+# Một bước gắn NHIỀU kỹ năng thì mỗi kỹ năng tự khai một "Định dạng đầu ra" riêng,
+# và model xuất đủ cả.
+#
+# Ca thật: bước "Celexa · research_keyword_for_post, write_post" trả về báo cáo
+# nghiên cứu từ khóa 2.300 chữ, rồi "---", rồi bài đăng 700 chữ. Thẻ chờ duyệt dán
+# nhãn "NỘI DUNG BÀI ĐĂNG" nhưng hiện ra bảng phân tích từ khóa; bấm Duyệt & đăng
+# là cả cục đó lên fanpage.
+#
+# Kỹ năng ĐỨNG CUỐI trong danh sách là sản phẩm giao đi; các kỹ năng trước nó là
+# việc chuẩn bị. Dùng dấu mốc thay vì đoán theo "---" vì bài đăng hoàn toàn có thể
+# có "---" bên trong.
+_RESULT_MARKER = "===KẾT QUẢ==="
+
+_MULTI_SKILL_RULE = (
+    "BƯỚC NÀY GẮN NHIỀU KỸ NĂNG. Kỹ năng ĐỨNG CUỐI trong danh sách mới là sản phẩm "
+    "phải giao; các kỹ năng trước nó chỉ là việc chuẩn bị để bạn nghĩ cho đúng.\n"
+    f"Hãy kết thúc câu trả lời bằng một dòng chỉ có {_RESULT_MARKER} rồi viết sản phẩm "
+    "cuối cùng ngay bên dưới, và KHÔNG viết gì thêm sau đó. Phần chuẩn bị (bảng phân "
+    "tích, danh sách từ khóa, dàn ý...) để phía trên dấu mốc — nó sẽ bị cắt bỏ, không "
+    "đi vào sản phẩm."
+)
+
+
+def _extract_deliverable(text: str) -> str:
+    """Cắt lấy phần sau dấu mốc cuối cùng. Không có mốc thì giữ nguyên.
+
+    Giữ nguyên khi thiếu mốc hoặc sau mốc rỗng: cắt nhầm là mất sản phẩm, còn để
+    thừa phần chuẩn bị thì Papa vẫn sửa được trong ô duyệt.
+    """
+    if _RESULT_MARKER not in (text or ""):
+        return text
+    tail = text[text.rindex(_RESULT_MARKER) + len(_RESULT_MARKER):].strip()
+    return tail or text
+
+
+async def _retry_without_preamble(messages: list[dict], first: str,
+                                  model_pool_ids: list[int]) -> str:
+    """Xin lại tối đa 2 lần. Trả "" nếu vẫn hỏng — bên gọi giữ bản gốc.
+
+    Không stream: phần chữ hỏng đã hiện trên màn hình rồi, không thu hồi được —
+    nhưng thứ được LƯU và đưa vào thẻ chờ duyệt phải là bản sạch.
+    """
+    latest = first
+    for lan in range(_MAX_PREAMBLE_RETRY):
+        try:
+            retry_messages = messages + [
+                {"role": "assistant", "content": latest},
+                {"role": "user", "content": _NO_PREAMBLE_RETRY},
+            ]
+            if model_pool_ids:
+                from core.model_pool_bridge import stream_from_agent_models
+                out = ""
+                async for chunk in stream_from_agent_models(model_pool_ids, retry_messages):
+                    out += chunk
+            else:
+                out = await hermes.complete_with_context(retry_messages)
+        except Exception:
+            logger.exception("Thử lại bỏ lời dẫn thất bại (lần %d)", lan + 1)
+            return ""
+
+        out = (out or "").strip()
+        if not out:
+            return ""
+        if _looks_like_preamble(out):
+            latest = out          # đưa chính bản hỏng vào lần nhắc kế tiếp
+            continue
+        # Bản sạch nhưng cụt hơn hẳn bản đầu: model tưởng chỉ cần sửa mỗi câu mở.
+        # Chỉ so khi bản đầu ĐÃ CÓ nội dung thật — bản đầu chỉ là một câu hỏi cụt
+        # thì mọi bài viết tử tế đều dài hơn, so làm gì.
+        if len(first.strip()) > 400 and len(out) < len(first.strip()) * 0.5:
+            return ""
+        return out
+    return ""
 
 
 async def _run_agent_step(
     *, run_id: int, task: dict, node_data: dict, step_num: int, agent_label: str,
     user_input: str, previous_outputs: list[dict[str, Any]],
     send: Callable[[dict], Awaitable[None]], node_id: str | None = None,
-    project_id: int | None = None,
+    project_id: int | None = None, preset_image: str | None = None,
+    product_image: str = "",
 ) -> dict:
     """Chạy một bước agent (dùng chung cho pipeline tuyến tính và node 'agent' trong graph)."""
     agent_id: int | None = node_data.get("agent_id")
@@ -735,6 +1035,7 @@ async def _run_agent_step(
 
     skills_content = ""
     skill_ids: list[int] = []
+    skill_names: set[str] = set()
     if agent_config:
         skill_ids = json.loads(agent_config.get("skills_json") or "[]")
         data_skill_ids = node_data.get("skill_ids")
@@ -744,12 +1045,17 @@ async def _run_agent_step(
                 if str(skill_id).isdigit()
             }
             skill_ids = [skill_id for skill_id in skill_ids if skill_id in selected_skill_ids]
+        from core.skill_soul import skill_soul_for_prompt
         for sid in skill_ids:
             skill = await get_skill(sid)
             if skill:
+                skill_names.add(skill["name"])
                 content = json.loads(skill.get("config_json") or "{}").get("content", "")
-                if content:
-                    skills_content += f"\n\n---\n{content}"
+                # Phụ lục kỹ năng (Papa dạy trong phòng dạy) ghép ngay sau nội
+                # dung kỹ năng để model đọc liền mạch — xem core/skill_soul.py.
+                appendix = skill_soul_for_prompt(sid, skill["name"])
+                if content or appendix:
+                    skills_content += "\n\n---\n" + "\n\n".join(filter(None, [content, appendix]))
 
     # soul.md riêng của nhân viên (xem core/agent_soul.py) — mô tả/tính cách + dữ liệu
     # thực tế + bài học ĐẠT/KHÔNG ĐẠT từ các lần chạy quy trình trước, để nhân viên tự
@@ -763,7 +1069,28 @@ async def _run_agent_step(
         # thức từng bước của kỹ năng luôn thắng nguyên tắc trong bài học.
         soul_content = soul_for_prompt(agent_config["id"])
 
-    system_prompt: str = "\n\n".join(filter(None, [base_prompt, skills_content.strip(), soul_content]))
+    # Soul dự án — giọng thương hiệu của dự án đang chạy. Đặt CUỐI vì nó có quyền
+    # cao nhất khi tạo ra sản phẩm: cùng nhân viên, cùng kỹ năng, chạy dự án nào
+    # thì ra giọng dự án đó (xem core/project_soul.py).
+    from core.project_soul import project_prompt
+    project_content = await project_prompt(project_id)
+
+    # Chốt sẵn chế độ A hay B cho nhân viên tạo ảnh, đúng như phòng dạy học làm
+    # (xem api/websocket_training.py). Thiếu dòng này thì nhân viên phải tự suy
+    # từ mô tả kỹ năng xem có ảnh thật hay không — mà đường quy trình thì không
+    # có ai ngồi đó sửa nếu nó suy sai.
+    #
+    # `da_cat=True`: ảnh đã qua node cắt ở bước trước, nhân viên trong quy trình
+    # không cầm công cụ cắt.
+    photo_note = ""
+    if "generate_post_image" in skill_names:
+        from core.image_gen import photo_mode_note
+        photo_note = photo_mode_note([product_image] if product_image else [], da_cat=True)
+
+    system_prompt: str = "\n\n".join(filter(
+        None, [base_prompt, skills_content.strip(), soul_content, project_content,
+               photo_note, _WORKFLOW_OUTPUT_RULE,
+               _MULTI_SKILL_RULE if len(skill_ids) > 1 else ""]))
 
     output_id = await create_workflow_output(
         run_id=run_id, task_id=task["id"], agent_id=agent_id,
@@ -775,18 +1102,14 @@ async def _run_agent_step(
         "agent_name": agent_name, "agent_id": agent_id, "output_id": output_id, "node_id": node_id,
     })
 
+    # Mô tả dự án KHÔNG nhét ở đây nữa: nó đã nằm trong soul dự án ở system
+    # prompt phía trên, kèm luật giọng thương hiệu và thứ tự ưu tiên. Để cả hai
+    # chỗ thì cùng một đoạn mô tả xuất hiện hai lần trong mỗi lần chạy.
+    #
     # project_id do lời gọi chạy (manual/schedule/webhook/chain) truyền vào —
-    # KHÔNG lấy từ task["project_id"] nữa, để 1 quy trình dùng chung được cho
-    # nhiều dự án khác nhau; task["project_id"] giờ chỉ còn là dự án mặc định.
-    project_brief = ""
-    if project_id:
-        project = await get_project(project_id)
-        if project and project.get("description"):
-            project_brief = project["description"]
-
+    # KHÔNG lấy từ task["project_id"], để 1 quy trình dùng chung được cho nhiều
+    # dự án khác nhau; task["project_id"] giờ chỉ còn là dự án mặc định.
     user_content = f"# Dự án: {task['name']}\n"
-    if project_brief:
-        user_content += f"\n## Bối cảnh dự án\n{project_brief}\n"
     if task.get("description"):
         user_content += f"\n## Mô tả quy trình\n{task['description']}\n"
     if user_input:
@@ -822,11 +1145,18 @@ async def _run_agent_step(
     agent_tools: list[dict] = []
     try:
         if model_pool_ids:
+            from core.mcp_client import parse_skill_tools
             from core.model_pool_bridge import stream_from_agent_models
-            agent_tools = await _build_agent_tools(skill_ids)
+            # Công cụ lẻ Papa tích chọn trong từng nhóm MCP. Phải đi kèm suốt
+            # xuống tận CLI, nếu không thì đường model API lọc đúng mà đường CLI
+            # vẫn phơi cả nhóm — cùng một nhân viên có hai bộ công cụ khác nhau
+            # tuỳ model đang chạy.
+            tool_filter = parse_skill_tools(agent_config)
+            agent_tools = await _build_agent_tools(skill_ids, tool_filter)
             try:
                 stream_iter = stream_from_agent_models(
                     model_pool_ids, messages, tools=agent_tools or None, skill_ids=skill_ids,
+                    tool_filter=tool_filter,
                 )
             except Exception as exc:
                 await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": str(exc), "node_id": node_id})
@@ -848,6 +1178,24 @@ async def _run_agent_step(
             })
 
         full_output = "".join(accumulated)
+
+        # Lời dẫn ở đầu output — xem _looks_like_preamble. Chặn ở đây chứ không
+        # chỉ dặn trong prompt, vì đo thật thì prompt vẫn để lọt khoảng 1/5 lượt.
+        if _looks_like_preamble(full_output):
+            logger.warning("Bước %s của %s mở đầu bằng lời dẫn — xin lại một lần",
+                           step_num, agent_name)
+            clean = await _retry_without_preamble(messages, full_output, model_pool_ids)
+            if clean:
+                full_output = clean
+
+        # Cắt phần chuẩn bị của các kỹ năng đứng trước — xem _MULTI_SKILL_RULE.
+        # Phải làm TRƯỚC _maybe_generate_image, nếu không ảnh bị cắt mất theo.
+        if len(skill_ids) > 1:
+            trimmed = _extract_deliverable(full_output)
+            if trimmed != full_output:
+                logger.info("Bước %s: cắt %d ký tự chuẩn bị, giữ %d ký tự sản phẩm",
+                            step_num, len(full_output) - len(trimmed), len(trimmed))
+                full_output = trimmed
 
         if _is_error_output(full_output):
             err_msg = full_output.strip()
@@ -901,11 +1249,20 @@ async def _run_agent_step(
             await send({"type": "agent_error", "run_id": run_id, "step": step_num, "content": err_msg, "node_id": node_id})
             return {"status": "error", "content": err_msg, "output_id": output_id}
 
-        full_output = await _maybe_generate_image(
-            run_id, step_num, output_id, skill_ids, full_output, model_pool_ids, send, agent_name,
-        )
-        if full_output is None:
-            return {"status": "error", "content": "image generation failed", "output_id": output_id}
+        if preset_image:
+            # Papa đã chọn ảnh có sẵn ở cửa hỏi nguồn ảnh — không vẽ nữa, chỉ đính
+            # đúng ảnh đó vào. Vẫn bóc khối IMAGE PROMPT ra khỏi nội dung như
+            # đường tự vẽ, để prompt kỹ thuật không lọt vào thẻ chờ duyệt.
+            img_url = f"/api/workflow/runs/{run_id}/archive-file?path={Path(preset_image).name}"
+            full_output = _strip_image_processing(full_output) + f"\n\n![Ảnh đã tạo]({img_url})"
+            await send({"type": "agent_image", "run_id": run_id, "step": step_num, "url": img_url})
+        else:
+            full_output = await _maybe_generate_image(
+                run_id, step_num, output_id, skill_ids, full_output, model_pool_ids, send, agent_name,
+                fallback_overlay=product_image,
+            )
+            if full_output is None:
+                return {"status": "error", "content": "image generation failed", "output_id": output_id}
 
         tokens_in = _estimate_tokens_rough(system_prompt + user_content)
         tokens_out = _estimate_tokens_rough(full_output)
@@ -1031,6 +1388,56 @@ async def _execute_linear_run(
 
 # ── Graph (n8n-style) pipeline ───────────────────────────────────────────────
 
+def _product_image_from_input(user_input: str) -> str:
+    """Ảnh sản phẩm người dùng kẹp vào tin nhắn, đã kiểm tra an toàn.
+
+    Brief của lần chạy mang theo khối `<!-- FILE PAPA GỬI KÈM ... -->` do ô soạn
+    tin chèn vào. Bóc ở đây, một lần, ngay lúc khởi tạo — thay vì để từng nhân
+    viên tự dò trong chữ. Việc "có ảnh hay không" quyết định cả nhánh chạy, nên
+    nó phải là dữ kiện chắc chắn, không phải kết quả suy đoán của model.
+
+    Lọc qua `safe_product_path` vì chuỗi này đi qua tay model (Xanax soạn phần
+    `input` khi phát marker chạy quy trình): không chặn thì một đường dẫn bịa
+    trỏ ra ngoài `data/` cũng được đem đi cắt.
+
+    Trả chuỗi rỗng chứ không phải None — node điều kiện so "có dữ liệu hay
+    không" trên chuỗi, còn `fill_state_placeholders` thay None thành rỗng anyway.
+    """
+    from core.image_gen import attached_image_paths, safe_product_path
+
+    data_root = Path(__file__).parent.parent / "data"
+    for raw in attached_image_paths(user_input or ""):
+        safe = safe_product_path(raw, data_root)
+        if safe:
+            return str(safe)
+    return ""
+
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
+
+
+def fill_state_placeholders(value, state: dict):
+    """Thay `{{tên_khoá}}` trong tham số node bằng giá trị lấy từ `state`.
+
+    Tham số của node `tool_call` là dict tĩnh do người dùng gõ trong tab Quy
+    trình, nên trước đây node công cụ chỉ chạy được với đầu vào cố định. Mà thứ
+    đáng chạy bằng công cụ lại thường phụ thuộc lần chạy — ví dụ node cắt ảnh
+    cần đúng tấm ảnh người dùng vừa gửi, mỗi lần một đường dẫn khác.
+
+    Khoá không có trong `state` thì thay bằng chuỗi rỗng, không để nguyên
+    `{{...}}`: để nguyên thì công cụ nhận được một đường dẫn có dấu ngoặc nhọn
+    và báo lỗi "không tìm thấy file {{product_image}}" — đọc xong vẫn không biết
+    vì sao. Rỗng thì lỗi nói thẳng là thiếu đầu vào.
+    """
+    if isinstance(value, str):
+        return _PLACEHOLDER_RE.sub(lambda m: str(state.get(m.group(1)) or ""), value)
+    if isinstance(value, dict):
+        return {k: fill_state_placeholders(v, state) for k, v in value.items()}
+    if isinstance(value, list):
+        return [fill_state_placeholders(v, state) for v in value]
+    return value
+
+
 async def _execute_graph_run(
     task: dict, graph: dict, triggered_by: str, send: Callable[[dict], Awaitable[None]], user_input: str = "",
     project_id: int | None = None, meeting_id: int | None = None,
@@ -1064,6 +1471,9 @@ async def _execute_graph_run(
     run_id = await create_workflow_run(
         task_id=task_id, project_id=run_project_id,
         task_name=task["name"], triggered_by=triggered_by,
+        # Ghi lại cuộc họp đã kích hoạt, để mở lại phòng họp là thấy lại cửa duyệt
+        # còn đang chờ (xem list_pending_approvals).
+        meeting_id=meeting_id,
     )
     await update_workflow_run_status(run_id, "running", set_started=True)
     _cancel_flags[run_id] = False
@@ -1078,15 +1488,60 @@ async def _execute_graph_run(
     from core.project_storage import resolve_workflow_image_path
     initial_image_path = await resolve_workflow_image_path(user_input)
     previous_outputs: list[dict[str, Any]] = []
+
+    anh_san_pham = _product_image_from_input(user_input)
+    # Đích cho node cắt ảnh: cùng thư mục, thêm đuôi _cut.png. Suy ra từ đường
+    # dẫn ảnh gốc nên hai lần chạy cùng một tấm ảnh dùng chung một file kết quả
+    # — cắt lại thì đè lên, không rải rác hàng chục bản trùng trong data/assets.
+    dich_cat = (
+        str(Path(anh_san_pham).with_name(Path(anh_san_pham).stem + "_cut.png"))
+        if anh_san_pham else ""
+    )
     state = {
         "last_text": user_input,
         "last_image_path": str(initial_image_path) if initial_image_path else None,
         "final_output": "", "step_counter": 0,
+        # Nhân viên đã viết ra state["last_text"] hiện tại — cổng duyệt cần biết
+        # để ghi lời chê vào đúng soul. Với node workflow_call thì tác giả nằm
+        # trong lần chạy con, không phải node này.
+        "last_author": None,
+        # Các lần bị từ chối ở cổng duyệt, kèm lý do — nhét vào brief của lần
+        # chạy lại (xem input_with_artifacts).
+        "rejections": [],
+        # Ảnh sản phẩm THẬT người dùng kẹp vào tin nhắn phòng họp, nếu có. Rỗng
+        # nghĩa là người dùng chỉ đưa chủ đề. Node điều kiện đọc khoá này để rẽ
+        # nhánh, node cắt ảnh đọc để biết cắt tấm nào.
+        "product_image": anh_san_pham,
+        "product_cut_target": dich_cat,
+        # Đường dẫn file .png sau khi cắt nền — node cắt ảnh ghi vào khi xong.
+        "product_cut_image": "",
     }
     visited: set[str] = set()
 
+    # Brief mà mỗi node đã nhận lúc chạy lần đầu. Cổng duyệt từ chối thì phải trả
+    # lại đúng brief này rồi mới chạy lại.
+    #
+    # Ca thật: quy trình #14 là trigger → gọi tác vụ "Tạo post và ảnh" → cổng duyệt.
+    # Sau lần gọi đầu, state["last_text"] không còn là chủ đề "túi xách bằng len"
+    # nữa mà là chính BÀI ĐĂNG vừa sinh ra. Bấm "Không duyệt" là chạy lại node đó
+    # với đầu vào = bài vừa bị chê, nên nhân viên tưởng được giao đề bài "viết lại
+    # cho giống cái này" và trả ra bản gần y hệt.
+    node_briefs: dict[str, dict] = {}
+
+    def remember_brief(node_id: str) -> None:
+        node_briefs.setdefault(node_id, {
+            "text": state["last_text"], "image": state.get("last_image_path"),
+        })
+
     def input_with_artifacts() -> str:
         text = state["last_text"] or user_input
+        for i, reason in enumerate(state["rejections"], 1):
+            text += (
+                f"\n\n---\n## Bản trước đã bị trả lại (lần {i})\n"
+                f"Lý do: {reason}\n"
+                "Viết lại một bản MỚI khắc phục đúng chỗ bị chê. Không sửa vá vài chữ "
+                "rồi giao lại bản cũ."
+            )
         if state.get("last_image_path"):
             text += (
                 "\n\n---\n## Workflow artifact (system-provided)\n"
@@ -1132,6 +1587,21 @@ async def _execute_graph_run(
         if ntype == "agent":
             state["step_counter"] += 1
             step_num = state["step_counter"]
+            remember_brief(node_id)
+            # Cửa hỏi nguồn ảnh: bật trong cấu hình node (tab Quy trình). Hỏi TRƯỚC
+            # khi nhân viên chạy, vì câu trả lời quyết định bước này có tốn một lần
+            # gọi model sinh ảnh hay không.
+            preset_image = None
+            if data.get("ask_image_source"):
+                preset_image = await _ask_image_source(
+                    run_id=run_id, node_id=node_id,
+                    task_name=task.get("name") or f"#{task_id}",
+                    project_id=run_project_id, meeting_id=meeting_id, send=send,
+                )
+                if _cancel_flags.get(run_id):
+                    return
+                if preset_image:
+                    state["last_image_path"] = preset_image
             from core.skill_tools import reset_workflow_image_path, set_workflow_image_path
             image_token = set_workflow_image_path(state.get("last_image_path"))
             try:
@@ -1139,7 +1609,8 @@ async def _execute_graph_run(
                     run_id=run_id, task=task, node_data=data, step_num=step_num,
                     agent_label=data.get("agent_name", node_id), user_input=input_with_artifacts(),
                     previous_outputs=previous_outputs, send=send, node_id=node_id,
-                    project_id=run_project_id,
+                    project_id=run_project_id, preset_image=preset_image,
+                    product_image=str(state.get("product_cut_image") or ""),
                 )
             finally:
                 reset_workflow_image_path(image_token)
@@ -1147,6 +1618,11 @@ async def _execute_graph_run(
                 raise _GraphStepError(result["content"])
             state["last_text"] = result["content"]
             state["final_output"] = state["last_text"]
+            state["last_author"] = {
+                "agent_id": data.get("agent_id"),
+                "agent_name": result.get("agent_name", node_id),
+                "output_id": result.get("output_id"),
+            }
             previous_outputs.append({
                 "agent_name": result.get("agent_name", node_id), "step": step_num, "content": state["last_text"],
             })
@@ -1160,7 +1636,15 @@ async def _execute_graph_run(
             value = (data.get("value") or "").strip()
             haystack = (source_text or "").lower()
 
-            if mode == "not_contains":
+            # "Có dữ liệu hay không" — không cần `value`, khác hẳn ba chế độ so
+            # khớp chữ bên dưới. Dùng cho những thứ hoặc có hoặc không, như
+            # `product_image`: người dùng gửi ảnh thì nhánh Đúng, không thì Sai.
+            # Làm bằng `contains` với chuỗi ".png" cũng ra kết quả, nhưng đó là
+            # mẹo vặt — người sau đọc cấu hình node sẽ không hiểu đang xét gì.
+            if mode in ("co_du_lieu", "khong_co_du_lieu"):
+                co = bool((source_text or "").strip())
+                branch_ok = co if mode == "co_du_lieu" else not co
+            elif mode == "not_contains":
                 branch_ok = value.lower() not in haystack if value else False
             elif mode == "equals":
                 branch_ok = haystack == value.lower()
@@ -1184,6 +1668,7 @@ async def _execute_graph_run(
         if ntype == "workflow_call":
             target_id = data.get("target_task_id")
             if target_id:
+                remember_brief(node_id)
                 # Sub-quy trình được gọi trực tiếp trong cùng 1 lượt chạy — kế thừa
                 # đúng dự án của lượt chạy hiện tại (không phải dự án mặc định của
                 # sub-task), để cả chuỗi quy trình lồng nhau nhất quán trên 1 dự án.
@@ -1214,6 +1699,7 @@ async def _execute_graph_run(
                         if sub_outputs:
                             state["last_text"] = _compose_run_result(sub_outputs) or state["last_text"]
                             state["final_output"] = state["last_text"]
+                            state["last_author"] = _last_author_of(sub_outputs)
                             image_path = await resolve_workflow_image_path(state["last_text"])
                             if image_path:
                                 state["last_image_path"] = str(image_path)
@@ -1228,6 +1714,7 @@ async def _execute_graph_run(
         if ntype == "tool_call":
             tool_name = str(data.get("tool_name") or "").strip()
             args = data.get("args") if isinstance(data.get("args"), dict) else {}
+            args = fill_state_placeholders(args, state)
             await send({
                 "type": "tool_call_start", "run_id": run_id,
                 "node_id": node_id, "tool_name": tool_name,
@@ -1248,8 +1735,22 @@ async def _execute_graph_run(
                 )
                 state[f"tool_{node_id}"] = result
                 state["last_tool_result"] = result
-                state["last_text"] = result_text
-                state["final_output"] = result_text
+                # Mặc định node công cụ trở thành "đầu ra mới" của quy trình.
+                # Nhưng có loại node chỉ làm một việc phụ giữa đường — như cắt
+                # nền ảnh — mà đè `last_text` thì bước sau nhận được dòng log
+                # "Đã cắt xong: ..." thay vì bài post do bước trước viết ra.
+                if not data.get("keep_text"):
+                    state["last_text"] = result_text
+                    state["final_output"] = result_text
+                # Công cụ sinh ra file thì ghi đường dẫn vào state để bước sau
+                # dùng. Kiểm tra file có thật thay vì tin chuỗi trả về: nhiều
+                # công cụ báo "Lỗi: ..." bằng chuỗi thường chứ không ném exception
+                # (cut_product là một ví dụ), nên "chạy xong" không đồng nghĩa
+                # "có file". Không có file thì để rỗng, nhánh sau tự biết đường.
+                out_key = str(data.get("output_state_key") or "").strip()
+                if out_key:
+                    produced = str(args.get("output_path") or "").strip()
+                    state[out_key] = produced if produced and Path(produced).is_file() else ""
                 await send({
                     "type": "tool_call_done", "run_id": run_id,
                     "node_id": node_id, "tool_name": tool_name,
@@ -1334,7 +1835,11 @@ async def _execute_graph_run(
                     output_id, status="done", output_content=content,
                     review_status="waiting_review", finished_at=_now(),
                 )
-                waiter = {"event": asyncio.Event(), "approved": None, "edited_content": None}
+                # Tác giả của bản đang đưa ra duyệt — chốt lại NGAY đây, vì lần
+                # chạy lại sau đó sẽ ghi đè state["last_author"].
+                author = state.get("last_author")
+                waiter = {"event": asyncio.Event(), "approved": None,
+                          "edited_content": None, "notes": ""}
                 _approval_waiters[output_id] = waiter
                 await send({
                     "type": "run_paused_for_approval", "run_id": run_id, "node_id": node_id,
@@ -1379,7 +1884,16 @@ async def _execute_graph_run(
 
                 if waiter["approved"]:
                     edited = waiter["edited_content"]
-                    approved_text = review_text if edited is None else edited.strip()
+                    # Bản chữ thuần, CHƯA đính ảnh — đây mới là thứ đáng làm bài
+                    # mẫu. Đính link ảnh vào rồi mới ghi thì bài mẫu trong soul mang
+                    # theo một đường dẫn markdown của lần chạy cũ, và nhân viên đọc
+                    # bài mẫu sẽ tưởng caption phải có dòng đó.
+                    approved_caption = review_text if edited is None else edited.strip()
+                    await _record_approval(
+                        author=author, project_id=run_project_id,
+                        approved_text=approved_caption, original=review_text,
+                    )
+                    approved_text = approved_caption
                     for url in image_urls:
                         approved_text += f"\n\n![Ảnh đã tạo]({url})"
                     # Bước sau luôn nhận bản đã duyệt, đã bỏ prompt kỹ thuật.
@@ -1394,6 +1908,13 @@ async def _execute_graph_run(
                     break
 
                 attempt += 1
+                reason = (waiter.get("notes") or "").strip()
+                await _record_rejection(
+                    author=author, reason=reason, review_text=review_text,
+                    task_name=task.get("name") or f"#{task_id}", approver=approver,
+                )
+                if reason:
+                    state["rejections"].append(reason)
                 await send({
                     "type": "approval_rejected", "run_id": run_id,
                     "node_id": node_id, "output_id": output_id, "attempt": attempt,
@@ -1405,12 +1926,22 @@ async def _execute_graph_run(
                     )
                     await send({"type": "run_failed", "run_id": run_id, "node_id": node_id, "content": message})
                     raise _GraphStepError(message, notified=True)
+                # Trả lại đúng đề bài mà node đó đã nhận lần đầu. Không có dòng
+                # này thì nó chạy lại với đầu vào là chính bài vừa bị chê.
+                brief = node_briefs.get(prev_id)
+                if brief is not None:
+                    state["last_text"] = brief["text"]
+                    state["last_image_path"] = brief["image"]
                 visited.discard(prev_id)
                 await walk(prev_id)
                 if _cancel_flags.get(run_id):
                     return
                 # state["last_text"] giờ là nội dung mới từ lần chạy lại — lặp lại vòng hỏi duyệt
 
+            # Lời chê chỉ thuộc về vòng làm lại của CỬA NÀY. Quy trình có hai cổng
+            # duyệt cho hai bước khác nhau thì bước sau không việc gì phải đọc lý do
+            # người ta chê bước trước.
+            state["rejections"] = []
             await walk_outgoing()
             return
 

@@ -301,7 +301,7 @@ class TestToolCapableModelSelection:
         async def fake_usage(entry_id):
             return {"request_count": 0, "tokens_input": 0, "tokens_output": 0, "tokens_cache": 0}
 
-        async def fake_stream(pool_id, messages, tools=None, skill_ids=None):
+        async def fake_stream(pool_id, messages, tools=None, skill_ids=None, tool_filter=None):
             yield f"noi-dung-tu-{pool_id}"
 
         monkeypatch.setattr("core.model_pool_bridge.get_model_pool_entry", fake_get)

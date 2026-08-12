@@ -668,6 +668,7 @@ sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
 | `0.1.0` | Bản đầu — FastAPI + SQLite + giao diện vanilla JS |
 | `2.0.0` | Tách backend/frontend, viết lại giao diện bằng React + TypeScript (7 giai đoạn). API, WebSocket và schema DB giữ nguyên |
 | `2.1.0` | Hệ màu dùng chung cho cả 4 trang · cỡ chữ chỉnh bằng một biến · khôi phục bộ chọn hình đại diện (30 hình, 20 màu) · font tự chứa · sửa tương phản đạt WCAG AA · nạp `XANAX_SECRET_KEY` từ `.env` · WebSocket trả đúng mã đóng `1008` |
+| `2.2.0` | Soul theo dự án và theo kỹ năng · ghép ảnh sản phẩm lên nền sinh sẵn (`image_compose.py`) · chế độ ảnh và cổng chọn nguồn ảnh trong quy trình · chọn từng tool của skill MCP cho nhân viên · buổi dạy gắn dự án và cấp tool thật · 4 cột DB mới (đều có giá trị mặc định) |
 
 ---
 

@@ -57,6 +57,69 @@ def tool_prefix_for_skill(skill: dict) -> str:
     return f"{MCP_SKILL_PREFIX}{slugify(skill['name']).replace('-', '_')}__"
 
 
+def mcp_tool_short_names(skill: dict) -> list[str]:
+    """Tên công cụ BÊN TRONG một MCP server, đã bỏ tiền tố của Xanax.
+
+    Một skill MCP là cả một server phơi ra nhiều công cụ (cat_anh_san_pham có
+    `cut_product` và `cut_product_batch`). Đây là danh sách để giao diện hiện ra
+    cho Papa tích chọn từng cái.
+
+    Đọc từ registry nên phải gọi sau `sync_mcp_skill_tools()`; server chưa kết nối
+    được thì trả rỗng chứ không ném lỗi — giao diện lúc đó hiện nhóm không có con,
+    đúng sự thật là chưa biết server có gì.
+    """
+    prefix = tool_prefix_for_skill(skill)
+    return sorted(t.name[len(prefix):] for t in tool_registry.list_tools(tag="mcp")
+                  if t.name.startswith(prefix))
+
+
+def parse_skill_tools(agent: dict | None) -> dict[int, list[str]]:
+    """Đọc cột `skill_tools_json` của nhân viên: {skill_id: [tên công cụ]}.
+
+    Quy ước quan trọng: skill_id VẮNG MẶT trong map, hoặc có mà danh sách rỗng,
+    đều nghĩa là LẤY HẾT công cụ của skill đó. Nhờ vậy mọi nhân viên tạo trước khi
+    có tính năng này giữ nguyên hành vi cũ, và không cần migrate dữ liệu.
+
+    Muốn nhân viên không dùng công cụ nào của một server thì bỏ chọn cả skill,
+    đừng để danh sách rỗng.
+    """
+    if not agent:
+        return {}
+    try:
+        raw = json.loads(agent.get("skill_tools_json") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    out: dict[int, list[str]] = {}
+    for key, names in raw.items():
+        try:
+            sid = int(key)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(names, list):
+            picked = [str(n).strip() for n in names if str(n).strip()]
+            if picked:
+                out[sid] = picked
+    return out
+
+
+def filter_mcp_tool_names(tool_names: list[str], prefix: str, allowed: list[str] | None) -> list[str]:
+    """Lọc tên tool đầy đủ theo danh sách công cụ được chọn của một skill MCP.
+
+    `allowed` là tên ngắn (trong server gốc). None hoặc rỗng = không lọc.
+
+    Tên được chọn mà server không còn phơi ra nữa thì tự rơi ra khỏi kết quả —
+    server MCP đổi bộ công cụ là chuyện thường, và treo cứng theo tên đã lưu sẽ
+    làm nhân viên mất luôn công cụ còn lại.
+    """
+    if not allowed:
+        return tool_names
+    keep = set(allowed)
+    return [name for name in tool_names if name[len(prefix):] in keep]
+
+
 def _split_command(target: str) -> tuple[str, list[str]]:
     """Tách chuỗi lệnh thành (command, args).
 

@@ -183,6 +183,35 @@ async def get_one_skill(skill_id: int):
     return _parse(skill)
 
 
+@router.get("/{skill_id}/tools", summary="Các công cụ bên trong một skill MCP")
+async def list_skill_tools(skill_id: int):
+    """Một skill MCP là cả một server phơi ra nhiều công cụ. Trả danh sách đó để
+    giao diện gắn kỹ năng cho nhân viên hiện được từng công cụ mà tích chọn.
+
+    Skill không phải loại 'mcp' thì trả danh sách rỗng — nó vốn là một công cụ
+    đơn, chọn cả skill là xong, không có gì bên trong để chọn lẻ.
+    """
+    skill = await get_skill(skill_id)
+    if not skill:
+        raise HTTPException(404, "Skill not found")
+    if skill.get("type") != "mcp":
+        return {"skill_id": skill_id, "type": skill.get("type"), "tools": []}
+
+    from core.hermes.tool_registry import tool_registry
+    from core.mcp_client import mcp_tool_short_names, sync_mcp_skill_tools, tool_prefix_for_skill
+
+    # Phải đồng bộ trước: danh sách công cụ nằm trong registry, mà registry chỉ
+    # được nạp khi có ai đó chạy. Mở tab Nhân viên AI lúc server vừa khởi động mà
+    # không gọi dòng này thì mọi nhóm MCP đều hiện ra rỗng.
+    await sync_mcp_skill_tools()
+    prefix = tool_prefix_for_skill(skill)
+    tools = []
+    for short in mcp_tool_short_names(skill):
+        tool = tool_registry.get(prefix + short)
+        tools.append({"name": short, "description": getattr(tool, "description", "") or ""})
+    return {"skill_id": skill_id, "type": "mcp", "tools": tools}
+
+
 @router.patch("/{skill_id}")
 async def patch_skill(skill_id: int, body: SkillUpdate):
     kwargs = {}

@@ -250,6 +250,9 @@ async def update_output(output_id: int, body: OutputUpdate):
             output_id,
             approved=body.review_status == "approved",
             edited_content=body.edited_content if body.review_status == "approved" else None,
+            # Lý do từ chối đi tiếp vào brief của lần chạy lại và vào soul của
+            # nhân viên đã viết bản bị chê (xem _record_rejection).
+            notes=(body.notes or "") if body.review_status == "rejected" else "",
         )
         if not resumed:
             output = await get_workflow_output(output_id)
@@ -286,6 +289,35 @@ async def update_output(output_id: int, body: OutputUpdate):
                     output.get("notes") or "",
                 )
 
+    return {"ok": True}
+
+
+# ── Nguồn ảnh (cửa hỏi giữa quy trình) ───────────────────────────────────────
+
+class ImageSourceChoice(BaseModel):
+    node_id: str
+    mode: str = Field("generate", pattern="^(generate|asset)$")
+    asset_id: int | None = None
+
+
+@router.post("/runs/{run_id}/image-source")
+async def choose_image_source(run_id: int, body: ImageSourceChoice):
+    """Trả lời cửa "dùng ảnh có sẵn hay để nhân viên tự vẽ".
+
+    Ảnh mới thì client upload qua /api/assets/upload trước rồi gửi `asset_id` về
+    đây — cửa này không nhận file, để phần lưu trữ tài sản chỉ có đúng một đường
+    vào và ảnh upload lúc chạy vẫn nằm trong tab Tài sản như mọi ảnh khác.
+    """
+    from api.websocket_workflow import signal_image_source
+
+    if body.mode == "asset" and not body.asset_id:
+        raise HTTPException(422, "Chọn ảnh có sẵn thì phải kèm asset_id")
+    if not signal_image_source(run_id, body.node_id, body.mode, body.asset_id):
+        raise HTTPException(
+            409,
+            "Bước này không còn chờ chọn nguồn ảnh nữa — có thể đã hết giờ chờ và "
+            "quy trình tự sinh ảnh, hoặc server đã khởi động lại.",
+        )
     return {"ok": True}
 
 

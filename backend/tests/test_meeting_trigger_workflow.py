@@ -92,6 +92,9 @@ async def test_chay_quy_trinh_kem_chu_de_tu_phong_hop(tmp_path, monkeypatch):
     # Câu xác nhận phải tới ngay người đang mở họp, VÀ được lưu vào lịch sử.
     assert any(p.get("type") == "system_notice" for p in seen), seen
 
+    # Không kẹp ảnh thì brief phải sạch, không dính khối chú thích rỗng nào.
+    assert "FILE PAPA GỬI KÈM" not in called["user_input"]
+
     # Gửi dưới danh nghĩa HỆ THỐNG chứ không phải Xanax: câu này do code sinh ra
     # sau khi quy trình đã thật sự khởi động, nên nó là bằng chứng máy móc. Mang
     # tên Xanax thì nó lẫn với lời model — mà model từng nói "đã chạy rồi nha
@@ -176,3 +179,48 @@ async def test_phan_biet_quy_trinh_va_tac_vu(tmp_path, monkeypatch):
         meeting_id, project_id, [{"task_id": tac_vu, "input": "x"}],
     )
     assert 'Đã kích hoạt tác vụ' in notes[0], notes
+
+
+async def test_anh_kep_trong_tin_nhan_di_theo_xuong_lan_chay(tmp_path, monkeypatch):
+    """Người dùng kẹp ảnh sản phẩm → đường dẫn phải tới được quy trình.
+
+    `input` do Xanax tự tóm tắt, mà Xanax không có lý do gì chép lại một khối
+    chú thích HTML dài ngoằng vào đó. Nên khối ảnh phải được code ghép vào —
+    không phụ thuộc việc model có nhớ hay không.
+    """
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "anh.db"))
+    await database.init_db()
+    from api import websocket_meeting as wm
+
+    project_id = await database.create_project("Fanpage")
+    meeting_id = await database.create_meeting("Hop", "", "[]", project_id)
+    task_id = await database.create_workflow_task(
+        name="Dang bai len fanpage", project_id=project_id, kind="company")
+    await database.update_workflow_task(task_id, status="active")
+
+    called = {}
+
+    async def fake_headless(task_id, user_input="", triggered_by="scheduled",
+                            project_id=None, meeting_id=None):
+        called["user_input"] = user_input
+
+    import api.websocket_workflow as wf
+    monkeypatch.setattr(wf, "execute_workflow_headless", fake_headless)
+
+    duong_dan = r"D:\xanax\data\assets\abc_dadieu.jpg"
+    tin_nhan = ("tạo bài đăng từ sản phẩm này\n\n"
+                "<!-- FILE PAPA GỬI KÈM — đường dẫn tuyệt đối, dùng cho công cụ:\n"
+                f"- dadieu.jpg → {duong_dan}\n-->")
+
+    await wm._run_workflows_from_meeting(
+        meeting_id, project_id, [{"task_id": task_id, "input": "móc khoá đà điểu"}],
+        tin_nhan,
+    )
+    await asyncio.sleep(0.05)
+
+    assert "móc khoá đà điểu" in called["user_input"], "chủ đề Xanax tóm tắt phải còn"
+    assert duong_dan in called["user_input"], "đường dẫn ảnh không xuống tới lần chạy"
+
+    from core.image_gen import attached_image_paths
+    assert attached_image_paths(called["user_input"]) == [duong_dan], \
+        "khối ghép vào phải đúng định dạng mà server bóc được"

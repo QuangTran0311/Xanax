@@ -11,8 +11,21 @@ của xanax:
     C:\\Users\\Quang\\.claude\\mcp-servers\\rembg-mcp\\.venv\\Scripts\\python.exe
     d:\\xanax\\mcp_servers\\image_cut.py
 
-Model mặc định là u2netp: đo trên máy này nhanh gấp đôi u2net (0.44s so với
-0.97s), nhẹ hơn ~330MB RAM, và cho viền sạch hơn trên ảnh sản phẩm nền phẳng.
+Model mặc định là birefnet-general-lite. Đo trên hai ảnh chụp thật (móc khoá đà
+điểu len, một tấm treo trên ba lô tối màu, một tấm đặt trên bàn gỗ sáng), nó là
+model duy nhất xử lý được cả hai:
+
+    u2netp thô          1,0s   còn quầng nền dày quanh sản phẩm
+    u2netp + matting    5,0s   sạch nền tối, nhưng BÓNG ĐỔ trên bàn gỗ vẫn dính
+                               nguyên, và matting làm bạc mất con mắt đen
+    isnet-general-use   1,8s   tệ hơn u2netp, còn rắc pixel lạc khắp khung
+    birefnet-lite      13,5s   sạch cả hai ảnh, mắt đen giữ nguyên, tự loại được
+                               bóng đổ và phần lớn vòng khoá kim loại
+
+Giá là tốc độ: 13,5s/ảnh thay vì 1s, và 214MB tải về. Với ảnh đăng bán thì đáng.
+Cần nhanh thì đổi model='u2netp', alpha_matting=True — chấp nhận bóng đổ còn sót.
+
+Vì sao bóng đổ không chữa được bằng tham số, xem docs/tach-nen-san-pham.md.
 """
 from __future__ import annotations
 
@@ -85,6 +98,7 @@ def _alpha_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
 def _cut_one(
     input_path: str, output_path: str, model: str, padding_percent: float,
     ratio: str, background: str, alpha_matting: bool,
+    fg_threshold: int = 240, bg_threshold: int = 10, erode_size: int = 10,
 ) -> dict:
     src = Path(input_path)
     if not src.is_file():
@@ -98,6 +112,9 @@ def _cut_one(
 
     cut_bytes = remove(
         src.read_bytes(), session=_session(model), alpha_matting=alpha_matting,
+        alpha_matting_foreground_threshold=fg_threshold,
+        alpha_matting_background_threshold=bg_threshold,
+        alpha_matting_erode_size=erode_size,
     )
     cut = Image.open(io.BytesIO(cut_bytes)).convert("RGBA")
 
@@ -159,27 +176,43 @@ def _cut_one(
 def cut_product(
     input_path: str,
     output_path: str,
-    model: str = "u2netp",
+    model: str = "birefnet-general-lite",
     padding_percent: float = 2.0,
     ratio: str = "",
     background: str = "transparent",
     alpha_matting: bool = False,
+    alpha_matting_foreground_threshold: int = 240,
+    alpha_matting_background_threshold: int = 10,
+    alpha_matting_erode_size: int = 10,
 ) -> str:
     """Tách nền và cắt sát sản phẩm trong ảnh, xuất ra ảnh đã cắt.
 
     input_path: đường dẫn tuyệt đối tới ảnh gốc.
     output_path: đường dẫn tuyệt đối tới file kết quả (.png để giữ nền trong suốt).
-    model: u2netp (mặc định, nhanh nhất), u2net, isnet-general-use,
-        birefnet-general-lite, u2net_cloth_seg (quần áo), u2net_human_seg (người).
+    model: birefnet-general-lite (mặc định, sạch nhất, 13,5s/ảnh), u2netp (nhanh
+        nhất 1s nhưng để sót bóng đổ), u2net, isnet-general-use (đã đo: tệ hơn
+        u2netp, đừng dùng), u2net_cloth_seg (quần áo), u2net_human_seg (người).
     padding_percent: lề chừa quanh sản phẩm, tính theo % kích thước sản phẩm.
     ratio: tỉ lệ khung kết quả như '1:1', '4:5', '16:9'. Bỏ trống thì cắt sát sản phẩm.
     background: 'transparent' hoặc mã hex như '#ffffff'.
-    alpha_matting: bật để biên mượt hơn với tóc/vật thể trong suốt, chậm hơn nhiều.
+    alpha_matting: tính lại độ trong suốt ở vành biên dựa trên MÀU thật của pixel,
+        thay vì tin mask của model. Với birefnet thì không cần — mask nó đã đủ
+        sạch, bật lên chỉ tốn thêm ~4s. Cần khi dùng u2netp trên nền lộn xộn: đo
+        được giảm hơn nửa số pixel nền còn dính (5.366 xuống 2.712). Nhưng nó
+        phân biệt bằng MÀU, nên có thể làm bạc những chi tiết tối nằm sát biên —
+        đã thấy nó làm nhạt mất một con mắt đen của sản phẩm.
+    alpha_matting_foreground_threshold: trên ngưỡng này coi là chắc chắn sản phẩm.
+    alpha_matting_background_threshold: dưới ngưỡng này coi là chắc chắn nền. Nâng
+        lên 30-50 nếu nền tối mà vẫn sót.
+    alpha_matting_erode_size: bào mòn bao nhiêu pixel ở mép mask để đẩy vào diện
+        "xét lại theo màu". ĐỪNG nâng quá 10 — đo trên ảnh thật, để 25 thì vệt nền
+        sạch hơn chút nhưng thuật toán ăn mất luôn con mắt đen của sản phẩm.
     """
     try:
         info = _cut_one(
             input_path, output_path, model, padding_percent, ratio,
-            background, alpha_matting,
+            background, alpha_matting, alpha_matting_foreground_threshold,
+            alpha_matting_background_threshold, alpha_matting_erode_size,
         )
     except Exception as exc:
         return f"Lỗi: {exc}"
@@ -194,14 +227,18 @@ def cut_product(
 def cut_product_batch(
     input_folder: str,
     output_folder: str,
-    model: str = "u2netp",
+    model: str = "birefnet-general-lite",
     padding_percent: float = 2.0,
     ratio: str = "",
     background: str = "transparent",
+    alpha_matting: bool = False,
 ) -> str:
     """Cắt sản phẩm cho toàn bộ ảnh trong một thư mục.
 
     Tham số giống cut_product. Kết quả lưu cùng tên file, đuôi .png.
+
+    Model mặc định birefnet-general-lite tốn ~13,5s/ảnh. Thư mục vài trăm ảnh thì
+    cân nhắc model='u2netp', alpha_matting=True (~5s) và chấp nhận bóng đổ sót.
     """
     src_dir = Path(input_folder)
     if not src_dir.is_dir():
@@ -219,7 +256,7 @@ def cut_product_batch(
         try:
             _cut_one(
                 str(image), str(Path(output_folder) / f"{image.stem}.png"),
-                model, padding_percent, ratio, background, False,
+                model, padding_percent, ratio, background, alpha_matting,
             )
             done += 1
         except Exception as exc:

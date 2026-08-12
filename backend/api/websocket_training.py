@@ -23,6 +23,8 @@ import json
 import logging
 import os
 import re
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -35,6 +37,7 @@ from hub.database import (
     get_training_session,
     update_training_session,
     get_agent_config,
+    get_skill,
     list_agent_configs,
     list_skills,
     list_projects,
@@ -54,7 +57,74 @@ router = APIRouter()
 
 # ── Buổi dạy có học viên ──────────────────────────────────────────────────────
 
-async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> str:
+async def _student_tools(agent: dict, allowed: list[str]) -> list[dict]:
+    """Schema công cụ cho học viên: giao của (kỹ năng nhân viên) ∩ (Papa đã tick).
+
+    Cấp theo BUỔI DẠY chứ không theo nhân viên, và mặc định rỗng. Một buổi dạy về
+    cắt ảnh không có lý do gì được cầm luôn công cụ đăng bài của cùng nhân viên đó
+    — mà nhân viên đăng bài thì chỉ cần một câu dạy thử là bài lên fanpage thật.
+
+    Phép giao là hàng rào thứ hai: Papa gỡ một kỹ năng khỏi nhân viên thì công cụ
+    đã tick từ buổi trước cũng hết hiệu lực, không cần đi dọn.
+    """
+    if not allowed:
+        return []
+    from api.websocket_meeting import _build_agent_tools
+    return [
+        schema for schema in await _build_agent_tools(agent)
+        if schema["function"]["name"] in set(allowed)
+    ]
+
+
+async def _student_skill_scope(agent: dict, granted: set[str]) -> tuple[list[int], dict]:
+    """Thu hẹp kỹ năng của nhân viên còn đúng phần chứa công cụ đã được cấp.
+
+    Cần riêng cho ĐƯỜNG CLI. Model CLI không nhận `tools[]` theo JSON Schema; kỹ
+    năng đi xuống qua cầu nối MCP dựng từ `skill_ids` (xem core/cli_provider.
+    build_mcp_config). Truyền nguyên skill_ids của nhân viên vào đó thì buổi dạy
+    chỉ tick `cut_product` vẫn phơi ra cả `facebook_post_page` — tức là một câu
+    dạy thử đăng được bài thật lên fanpage.
+
+    Trả về (skill_ids đã lọc, tool_filter cho skill MCP).
+    """
+    from core.hermes.tool_registry import tool_registry
+    from core.mcp_client import tool_prefix_for_skill
+    from core.skill_tools import tool_name_for_skill
+
+    try:
+        skill_ids = json.loads(agent.get("skills_json") or "[]")
+    except Exception:
+        return [], {}
+
+    kept: list[int] = []
+    tool_filter: dict[int, list[str]] = {}
+    for sid in skill_ids:
+        skill = await get_skill(sid)
+        if not skill:
+            continue
+        kind = skill.get("type")
+        if kind == "mcp":
+            prefix = tool_prefix_for_skill(skill)
+            picked = [t.name[len(prefix):] for t in tool_registry.list_tools(tag="mcp")
+                      if t.name.startswith(prefix) and t.name in granted]
+            if picked:
+                kept.append(sid)
+                tool_filter[sid] = picked
+        else:
+            # api/builtin: một skill đúng một tool, nên có mặt trong `granted`
+            # là đủ, không cần lọc thêm bên trong.
+            if kind == "api":
+                name = tool_name_for_skill(skill)
+            else:
+                name = (json.loads(skill.get("config_json") or "{}") or {}).get("tool_name")
+            if name and name in granted:
+                kept.append(sid)
+    return kept, tool_filter
+
+
+async def _stream_student(ws: WebSocket, agent: dict, history: list[dict],
+                          project_id: int | None = None, session_id: int = 0,
+                          allowed_tools: list[str] | None = None) -> str:
     """Chính nhân viên học viên trả lời, bằng model và soul của nó.
 
     Tách khỏi `_stream_agent` của phòng họp dù cùng ý tưởng, vì luật hai nơi
@@ -71,20 +141,83 @@ async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> st
     persona = (agent.get("system_prompt") or "").strip() or (
         f"Bạn là {agent.get('name')}, {agent.get('role') or 'nhân viên AI'}."
     )
+    from core.project_soul import project_prompt
+
     await sync_agent_soul(agent)
     soul_content = soul_for_prompt(agent["id"])
+    # Buổi dạy gắn dự án thì học viên phải đọc được giọng thương hiệu của dự án
+    # NGAY TRONG LÚC HỌC. Không có nó, Papa sửa một câu chữ mà học viên không biết
+    # dự án đang bán gì cho ai, trả lời chung chung, và bản đúc kết cuối buổi cũng
+    # chung chung theo.
+    project_content = await project_prompt(project_id, mode="conversation")
+
+    # Nội dung kỹ năng — CÙNG hàm với phòng họp, để một kỹ năng có tác dụng như
+    # nhau ở mọi nơi. Thiếu nó thì buổi dạy về `generate_post_image` diễn ra mà
+    # học viên chưa từng đọc mô tả kỹ năng đó, và mọi câu nó nói về "cách con vẫn
+    # làm" đều là bịa.
+    from api.websocket_meeting import _build_skills_content
+    skills_content = await _build_skills_content(agent)
+
+    # Có kỹ năng tạo ảnh thì máy tự chốt chế độ A hay B theo việc Papa có gửi ảnh
+    # hay không, rồi nói thẳng cho học viên. Để học viên tự suy từ mô tả kỹ năng
+    # thì nó suy sai — và người dùng phổ thông không có cách nào biết mà sửa.
+    photo_note = ""
+    try:
+        skill_ids = json.loads(agent.get("skills_json") or "[]")
+    except Exception:
+        skill_ids = []
+    skill_names = {(await get_skill(sid) or {}).get("name") for sid in skill_ids}
+    if "generate_post_image" in skill_names:
+        from core.image_gen import latest_attached_images, photo_mode_note
+        photo_note = photo_mode_note(latest_attached_images(history))
+
+    # Công cụ Papa cấp riêng cho buổi này (mặc định rỗng — xem _student_tools).
+    student_tools = await _student_tools(agent, allowed_tools or [])
+    if student_tools:
+        names = ", ".join(t["function"]["name"] for t in student_tools)
+        tools_note = (
+            "CÔNG CỤ TRONG BUỔI HỌC NÀY: Papa đã cấp cho bạn " + names + ". Đây là "
+            "công cụ THẬT, chạy thật — dùng khi Papa bảo làm thử, và nói rõ bạn vừa "
+            "gọi cái gì. Ngoài danh sách này bạn không có công cụ nào khác; đừng nói "
+            "là mình làm được việc mà bạn không có công cụ để làm."
+        )
+    else:
+        tools_note = (
+            "Trong buổi học này bạn KHÔNG có công cụ nào và không thực hiện việc "
+            "thật. Papa hỏi gì thì trả lời, đừng nhận là mình vừa chạy cái gì."
+        )
 
     system_prompt = "\n\n".join(filter(None, [
         persona,
+        skills_content,
         soul_content,
+        project_content,
         f"BỐI CẢNH: bạn LÀ {agent.get('name')} ({agent.get('role') or 'nhân viên AI'}), "
         "đang trong một buổi học riêng. Người nói chuyện với bạn là Papa — người "
         "trực tiếp dạy bạn. Hãy trả lời với tư cách chính bạn, ngôi thứ nhất.\n"
         "- Papa dạy điều gì thì nói lại BẰNG LỜI CỦA BẠN để Papa biết bạn hiểu đúng "
         "hay chưa; hiểu sai còn sửa được, gật đầu cho qua thì sai sẽ đi vào soul.\n"
         "- Chỗ nào chưa rõ thì HỎI LẠI, đừng đoán. Đây là lúc để hỏi.\n"
-        "- KHÔNG bịa là mình đã làm hay đã chạy bất cứ thứ gì. Trong buổi học bạn "
-        "không có công cụ nào và không thực hiện việc thật.",
+        "- KHÔNG bịa là mình đã làm hay đã chạy bất cứ thứ gì.\n"
+        "- NGOẠI LỆ: nếu bạn có kỹ năng tạo ảnh, Papa bảo làm thử thì cứ viết khối "
+        "IMAGE PROMPT đúng khuôn của kỹ năng — ảnh sẽ được vẽ thật ngay trong buổi "
+        "học để Papa xem. Đây là làm thử, không phải bài đăng thật.\n"
+        "- Khi đã có ảnh sản phẩm THẬT đã tách nền (Papa gửi kèm, hoặc bạn vừa cắt "
+        "bằng công cụ), hãy thêm khối này ngay sau TỶ LỆ:\n"
+        "  ẢNH SẢN PHẨM\n"
+        "  <đường dẫn tuyệt đối tới file .png đã tách nền>\n"
+        "  Lúc đó IMAGE PROMPT chỉ mô tả CÁI NỀN — đừng tả món hàng nữa, vì sản "
+        "phẩm sẽ được dán vào giữa nền bằng chính ảnh chụp thật. Tả nền, ánh sáng, "
+        "chất liệu mặt phẳng, chỗ trống để đặt chữ. Chừa khoảng giữa cho sản phẩm.\n"
+        "- Muốn tự chỉnh cỡ và chỗ đặt món hàng thì thêm khối này sau ẢNH SẢN PHẨM:\n"
+        "  VỊ TRÍ SẢN PHẨM\n"
+        "  cao: 0.78\n"
+        "  xuống: 0.02\n"
+        "  `cao` là chiều cao món hàng so với chiều cao ảnh, `xuống` là đẩy xuống "
+        "dưới tâm. Không khai báo thì dùng mặc định 0.68 / 0.04. Đổi số thì vùng "
+        "phải chừa trống cũng đổi theo — xem công thức trong kỹ năng tạo ảnh.",
+        photo_note,
+        tools_note,
     ]))
 
     await _send(ws, {"type": "status", "status": "thinking"})
@@ -103,7 +236,19 @@ async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> st
         # Dùng đúng danh sách model ưu tiên đã cấu hình cho nhân viên, tự fallback
         # khi model đầu hỏng — giống phòng họp và quy trình.
         from core.model_pool_bridge import stream_from_agent_models
-        async for delta in stream_from_agent_models(model_pool_ids, llm_messages):
+        # Đường CLI nhận công cụ qua skill_ids chứ không qua tools[], nên phải thu
+        # hẹp skill_ids lại cho khớp đúng phần Papa đã tick — xem _student_skill_scope.
+        # Chưa tick gì thì cả hai đều rỗng: học viên không cầm công cụ nào.
+        cli_skill_ids, cli_tool_filter = (
+            await _student_skill_scope(agent, {s["function"]["name"] for s in student_tools})
+            if student_tools else ([], {})
+        )
+        async for delta in stream_from_agent_models(
+            model_pool_ids, llm_messages,
+            tools=student_tools or None,
+            skill_ids=cli_skill_ids or None,
+            tool_filter=cli_tool_filter or None,
+        ):
             if ws.client_state != WebSocketState.CONNECTED:
                 break
             full += delta
@@ -114,7 +259,128 @@ async def _stream_student(ws: WebSocket, agent: dict, history: list[dict]) -> st
                 break
             full += delta
             await _send(ws, {"type": "chunk", "content": delta})
+
+    full = await _maybe_draw_in_class(ws, agent, session_id, full, model_pool_ids)
+    full = await _inline_local_images(ws, session_id, full)
     return full
+
+
+# Thư mục ảnh vẽ thử trong phòng dạy. Tách hẳn khỏi archive của quy trình: ảnh ở
+# đây là bài tập, không phải sản phẩm giao đi, và không được lẫn vào hồ sơ lần chạy.
+TRAINING_IMAGE_DIR = Path(__file__).parent.parent / "data" / "training-images"
+
+# Chỉ ảnh nằm TRONG thư mục data/ của dự án mới được hiện ra. Học viên tự viết ra
+# đường dẫn trong câu trả lời, nên nếu không chặn thì một câu "ảnh ở
+# C:\Users\Quang\Documents\gi-do.png" là đủ để lôi file bất kỳ trên máy vào khung
+# chat. Ràng buộc theo thư mục, không theo phần mở rộng.
+_DATA_ROOT = Path(__file__).parent.parent / "data"
+_LOCAL_IMAGE_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|/)[^\s\"'`<>|*?]+?\.(?:png|jpe?g|webp|gif)", re.IGNORECASE)
+_MAX_INLINE_IMAGES = 3
+
+
+async def _inline_local_images(ws, session_id: int, full: str) -> str:
+    """Ảnh do CÔNG CỤ tạo ra thì hiện thẳng trong chat, không bắt Papa đọc đường dẫn.
+
+    `cut_product` trả về một dòng chữ kèm đường dẫn file, nên học viên chỉ chép
+    lại đường dẫn đó. Ở đây bắt lấy, chép vào thư mục ảnh của buổi học rồi chèn
+    markdown ảnh — dùng lại đúng endpoint đã có cho ảnh vẽ thử.
+
+    Chép chứ không phục vụ thẳng từ đường dẫn gốc: có một endpoint nhận đường dẫn
+    tuỳ ý là mở cửa cho mọi file trên máy. Chép trước rồi phục vụ từ thư mục buổi
+    học thì phần kiểm tra đã nằm sẵn ở endpoint cũ.
+    """
+    if not full:
+        return full
+
+    added: list[str] = []
+    seen: set[str] = set()
+    for raw in _LOCAL_IMAGE_RE.findall(full):
+        if len(added) >= _MAX_INLINE_IMAGES:
+            break
+        try:
+            src = Path(raw.strip())
+            key = str(src).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if not src.is_file():
+                continue
+            src_res, root = src.resolve(), _DATA_ROOT.resolve()
+            if root != src_res and root not in src_res.parents:
+                logger.info("Bỏ qua ảnh ngoài thư mục data: %s", src_res)
+                continue
+            dest_dir = TRAINING_IMAGE_DIR / str(session_id)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / f"{datetime.now().strftime('%H%M%S')}_{src_res.name}"
+            if src_res == dest.resolve():
+                continue                      # đã nằm sẵn trong thư mục buổi học
+            await asyncio.get_running_loop().run_in_executor(
+                None, shutil.copyfile, str(src_res), str(dest))
+            added.append(f"![{src_res.name}](/api/training/sessions/{session_id}/image/{dest.name})")
+        except Exception:
+            logger.exception("Không chèn được ảnh %s vào buổi học %s", raw, session_id)
+
+    if not added:
+        return full
+    block = "\n\n" + "\n".join(added)
+    await _send(ws, {"type": "chunk", "content": block})
+    return full + block
+
+
+async def _maybe_draw_in_class(ws, agent: dict, session_id: int, full: str,
+                               model_pool_ids: list[int]) -> str:
+    """Học viên có kỹ năng tạo ảnh và vừa viết ra IMAGE PROMPT thì vẽ luôn.
+
+    Đây là điều biến phòng dạy từ chỗ nói chuyện suông thành chỗ thử được người và
+    thử được kỹ năng: Papa nhìn thấy ảnh thật do chính học viên nghĩ ra, chê ngay
+    tại chỗ, sửa, rồi bảo vẽ lại — không phải chạy cả quy trình mới biết nó vẽ gì.
+
+    Dùng chung `generate_with_agent_models` với luồng quy trình, nên thứ tự ưu tiên
+    model, việc bỏ qua model không vẽ được và cả hạn mức ngày đều giống hệt. Vẽ
+    hỏng thì chỉ nói ra chứ không làm hỏng câu trả lời — buổi học vẫn tiếp tục.
+    """
+    try:
+        skill_ids = json.loads(agent.get("skills_json") or "[]")
+    except Exception:
+        return full
+    names = {(await get_skill(sid) or {}).get("name") for sid in skill_ids}
+    if "generate_post_image" not in names or not full:
+        return full
+
+    from core.image_gen import (
+        extract_image_prompt, extract_image_ratio, extract_product_image,
+        extract_product_placement, generate_with_agent_models, safe_product_path,
+    )
+
+    prompt = extract_image_prompt(full)
+    if not prompt:
+        return full
+
+    # Khai báo ẢNH SẢN PHẨM thì prompt là mô tả nền, sản phẩm là ảnh thật dán lên.
+    overlay = safe_product_path(extract_product_image(full), _DATA_ROOT)
+    placement = extract_product_placement(full)
+
+    save_dir = TRAINING_IMAGE_DIR / str(session_id)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{datetime.now().strftime('%H%M%S')}.png"
+
+    async def _notice(text: str) -> None:
+        await _send(ws, {"type": "chunk", "content": f"\n\n{text}"})
+
+    err = await generate_with_agent_models(
+        prompt=prompt, ratio=extract_image_ratio(full),
+        model_pool_ids=model_pool_ids or [], save_path=save_dir / name, notify=_notice,
+        product_overlay=overlay, placement=placement,
+    )
+    if err:
+        note = f"\n\n❌ Vẽ thử không thành: {err}"
+        await _send(ws, {"type": "chunk", "content": note})
+        return full + note
+
+    url = f"/api/training/sessions/{session_id}/image/{name}"
+    await _send(ws, {"type": "chunk", "content": f"\n\n![Ảnh vẽ thử]({url})"})
+    return full + f"\n\n![Ảnh vẽ thử]({url})"
 
 
 # ── Live DB context ───────────────────────────────────────────────────────────
@@ -618,7 +884,13 @@ async def websocket_training(websocket: WebSocket):
                     continue
                 history = await get_training_messages(int(training_session_id))
                 try:
-                    reply = await _stream_student(websocket, agent, history)
+                    try:
+                        allowed_tools = json.loads(session.get("allowed_tools_json") or "[]")
+                    except Exception:
+                        allowed_tools = []
+                    reply = await _stream_student(
+                        websocket, agent, history, session.get("project_id"),
+                        int(training_session_id), allowed_tools)
                     if reply.strip():
                         await add_training_message(
                             int(training_session_id), "assistant", reply.strip()

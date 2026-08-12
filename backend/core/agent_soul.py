@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
+
+from core.soul_blocks import replace_block
 
 logger = logging.getLogger("xanax.agent_soul")
 
@@ -75,13 +76,8 @@ def ensure_soul_file(agent: dict) -> Path:
     return p
 
 
-def _replace_block(text: str, start: str, end: str, inner: str) -> str:
-    if start in text and end in text:
-        before = text[: text.index(start)]
-        after = text[text.index(end) + len(end) :]
-        return f"{before}{start}\n{inner}\n{end}{after}"
-    # Block bị xoá tay khỏi file — thêm lại ở cuối để không mất dữ liệu tiếp theo.
-    return text.rstrip() + f"\n\n{start}\n{inner}\n{end}\n"
+# Dùng chung với soul dự án và phụ lục kỹ năng — xem core/soul_blocks.py.
+_replace_block = replace_block
 
 
 async def _build_agent_data_block(agent: dict) -> str:

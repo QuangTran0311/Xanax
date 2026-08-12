@@ -144,3 +144,118 @@ async def test_don_run_treo_khi_khoi_dong_lai(tmp_path, monkeypatch):
 
     assert (await database.get_workflow_run(run_id))["status"] == "failed"
     assert (await database.list_workflow_outputs(run_id))[0]["review_status"] == "needs_revision"
+
+
+# ── Mở lại phòng họp thì thấy lại thẻ chờ duyệt ──────────────────────────────
+#
+# Ca thật: quy trình dừng ở cửa duyệt, Papa đóng phòng họp rồi mở lại — thẻ duyệt
+# biến mất vì nó chỉ được đẩy MỘT LẦN qua WebSocket. Lần chạy vẫn đang đứng chờ
+# nhưng không còn chỗ nào bấm duyệt, lịch sử chỉ còn một dòng chữ của "Hệ thống".
+
+class _FakeWS:
+    def __init__(self):
+        self.sent = []
+
+    async def send_json(self, payload):
+        self.sent.append(payload)
+
+
+async def test_mo_lai_phong_hop_thi_thay_lai_the_duyet(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "e.db"))
+    await database.init_db()
+    from api import websocket_workflow as wf
+    from api.websocket_meeting import _resend_pending_approvals
+    wf._approval_waiters.clear()
+
+    project_id = await database.create_project("Du an E")
+    meeting_id = await database.create_meeting("Hop tuan", "chu de", "[]", project_id)
+    task_id = await _make_task({"approver": "Quang", "timeout_minutes": 0}, project_id)
+
+    run = asyncio.create_task(wf.execute_workflow_headless(
+        task_id, user_input="x", triggered_by="meeting_decision",
+        project_id=project_id, meeting_id=meeting_id,
+    ))
+    output_id = await _wait_for_waiter(wf)
+
+    ws = _FakeWS()
+    await _resend_pending_approvals(ws, meeting_id)
+    assert len(ws.sent) == 1, ws.sent
+    card = ws.sent[0]
+    assert card["type"] == "approval_request"
+    assert card["output_id"] == output_id
+    assert card["approver"] == "Quang", "phải lấy đúng người duyệt đã cấu hình"
+    assert card["restored"] is True
+    # Nội dung dựng lại phải đúng bằng nội dung cửa duyệt đang giữ — thẻ hiện ra
+    # mà nội dung khác lúc đầu thì Papa duyệt một đằng, quy trình chạy một nẻo.
+    stored = await database.get_workflow_output(output_id)
+    assert card["content"] == (stored["output_content"] or "").strip()
+
+    # Duyệt xong thì không dựng lại nữa
+    assert wf.signal_workflow_approval(output_id, approved=True) is True
+    await asyncio.wait_for(run, timeout=10)
+    ws2 = _FakeWS()
+    await _resend_pending_approvals(ws2, meeting_id)
+    assert ws2.sent == []
+
+
+async def test_khong_dung_lai_the_cua_cuoc_hop_khac(tmp_path, monkeypatch):
+    """Hai cuộc họp cùng chạy quy trình — thẻ của phòng này không được lọt sang
+    phòng kia, vì duyệt nhầm là đăng nhầm bài lên fanpage."""
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "f.db"))
+    await database.init_db()
+    from api import websocket_workflow as wf
+    from api.websocket_meeting import _resend_pending_approvals
+    wf._approval_waiters.clear()
+
+    project_id = await database.create_project("Du an F")
+    meeting_a = await database.create_meeting("Hop A", "", "[]", project_id)
+    meeting_b = await database.create_meeting("Hop B", "", "[]", project_id)
+    task_id = await _make_task({"approver": "Quang", "timeout_minutes": 0}, project_id)
+
+    run = asyncio.create_task(wf.execute_workflow_headless(
+        task_id, triggered_by="meeting_decision",
+        project_id=project_id, meeting_id=meeting_a,
+    ))
+    output_id = await _wait_for_waiter(wf)
+
+    ws_b = _FakeWS()
+    await _resend_pending_approvals(ws_b, meeting_b)
+    assert ws_b.sent == []
+
+    ws_a = _FakeWS()
+    await _resend_pending_approvals(ws_a, meeting_a)
+    assert len(ws_a.sent) == 1
+
+    wf.signal_workflow_approval(output_id, approved=True)
+    await asyncio.wait_for(run, timeout=10)
+
+
+async def test_server_khoi_dong_lai_thi_khong_dung_the_chet(tmp_path, monkeypatch):
+    """Hàng trong DB vẫn ghi 'waiting_review' sau khi server restart, nhưng waiter
+    nằm trong RAM nên đã mất. Hiện thẻ bấm vào không chạy tiếp được thì tệ hơn là
+    không hiện gì."""
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "g.db"))
+    await database.init_db()
+    from api import websocket_workflow as wf
+    from api.websocket_meeting import _resend_pending_approvals
+    wf._approval_waiters.clear()
+
+    project_id = await database.create_project("Du an G")
+    meeting_id = await database.create_meeting("Hop tuan", "", "[]", project_id)
+    task_id = await _make_task({"approver": "Quang"}, project_id)
+    run_id = await database.create_workflow_run(
+        task_id=task_id, project_id=project_id, task_name="Quy trinh duyet",
+        triggered_by="meeting_decision", meeting_id=meeting_id,
+    )
+    await database.update_workflow_run_status(run_id, "running")
+    output_id = await database.create_workflow_output(
+        run_id=run_id, task_id=task_id, agent_id=None, agent_name="Cho Quang duyet", step_order=1,
+    )
+    await database.update_workflow_output(output_id, review_status="waiting_review")
+
+    # Hàng vẫn nằm trong danh sách chờ...
+    assert len(await database.list_pending_approvals(meeting_id)) == 1
+    # ...nhưng không có waiter nên không dựng thẻ.
+    ws = _FakeWS()
+    await _resend_pending_approvals(ws, meeting_id)
+    assert ws.sent == []
