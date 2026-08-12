@@ -16,7 +16,7 @@ export function HubOverlays() {
         <p>{confirmState.message}</p>
         <div className={c("modalActions")}>
           <button className={c("buttonGhost")} onClick={() => answerConfirm(false)}>{hubText(language, "common.cancel")}</button>
-          <button className={c("buttonDanger")} onClick={() => answerConfirm(true)}>{hubText(language, "common.confirm")}</button>
+          <button data-testid="confirm-yes" className={c("buttonDanger")} onClick={() => answerConfirm(true)}>{hubText(language, "common.confirm")}</button>
         </div>
       </div>
     </div> : null}
