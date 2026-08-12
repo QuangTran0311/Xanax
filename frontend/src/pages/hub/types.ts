@@ -33,6 +33,11 @@ export interface MeetingRecord extends HubRecord {
   participants?: number[];
   project_id?: number | null;
   proposed_items?: unknown[];
+  draft_minutes?: string;
+  decision_text?: string;
+  decided_at?: string;
+  ended_at?: string;
+  pending_approvals?: number;
 }
 
 export interface ModelRecord extends HubRecord {

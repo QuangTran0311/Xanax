@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "verify:graphs": "tsx scripts/verify-graph-roundtrip.ts",
     "verify:workflow-protocol": "tsx scripts/verify-workflow-protocol.ts",
+    "verify:meeting-protocol": "tsx scripts/verify-meeting-protocol.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "tsc -b --pretty false"
   },

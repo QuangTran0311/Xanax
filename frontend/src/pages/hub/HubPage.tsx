@@ -12,6 +12,7 @@ import { HubProvider, useHub } from "./HubContext";
 import { HubOverlays } from "./HubOverlays";
 import { hubText, type HubMessageKey } from "./i18n";
 import { OverviewPage } from "./OverviewPage";
+import { MeetingsPage } from "./MeetingsPage";
 import { ProjectsPage } from "./ProjectsPage";
 import { SettingsPage } from "./SettingsPage";
 import { SkillsPage } from "./SkillsPage";
@@ -76,6 +77,7 @@ function HubTabContent({ tab, subpath }: { tab: HubTab; subpath: string }) {
   if (tab === "agents") return <AgentsPage />;
   if (tab === "skills") return <SkillsPage />;
   if (tab === "tasks") return <ProjectsPage />;
+  if (tab === "meeting") return <MeetingsPage />;
   if (tab === "model") return <BrainPage />;
   if (tab === "cost") return <CostPage />;
   if (tab === "settings") return <SettingsPage />;
