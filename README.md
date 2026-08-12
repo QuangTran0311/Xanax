@@ -2,7 +2,7 @@
 
 Xanax là hệ thống quản lý **nhân viên AI như một công ty**: tuyển (tạo agent), giao việc, xếp thành quy trình nhiều bước, họp bàn, nghiệm thu kết quả, và theo dõi chi phí token.
 
-Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend. Giao diện đang được chuyển dần từ vanilla JS sang **React + TypeScript**; đến Giai đoạn 2, trang đăng nhập và Workspace React chạy song song với toàn bộ giao diện cũ.
+Chạy hoàn toàn trên máy cá nhân (Windows), với **FastAPI + SQLite** ở backend. Giao diện đang được chuyển dần từ vanilla JS sang **React + TypeScript**; đến Giai đoạn 3, trang đăng nhập, Workspace và Taskrunner React chạy song song với toàn bộ giao diện cũ.
 
 ```powershell
 cd D:\xanax\backend
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Mở `http://localhost:5173/login` hoặc `http://localhost:5173/v2/workspace`. Bản build tạm được FastAPI phục vụ tại `/v2/login` và `/v2/workspace` sau khi chạy `npm run build`; các route `/login`, `/hub`, `/workspace` và `/taskrunner` cũ vẫn giữ nguyên.
+Mở `http://localhost:5173/login`, `/v2/workspace` hoặc `/v2/taskrunner`. Bản build tạm được FastAPI phục vụ tại các route `/v2/*` này sau khi chạy `npm run build`; các route `/login`, `/hub`, `/workspace` và `/taskrunner` cũ vẫn giữ nguyên.
 
 ---
 
