@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Icon, type IconName } from "../../components/Icon";
 import { useLanguage } from "../../store/language";
+import { sessionApi } from "../../store/session";
 import { useTheme } from "../../store/theme";
 import { HubProvider, useHub } from "./HubContext";
 import { HubOverlays } from "./HubOverlays";
@@ -87,6 +88,8 @@ function HubShell() {
   } = useHub();
   const [serverOnline, setServerOnline] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const [visitedTabs, setVisitedTabs] = useState<Set<HubTab>>(() => new Set([active]));
   const [savedSubpaths, setSavedSubpaths] = useState<Partial<Record<HubTab, string>>>(() => ({
     [active]: currentSubpath,
@@ -121,6 +124,22 @@ function HubShell() {
   }, [navigate]);
 
   useEffect(() => setMobileSidebarOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   const mountedTabs = useMemo(() => {
     const mounted = new Set(visitedTabs);
@@ -195,7 +214,29 @@ function HubShell() {
             <button onClick={toggleTheme} title={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")} aria-label={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")}>
               <Icon name={theme === "light" ? "moon" : "sun"} />
             </button>
-            <span className={c("accountSummary")}><span><Icon name="user" /></span><strong>{loading ? "…" : username}</strong></span>
+            <div className={c("accountMenu")} ref={accountMenuRef}>
+              <button
+                className={c("accountSummary")}
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                onClick={() => setAccountMenuOpen((current) => !current)}
+              >
+                <span><Icon name="user" /></span>
+                <strong>{loading ? "…" : username}</strong>
+              </button>
+              {accountMenuOpen && (
+                <div className={c("accountDropdown")} role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void sessionApi.logout().finally(() => navigate("/login", { replace: true }))}
+                  >
+                    {hubText(language, "common.logout")}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

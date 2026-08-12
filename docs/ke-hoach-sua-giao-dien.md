@@ -1,4 +1,4 @@
-# Kế hoạch sửa giao diện Xanax — 9 phase
+# Kế hoạch sửa giao diện Xanax — Phase 1–10, kèm Phase 2-bis và 2-ter
 
 > Tài liệu này viết cho một agent thực thi (Codex). Đọc **toàn bộ mục "Luật chung"**
 > trước khi gõ dòng code đầu tiên. Sau mỗi phase **PHẢI DỪNG** và chờ người duyệt.
@@ -1970,7 +1970,7 @@ luôn sang tên chuẩn, nhưng **đừng đổi hàng loạt** ngoài phạm vi
 
 ---
 
-# PHỤ LỤC B — Bảng kiểm cuối, chạy sau khi cả 9 phase được duyệt
+# PHỤ LỤC B — Bảng kiểm cuối, chạy sau khi Phase 1–10, 2-bis và 2-ter được duyệt
 
 ```bash
 cd frontend
@@ -2002,3 +2002,120 @@ Console phải **0 lỗi** ở mọi tổ hợp.
 | Khối luật ID chết trong Taskrunner | 10 | 0 |
 | `:global(body)` trong CSS module | 4 | 0 |
 | Tab có `<h1>` — nhất quán theo loại trang | 8/12 (Phòng họp còn `<h1>`) | 7/12 sau Phase 2-TER: 7 trang cuộn giữ `<h1>`; 4 workspace không có; Tổng quan giữ header đồng hồ gọn |
+
+---
+
+# PHASE 10 — Menu tài khoản và đường đăng xuất nhanh trên topbar Hub
+
+## 10.1. Bối cảnh
+
+Chip tài khoản ở góc trên bên phải topbar Hub hiện chỉ hiển thị icon người và tên đăng nhập,
+không có tương tác. Người dùng muốn bấm chip này để mở một menu có đúng một mục đăng xuất,
+song song với nút đăng xuất đã có trong trang Cài đặt.
+
+Có một bẫy CSS tại `HubPage.module.css`: luật `.topbarActions > button` ép mọi nút con trực
+tiếp thành ô `34px × 34px`. Nếu đổi thẳng `.accountSummary` từ `span` thành `button`, tên người
+dùng sẽ bị bóp mất. Menu cũng phải dùng đúng cơ chế phiên và chuỗi i18n hiện có, không tạo một
+luồng đăng xuất thứ hai.
+
+## 10.2. Việc phải làm
+
+1. Trong `HubPage.tsx`, bọc chip tài khoản bằng `.accountMenu` và đổi `.accountSummary` thành
+   nút mở/đóng dropdown. Nút phải có `aria-haspopup="menu"`; `aria-expanded` phản ánh đúng trạng
+   thái thực tế.
+2. Dropdown có `role="menu"`, neo ngay dưới chip, canh mép phải và chỉ có một nút
+   `role="menuitem"`. Nhãn lấy từ `hubText(language, "common.logout")`.
+3. Mục đăng xuất tái dùng nguyên mẫu đã có ở `SettingsPage.tsx`:
+   `void sessionApi.logout().finally(() => navigate("/login", { replace: true }))`.
+4. Bấm chip lần nữa phải đóng menu. Bấm ra ngoài hoặc nhấn `Escape` cũng phải đóng; mọi listener
+   gắn trên `document` phải được tháo trong cleanup của `useEffect`.
+5. Trong `HubPage.module.css`, đặt `.accountMenu { position: relative }` để nút tài khoản không
+   còn là con trực tiếp của `.topbarActions`. Giữ nguyên luật `34px × 34px` cho nút đổi theme và
+   `.mobileMenuButton`.
+6. Dropdown dùng `right: 0` để không tràn mép phải ở màn hình hẹp. Giữ luật
+   `.accountSummary strong { display: none }` tại breakpoint `720px`, để chip chỉ còn icon nhưng
+   vẫn bấm và mở menu được.
+7. Dùng `z-index: 21`: đây là đúng một cấp cao hơn z-index lớn nhất sẵn có trong file là sidebar
+   `20` (scrim là `19`), đủ để menu không bị content, panel hay sidebar che.
+
+## 10.3. Không được làm
+
+- Không sửa bất kỳ file nào trong `backend/`.
+- Không xoá hoặc thay đổi đường đăng xuất trong `SettingsPage.tsx`.
+- Không đổi mảng `navigation[]` trong `HubPage.tsx`.
+- Không sửa `--fs-scale` trong `theme.css`.
+- Không tạo key i18n mới và không viết cứng chuỗi `Đăng xuất` trong JSX.
+- Không dùng z-index rất lớn tùy ý; giữ `21` theo thang z-index hiện có.
+- Không commit trong lượt thực thi này; dừng ở cổng kiểm mắt để người dùng duyệt.
+
+## 10.4. Kiểm chứng máy
+
+```bash
+cd frontend
+
+# 1. Chip tài khoản được bọc để né luật .topbarActions > button. KỲ VỌNG: 1.
+grep -F -c 'className={c("accountMenu")}' src/pages/hub/HubPage.tsx
+
+# 2. Nút khai báo menu và trạng thái mở. KỲ VỌNG: mỗi lệnh in 1.
+grep -F -c 'aria-haspopup="menu"' src/pages/hub/HubPage.tsx
+grep -F -c 'aria-expanded={accountMenuOpen}' src/pages/hub/HubPage.tsx
+
+# 3. Dùng đúng key i18n có sẵn. KỲ VỌNG: 1.
+grep -F -c 'hubText(language, "common.logout")' src/pages/hub/HubPage.tsx
+
+# 4. Tái dùng đúng mẫu logout, gồm .finally và replace:true. KỲ VỌNG: 1.
+grep -F -c 'void sessionApi.logout().finally(() => navigate("/login", { replace: true }))' src/pages/hub/HubPage.tsx
+
+# 5. Listener ngoài menu và phím Escape đều có cleanup. KỲ VỌNG: mỗi lệnh in 2
+#    (một addEventListener và một removeEventListener).
+grep -F -c '"pointerdown", closeOnOutsideClick' src/pages/hub/HubPage.tsx
+grep -F -c '"keydown", closeOnEscape' src/pages/hub/HubPage.tsx
+
+# 6. Z-index theo đúng thang hiện có. KỲ VỌNG: z-index:21 ra 1; z-index:20 vẫn ra 1.
+grep -F -c 'z-index:21' src/pages/hub/HubPage.module.css
+grep -F -c 'z-index: 20' src/pages/hub/HubPage.module.css
+
+# 7. Quy tắc ẩn tên ở màn hẹp còn nguyên. KỲ VỌNG: 1.
+grep -F -c '.accountSummary strong{display:none}' src/pages/hub/HubPage.module.css
+
+npm run typecheck
+npm run build
+
+# 8. Build chỉ sinh đúng một CSS chunk của HubPage. KỲ VỌNG: 1.
+find dist/assets -maxdepth 1 -name 'HubPage-*.css' | wc -l
+
+# 9. Backend trỏ đúng frontend/dist và mount assets từ đó. KỲ VỌNG: mỗi lệnh in 1.
+cd ..
+grep -F -c 'parents[2] / "frontend" / "dist"' backend/hub/server.py
+grep -F -c 'frontend_assets = _frontend_dist_path / "assets"' backend/hub/server.py
+```
+
+## 10.5. Kiểm mắt
+
+Hard refresh trình duyệt trước khi kiểm, rồi xác nhận:
+
+- Ở tiếng Việt, chip hiện icon + tên tài khoản; bấm mở menu có đúng mục “Đăng xuất”.
+- Ở tiếng Anh, cùng menu hiện đúng “Log out”; không còn chuỗi tiếng Việt trong menu.
+- Bấm chip liên tiếp mở rồi đóng; bấm ra ngoài đóng; mở lại và nhấn `Escape` cũng đóng.
+- Mục đăng xuất kết thúc phiên và chuyển tới `/login`, không để lại trang Hub trong history.
+- Ở cả theme sáng và tối, menu có viền/nền/chữ rõ, nằm trên content và panel.
+- Nút đổi theme và nút menu mobile vẫn giữ đúng ô `34px × 34px`, không đổi kiểu dáng.
+- Ở `720px` và nhỏ hơn, tên tài khoản ẩn, icon vẫn bấm được; dropdown canh phải và không tràn
+  khỏi mép màn hình. Kiểm thêm tại `380px` để chắc chắn không xuất hiện cuộn ngang.
+- Nút đăng xuất trong trang Cài đặt vẫn còn và vẫn hoạt động.
+
+## 10.6. CHỐT PHASE 10
+
+```text
+feat(hub): thêm menu đăng xuất trên chip tài khoản
+
+Đổi chip tài khoản ở topbar thành nút mở dropdown có hỗ trợ aria, đóng khi bấm ra ngoài
+hoặc nhấn Escape, và dọn listener đúng vòng đời. Menu dùng key common.logout hiện có và
+tái sử dụng sessionApi.logout với điều hướng replace tới trang đăng nhập.
+
+Bọc nút trong accountMenu để tránh luật .topbarActions > button ép thành ô 34px, giữ nguyên
+kiểu dáng nút theme/mobile. Dropdown canh phải cho màn hẹp và dùng z-index 21, ngay trên
+sidebar z-index 20 theo thang lớp sẵn có.
+```
+
+**DỪNG. Không commit. Chờ người dùng kiểm mắt và duyệt Phase 10.**
