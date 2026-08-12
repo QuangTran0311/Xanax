@@ -38,12 +38,13 @@
       position: absolute; top: 40px; left: 48px; z-index: 2;
       display: flex; align-items: center; gap: 8px; color: var(--ink);
       font: 700 20px 'Quicksand', sans-serif;
+      font-size: calc(20px * var(--fs-scale));
     }
     .wordmark .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
     .hero { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 44px; }
     .eyebrow { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .eyebrow-tag {
-      color: var(--accent); font: 700 11px 'Quicksand', sans-serif;
+      color: var(--accent); font: 700 11px 'Quicksand', sans-serif; font-size: calc(11px * var(--fs-scale));
       letter-spacing: 0.18em; text-transform: uppercase;
     }
     .eyebrow-sub { font-size:calc(13px * var(--fs-scale)); color: var(--ink-muted); letter-spacing: 0.04em; }
@@ -62,11 +63,11 @@
     }
     .card-img-h { width: 84px; height: 84px; object-fit: cover; }
     .card-info { text-align: center; display: flex; flex-direction: column; gap: 5px; }
-    .card-name { color: var(--ink); font: 700 15px 'Quicksand', sans-serif; }
+    .card-name { color: var(--ink); font: 700 15px 'Quicksand', sans-serif; font-size: calc(15px * var(--fs-scale)); }
     .card-desc { font-size:calc(12px * var(--fs-scale)); color: var(--ink-muted); line-height: 1.5; }
     .badge-cyan, .badge-purple {
       padding: 5px 14px; background: var(--bg-card); border-radius: 20px;
-      font: 700 10px 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+      font: 700 10px 'Inter', sans-serif; font-size: calc(10px * var(--fs-scale)); letter-spacing: 0.1em; text-transform: uppercase;
     }
     .badge-cyan { color: var(--mint-ink); }
     .badge-purple { color: var(--lavender-ink); }
@@ -96,23 +97,23 @@
     .form-header { display: flex; flex-direction: column; gap: 8px; }
     .form-eyebrow {
       color: var(--accent); display: flex; align-items: center; gap: 8px;
-      font: 700 10px 'Quicksand', sans-serif; letter-spacing: 0.18em; text-transform: uppercase;
+      font: 700 10px 'Quicksand', sans-serif; font-size: calc(10px * var(--fs-scale)); letter-spacing: 0.18em; text-transform: uppercase;
     }
     .form-eyebrow img { height: 20px; width: 20px; border-radius: 6px; }
-    .form-title { color: var(--ink); font: 700 28px/1.2 'Quicksand', sans-serif; letter-spacing: -0.02em; }
+    .form-title { color: var(--ink); font: 700 28px/1.2 'Quicksand', sans-serif; font-size: calc(28px * var(--fs-scale)); letter-spacing: -0.02em; }
     .form-sub { font-size:calc(13px * var(--fs-scale)); color: var(--ink-muted); line-height: 1.5; }
     .fields { display: flex; flex-direction: column; gap: 20px; }
     .field { display: flex; flex-direction: column; gap: 8px; }
     .field-label {
       width: fit-content; border: 0; background: transparent; color: var(--ink-soft);
-      font: 700 11px 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+      font: 700 11px 'Inter', sans-serif; font-size: calc(11px * var(--fs-scale)); letter-spacing: 0.1em; text-transform: uppercase;
     }
     .field-wrap { position: relative; }
     .field-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ink-muted); pointer-events: none; }
     .field-input {
       width: 100%; padding: 13px 16px 13px 42px; background: var(--bg);
       border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--ink);
-      font: 400 14px 'Inter', sans-serif; transition: border-color .2s, box-shadow .2s;
+      font: 400 14px 'Inter', sans-serif; font-size: calc(14px * var(--fs-scale)); transition: border-color .2s, box-shadow .2s;
     }
     .field-input.has-toggle { padding-right: 44px; }
     .toggle-btn {
@@ -132,7 +133,7 @@
     .submit-btn {
       width: 100%; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
       background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm);
-      color: #fff; font: 700 14px 'Quicksand', sans-serif; letter-spacing: .04em;
+      color: #fff; font: 700 14px 'Quicksand', sans-serif; font-size: calc(14px * var(--fs-scale)); letter-spacing: .04em;
       cursor: pointer; transition: filter .2s, transform .2s;
     }
     .submit-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
