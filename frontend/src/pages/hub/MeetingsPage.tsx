@@ -82,57 +82,51 @@ export function MeetingsPage() {
 
   return (
     <div className={c("page")}>
-      <header className={c("pageHeader")}>
-        <div>
-          <h1>{vi ? "Phòng họp" : "Meeting room"}</h1>
-          <p>
-            {vi
-              ? "Trao đổi cùng Xanax và nhân viên, theo dõi quy trình ngay trong cuộc họp."
-              : "Talk with Xanax and staff, and follow workflow progress in the room."}
-          </p>
-        </div>
-        <button className={c("primaryButton")} onClick={() => setCreating(true)}>
-          <Icon name="meeting" />
-          {vi ? "Cuộc họp mới" : "New meeting"}
-        </button>
-      </header>
       <div className={c("meetingLayout")}>
-        <aside className={c("meetingList")} data-testid="meeting-list">
-          {meetings.length ? (
-            meetings.map((meeting) => (
-              <div
-                key={meeting.id}
-                className={`${c("meetingListItem")} ${selectedId === meeting.id ? c("meetingListSelected") : ""}`}
-              >
-                <button onClick={() => setSelectedId(meeting.id)}>
-                  <strong>{meeting.title}</strong>
-                  <small>
-                    {statusLabel(meeting.status, vi)} · {(meeting.participants || []).length}{" "}
-                    {vi ? "nhân viên" : "staff"}
-                  </small>
-                  {meeting.project_id ? (
-                    <span>
-                      <Icon name="folder" />
-                      {projects.find((project) => project.id === meeting.project_id)?.name ||
-                        (vi ? "Dự án" : "Project")}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  className={c("meetingDelete")}
-                  title={vi ? "Xoá" : "Delete"}
-                  onClick={() => void removeMeeting(meeting)}
-                >
-                  <Icon name="trash" />
-                </button>
-              </div>
-            ))
-          ) : (
-            <div className={c("empty")}>
+        <aside className={c("meetingSidebar")}>
+          <div className={c("meetingListActions")}>
+            <button className={c("primaryButton")} onClick={() => setCreating(true)}>
               <Icon name="meeting" />
-              {vi ? "Chưa có cuộc họp" : "No meetings yet"}
-            </div>
-          )}
+              {vi ? "Cuộc họp mới" : "New meeting"}
+            </button>
+          </div>
+          <div className={c("meetingList")} data-testid="meeting-list">
+            {meetings.length ? (
+              meetings.map((meeting) => (
+                <div
+                  key={meeting.id}
+                  className={`${c("meetingListItem")} ${selectedId === meeting.id ? c("meetingListSelected") : ""}`}
+                >
+                  <button onClick={() => setSelectedId(meeting.id)}>
+                    <strong>{meeting.title}</strong>
+                    <small>
+                      {statusLabel(meeting.status, vi)} · {(meeting.participants || []).length}{" "}
+                      {vi ? "nhân viên" : "staff"}
+                    </small>
+                    {meeting.project_id ? (
+                      <span>
+                        <Icon name="folder" />
+                        {projects.find((project) => project.id === meeting.project_id)?.name ||
+                          (vi ? "Dự án" : "Project")}
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    className={c("meetingDelete")}
+                    title={vi ? "Xoá" : "Delete"}
+                    onClick={() => void removeMeeting(meeting)}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className={c("empty")}>
+                <Icon name="meeting" />
+                {vi ? "Chưa có cuộc họp" : "No meetings yet"}
+              </div>
+            )}
+          </div>
         </aside>
         {selected ? (
           <MeetingRoom key={selected.id} meeting={selected} />

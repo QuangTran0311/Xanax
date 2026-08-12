@@ -660,6 +660,151 @@ và đặt bốn phần tử tĩnh ở flex-shrink:0 để chỉ vùng tin nhắ
 
 ---
 
+# PHASE 2-TER — Bỏ tiêu đề trang Phòng họp, đưa nút tạo mới vào cột danh sách
+
+**ĐÃ ĐƯỢC NGƯỜI DÙNG DUYỆT NGÀY 2026-08-13. PHẢI LÀM TRƯỚC PHASE 3.**
+
+## 2t.1. Bối cảnh
+
+Tab Phòng họp là workspace lấp đầy chiều cao. Sidebar đã đánh dấu rõ “Phòng họp”
+đang active, nên `h1` “Phòng họp” và dòng mô tả trong `.pageHeader` lặp lại thông tin,
+đồng thời lấy mất chiều cao dành cho danh sách và khung họp.
+
+Nút **“Cuộc họp mới”** hiện nằm trong chính `.pageHeader`, vì vậy phải được giữ và
+chuyển vào đầu cột danh sách bên trái. `.meetingList` đang có `overflow:auto`; nếu
+đặt nút thẳng vào phần tử này thì nút sẽ cuộn mất khi danh sách dài. Cột trái phải
+được tách thành một flex column: hàng thao tác cố định phía trên và danh sách cuộn
+độc lập phía dưới.
+
+Phase này cũng chốt nguyên tắc cho Phase 8: nhất quán theo **loại trang**, không ép
+mọi tab cùng có `<h1>`. Bốn workspace lấp đầy màn hình (`meeting`, `train`,
+`company-runner`, `auto-runner`) ưu tiên chiều cao nội dung và không có page header.
+
+## 2t.2. Việc phải làm
+
+### Bước 2t.2.a — Bỏ page header, giữ nút tạo mới
+
+Trong `frontend/src/pages/hub/MeetingsPage.tsx`:
+
+- Xoá toàn bộ `.pageHeader`, gồm `h1` “Phòng họp” và dòng mô tả.
+- Giữ nguyên nút “Cuộc họp mới” / “New meeting”, icon, handler
+  `setCreating(true)` và cơ chế song ngữ đang có.
+- Đưa nút lên trên cùng của cột danh sách cuộc họp bên trái.
+
+### Bước 2t.2.b — Tách phần cố định và phần cuộn của cột trái
+
+Trong `MeetingsPage.tsx`, bọc cột trái bằng `.meetingSidebar`, gồm hai con trực tiếp:
+
+1. `.meetingListActions` chứa nút tạo mới;
+2. `.meetingList` chỉ chứa danh sách hoặc empty state.
+
+Trong `frontend/src/pages/hub/HubPage.module.css`:
+
+```css
+.meetingSidebar { min-height:0;display:flex;flex-direction:column;gap:8px; }
+.meetingListActions { display:flex;flex-shrink:0; }
+.meetingList { flex:1;min-height:0;...;overflow:auto; }
+```
+
+Hàng thao tác bắt buộc `flex-shrink:0`; chính `.meetingList` nhận phần chiều cao dư
+và giữ `overflow:auto`. Nút có thể chiếm toàn chiều rộng cột để hành động chính dễ thấy.
+
+### Bước 2t.2.c — Dọn selector thừa và cân khoảng đệm
+
+Kiểm tra ba trang con của `train` / `company-runner` / `auto-runner` trước khi đụng
+`.tabPanelFull .pageHeader`. Nếu chúng không dùng `.pageHeader` của
+`HubPage.module.css`, xoá selector `.tabPanelFull .pageHeader{flex-shrink:0}` vì sau
+khi bỏ header Phòng họp không còn phần tử nào khớp.
+
+Sau khi page header biến mất, khung họp không nên thừa khoảng trống phía trên hoặc
+dính sát mép. Đặt `padding-top` của `.tabPanelFull .page` bằng `padding-bottom:18px`
+đã chốt ở Phase 2-bis: **18px trên và 18px dưới**, đối xứng và không tạo thêm số ma.
+
+## 2t.3. Không được làm
+
+- **Không** xoá, đổi nhãn, đổi icon hoặc đổi handler của nút “Cuộc họp mới”.
+- **Không** đặt nút bên trong `.meetingList`; nút phải đứng ngoài vùng `overflow:auto`.
+- **Không** đổi `fullHeight`, `navigation[]`, thứ tự tab hay bắt đầu Phase 3.
+- **Không** thêm chuỗi tiếng Việt cứng mới trong JSX. Chữ hiển thị phải qua
+  `hubText()` hoặc nhánh `language === "vi" ? ... : ...` / biến `vi` như code hiện có.
+- **Không** tạo key i18n mới khi nhãn song ngữ hiện tại dùng lại được.
+- **Không** xoá `.tabPanelFull .pageHeader` trước khi xác nhận ba workspace còn lại
+  không dùng class Hub này.
+
+## 2t.4. Kiểm chứng máy
+
+```bash
+cd frontend
+
+# 1. Header và hai chuỗi tiêu đề cũ đã rời MeetingsPage.
+# KỲ VỌNG: không in ra gì.
+grep -nE 'pageHeader|<h1>|Trao đổi cùng Xanax|Talk with Xanax' src/pages/hub/MeetingsPage.tsx
+
+# 2. Cột trái có đủ wrapper, hàng thao tác và danh sách.
+# KỲ VỌNG: TSX có meetingSidebar, meetingListActions, meetingList;
+# CSS có flex column, flex-shrink:0, flex:1/min-height:0 và overflow:auto tương ứng.
+grep -nE 'meetingSidebar|meetingListActions|meetingList' src/pages/hub/MeetingsPage.tsx
+grep -nE '^\.meetingSidebar|^\.meetingListActions|^\.meetingList \{' src/pages/hub/HubPage.module.css
+
+# 3. Selector pageHeader dưới tabPanelFull đã chết phải được dọn.
+# KỲ VỌNG: không in ra gì.
+grep -n '\.tabPanelFull \.pageHeader' src/pages/hub/HubPage.module.css
+
+# 4. Khoảng đệm trên/dưới của page full-height cân nhau.
+# KỲ VỌNG: luật in ra có padding-top:18px và padding-bottom:18px.
+grep -n '^\.tabPanelFull \.page' src/pages/hub/HubPage.module.css
+
+npm run typecheck && npm run build
+```
+
+Sau build, kiểm artifact:
+
+```bash
+# KỲ VỌNG: đúng 1 file HubPage-*.css.
+find dist/assets -maxdepth 1 -name 'HubPage-*.css' -print
+
+# KỲ VỌNG: CSS build có meetingSidebar/meetingListActions và không có selector
+# .tabPanelFull .pageHeader.
+grep -o 'meetingSidebar[^}]*}\|meetingListActions[^}]*}' dist/assets/HubPage-*.css
+grep -o 'tabPanelFull[^}]*pageHeader[^}]*}' dist/assets/HubPage-*.css
+```
+
+## 2t.5. Kiểm mắt
+
+Tại `http://localhost:8000/hub/meeting`, hard refresh sau khi build:
+
+| Việc | Kỳ vọng |
+|---|---|
+| Đầu trang | Không còn `h1` “Phòng họp” và dòng mô tả |
+| Cột trái | Nút “Cuộc họp mới” nằm trên cùng, ngay trên danh sách |
+| Danh sách dài | Chỉ danh sách cuộn; nút tạo mới luôn đứng yên và nhìn thấy |
+| Mép trên/dưới | Khung họp có khoảng thở cân nhau, không hụt cũng không dư |
+| Chọn cuộc họp active | Ô nhập vẫn sát đáy vùng nội dung và thấy được |
+| Cao khoảng 600px | Hàng thao tác không co mất; khung họp vẫn dùng được |
+| Ngang khoảng 700px | Bố cục xếp dọc đúng media query, danh sách cuộn riêng |
+| Hai theme, hai ngôn ngữ | Nhãn nút đúng; không vỡ bố cục; console 0 lỗi |
+
+## 2t.6. CHỐT PHASE 2-TER
+
+```
+fix(ui): bỏ tiêu đề Phòng họp, ghim nút tạo mới trên danh sách
+
+Phòng họp là workspace lấp đầy chiều cao và sidebar đã chỉ rõ tab đang active,
+nên h1 cùng dòng mô tả lặp thông tin và lấy mất không gian của khung họp.
+
+Giữ nút Cuộc họp mới nhưng chuyển lên đầu cột trái. Tách cột thành flex column:
+hàng thao tác flex-shrink:0 ở trên, danh sách flex:1 min-height:0 overflow:auto ở
+dưới, nên danh sách dài vẫn cuộn mà nút không biến mất.
+
+Dọn selector .tabPanelFull .pageHeader sau khi xác nhận ba workspace còn lại không
+dùng class Hub này. Cân padding trên/dưới của page full-height ở 18px, dùng lại
+khoảng thở đã chốt trong Phase 2-bis thay vì thêm một số đoán trước mới.
+```
+
+**DỪNG. Chờ duyệt.**
+
+---
+
 # PHASE 3 — Đưa toàn bộ cỡ chữ về `--fs-scale`
 
 ## 3.1. Bối cảnh
@@ -1397,47 +1542,33 @@ khối biên bản. pre và table bắt buộc có overflow-x:auto.
 
 ---
 
-# PHASE 8 — Thống nhất đầu trang + dọn CSS chết
+# PHASE 8 — Nhất quán đầu trang theo loại trang + dọn CSS chết
 
-## 8.1. Phần A — Bốn tab không có tiêu đề
+## 8.1. Phần A — Nguyên tắc đầu trang theo loại trang
 
-Hiện trạng 12 tab:
+Không ép cả 12 tab dùng cùng một `<h1>`. Hai loại trang có nhu cầu không gian khác
+nhau và phải nhất quán trong chính loại của chúng:
 
-| Kiểu đầu trang | Tab |
-|---|---|
-| `.pageHeader` (h1 + phụ đề) | Nhân sự, Kỹ năng, Dự án, Phòng họp, Bộ não AI, Chi phí, Tài sản, Cài đặt |
-| Chỉ có đồng hồ | Tổng quan (`OverviewPage.tsx:212`) |
-| **Không có gì** | Dạy AI, Quy trình, Tác vụ tự động |
+| Loại trang | Tab | Nguyên tắc |
+|---|---|---|
+| Trang tài liệu/dashboard cuộn | Tổng quan, Nhân sự, Kỹ năng, Dự án, Bộ não AI, Chi phí, Tài sản, Cài đặt | Giữ nguyên hệ đầu trang theo ngữ cảnh nội dung; không xoá các `<h1>` đang có |
+| Workspace lấp đầy màn hình | Phòng họp, Dạy AI, Quy trình, Tác vụ tự động | Không có `<h1>`/`.pageHeader` của Hub; dành chiều cao cho nội dung thao tác |
 
-Ba tab cuối là trang standalone cũ được nhúng vào; header của chúng bị tắt khi
-`embedded` (`WorkspacePage.tsx:390`, `TaskrunnerPage.tsx:91`) mà không có gì thay thế.
-Chuyển tab là đổi hẳn ngôn ngữ thị giác.
+Sau Phase 2-TER, bốn workspace đều không có page header. Sidebar đã chỉ rõ tab đang
+active, nên lặp lại tên tab không đem thêm ngữ cảnh đủ để bù chiều cao bị lấy mất.
+Đặc biệt, chính cảnh báo cũ của Phase 8 đã xác nhận chèn header vào ba
+`.tabPanelFull` sẽ ăn chiều cao phần nội dung; vì vậy bỏ hẳn hướng chèn header đó.
 
-### 8.1.a — Cách làm
+Trong nhóm cuộn, giữ các `<h1>` hiện có của Nhân sự, Kỹ năng, Dự án, Bộ não AI,
+Chi phí, Tài sản và Cài đặt. Tổng quan tiếp tục dùng `.overviewHeader` gọn với đồng
+hồ; Phase 8 **không** thêm `<h1>` vào đây. Mục tiêu của Phase 8 không còn là nâng số
+đếm `<h1>`, mà là không làm header của loại trang này xâm lấn workspace.
 
-Đặt tiêu đề ở **HubPage.tsx**, không phải trong từng trang con. Lý do: ba trang đó còn
-route standalone riêng (`/workspace`, `/taskrunner`) và ở đó chúng dùng topbar của mình.
-Sửa trong trang con sẽ làm hỏng bản standalone.
+### 8.1.a — Không được làm
 
-Trong `HubPage.tsx`, ở hàm `HubShell`, chỗ render `<section className={tabPanel...}>`:
-với ba tab `train` / `company-runner` / `auto-runner`, chèn một header nhỏ **phía trên**
-`<HubTabContent>`.
-
-- Dùng đúng class `.pageHeader` đang có.
-- Chuỗi lấy từ `hubText(language, "nav.train")` v.v. — **các key này đã có sẵn**
-  trong `src/pages/hub/i18n.ts`, chính là nhãn đang hiện ở sidebar. **Không tạo key mới**
-  cho tiêu đề; nếu muốn thêm phụ đề thì phải thêm key ở **cả hai** ngôn ngữ.
-- Ba tab này dùng `.tabPanelFull` (`height:100%; overflow:hidden`). Chèn header vào sẽ
-  ăn chiều cao của phần nội dung. **Phải** giữ phần nội dung ở `minmax(0, 1fr)` —
-  kiểm bằng mắt là ô nhập tin nhắn ở đáy trang Dạy AI không bị đẩy ra khỏi màn hình.
-  Nếu không cân được, **dừng lại và báo** thay vì tự đổi `.tabPanelFull`.
-
-### 8.1.b — Tab Tổng quan
-
-Thêm `<h1>` vào `.overviewHeader` cạnh đồng hồ. Key `hubText(language, "nav.home")` đã có.
-
-### 8.1.c — Không được làm
-
+- **Không** chèn `.pageHeader` vào `train` / `company-runner` / `auto-runner` trong
+  `HubPage.tsx`.
+- **Không** thêm `<h1>` vào `.overviewHeader`.
 - **Không** bật lại topbar của WorkspacePage/TaskrunnerPage khi `embedded` — sẽ thành
   hai topbar chồng nhau.
 - **Không** đổi `navigation[]` trong `HubPage.tsx`.
@@ -1527,8 +1658,15 @@ npm run verify:meeting-protocol
 
 ## 8.4. Kiểm chứng mắt
 
-Đi hết 12 tab. Mỗi tab **phải có một tiêu đề `<h1>` ở cùng vị trí, cùng cỡ chữ**.
-Chuyển qua lại giữa `/hub/meeting` và `/hub/train` — không được thấy tiêu đề nhảy vị trí.
+Đi hết 12 tab và kiểm theo loại trang:
+
+- Bảy trang cuộn có `<h1>` hiện tại vẫn giữ đúng tiêu đề và phân cấp chữ; Tổng quan
+  vẫn dùng header đồng hồ gọn, không bị chèn thêm `<h1>`.
+- Bốn workspace `/hub/meeting`, `/hub/train`, `/hub/company-runner` và
+  `/hub/auto-runner` không có `<h1>`/`.pageHeader` của Hub; nội dung bắt đầu cân mép
+  và tận dụng đủ chiều cao còn lại.
+- Chuyển qua lại giữa bốn workspace: không tab nào xuất hiện thêm một dải header làm
+  nội dung bị nhảy xuống hoặc mất chiều cao.
 
 Ở `/hub/train`: kiểm ô nhập tin nhắn ở đáy **vẫn thấy được**, không bị đẩy khỏi màn hình.
 Ở `/hub/company-runner`: mở một quy trình, kiểm canvas React Flow còn nguyên, minimap
@@ -1537,15 +1675,14 @@ và nút zoom vẫn chạy (chúng do React Flow vẽ, không phải các ID v�
 ## 8.5. CHỐT PHASE 8
 
 ```
-refactor(ui): thống nhất đầu trang 12 tab, dọn CSS chết
+refactor(ui): giữ đầu trang theo loại trang, dọn CSS chết
 
-Ba tab Dạy AI / Quy trình / Tác vụ tự động là trang standalone cũ nhúng vào,
-header của chúng bị tắt khi embedded mà không có gì thay thế; tab Tổng quan chỉ
-có đồng hồ. Chuyển tab là đổi hẳn ngôn ngữ thị giác.
+Bốn tab Phòng họp / Dạy AI / Quy trình / Tác vụ tự động là workspace lấp đầy
+màn hình. Sidebar đã chỉ rõ tab active; thêm pageHeader chỉ lặp thông tin và ăn
+chiều cao của nội dung thao tác. Giữ cả bốn workspace không có h1 của Hub.
 
-Đặt tiêu đề ở HubPage.tsx chứ không trong từng trang con, vì ba trang đó còn
-route standalone riêng và ở đó chúng dùng topbar của mình. Chuỗi lấy từ key
-nav.* đã có sẵn, không thêm key mới.
+Nhóm trang cuộn giữ hệ đầu trang hiện có; Tổng quan tiếp tục dùng header đồng hồ
+gọn. Không còn mục tiêu ép cả 12 tab cùng có một h1.
 
 Dọn kèm: 9 nhóm class chết trong HubPage (bộ thẻ chỉ số cũ đã bị nhóm overview*
 thay thế, kể cả các luật responsive trỏ tới chúng), 10 khối luật ID chết trong
@@ -1864,28 +2001,4 @@ Console phải **0 lỗi** ở mọi tổ hợp.
 | Nhóm class chết trong HubPage | 9 | 0 |
 | Khối luật ID chết trong Taskrunner | 10 | 0 |
 | `:global(body)` trong CSS module | 4 | 0 |
-| Tab có `<h1>` | 8/12 | 12/12 |
-
----
-
-# HÀNG ĐỢI VIỆC PHÁT SINH TỪ KIỂM MẮT — CHƯA DUYỆT, CHƯA CÓ SỐ PHASE CHÍNH THỨC
-
-## 2026-08-13 — Cân nhắc bỏ tiêu đề trang Phòng họp
-
-Người dùng nhận xét phần tiêu đề ở góc trên bên trái trang Phòng họp không có
-nhiều tác dụng: thanh bên trái đã đánh dấu “Phòng họp” là mục đang active, nên
-`h1` “Phòng họp” và dòng mô tả “Trao đổi cùng Xanax và nhân viên...” trong
-`.pageHeader` của `MeetingsPage` bị lặp thông tin và chiếm chiều cao của khung họp.
-
-**Phạm vi còn mở, phải được người dùng chốt trước khi làm:** xoá cả khối
-`.pageHeader`, hay chỉ xoá `h1` và dòng mô tả? Nút **“Cuộc họp mới”** hiện nằm
-trong chính `.pageHeader` nên bắt buộc phải giữ lại. Nếu bỏ phần tiêu đề, gợi ý
-đặt nút vào đầu cột danh sách cuộc họp bên trái, trong một hàng thao tác gọn ngay
-trên danh sách, để hành động tạo mới vẫn dễ thấy mà không chiếm thêm một hàng
-toàn chiều rộng phía trên khung họp.
-
-Nếu xoá hẳn khối `.pageHeader`, luật
-`.tabPanelFull .pageHeader{flex-shrink:0}` sẽ thành thừa và cần được dọn cùng.
-
-Mục này chỉ là hàng đợi phát sinh từ kiểm mắt, **chưa được duyệt để triển khai**
-và **chưa có số phase chính thức**. Không đổi số các Phase 1–9 hiện có.
+| Tab có `<h1>` — nhất quán theo loại trang | 8/12 (Phòng họp còn `<h1>`) | 7/12 sau Phase 2-TER: 7 trang cuộn giữ `<h1>`; 4 workspace không có; Tổng quan giữ header đồng hồ gọn |
