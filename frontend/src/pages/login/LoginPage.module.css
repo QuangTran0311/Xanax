@@ -8,11 +8,6 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    :global(*), :global(*::before), :global(*::after) { box-sizing: border-box; margin: 0; padding: 0; }
-    :global(body) {
-      min-height: 100vh; overflow: hidden; background: var(--bg); color: var(--ink);
-      font-family: 'Inter', sans-serif;
-    }
     :global(input) { outline: none; }
     :global(input::placeholder) { color: var(--ink-muted); font-family: 'Inter', sans-serif; }
     :global(input:focus) { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft) !important; }
@@ -150,7 +145,6 @@
     .shake { animation: shake .4s ease; }
 
     @media (max-width: 860px) {
-      :global(body) { overflow: auto; }
       .root { min-height: 100vh; height: auto; }
       .panel-left, .neon-divider { display: none; }
     .panel-right { min-height: 100vh; padding: 72px 28px 64px; }

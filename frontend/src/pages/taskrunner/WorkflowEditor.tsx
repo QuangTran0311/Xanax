@@ -376,6 +376,9 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, onOpenProject
   const palette = (Object.keys(NODE_META) as GraphNodeType[]).filter((type) => NODE_META[type].title.toLocaleLowerCase("vi").includes(paletteSearch.toLocaleLowerCase("vi")));
   if (!task) return <div className={c("editor-loading")}>Đang tải quy trình...</div>;
 
+  // Both runner tabs stay mounted in Hub, so #view-editor, #editor-topbar, #editor-body,
+  // #node-palette, #palette-categories, #canvas-wrap, and #node-inspector can be duplicated.
+  // Do not query them by ID; migrating the selectors to classes requires a dedicated phase.
   return <div id="view-editor" data-testid="taskrunner-editor">
     <div id="editor-topbar">
       <button className={c("editor-icon-btn")} onClick={onBack} title="Quay lại"><Icon name="arrowLeft" /></button>

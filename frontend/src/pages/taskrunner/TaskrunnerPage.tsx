@@ -84,6 +84,8 @@ export function TaskrunnerPage({
 
   const goBack = () => navigate(basePath);
 
+  // Hub keeps both runner tabs mounted, so #page-wrap, #grid-wrap, and #add-workflow-btn can be duplicated.
+  // Do not query these elements by ID; migrating them to classes requires a dedicated phase.
   return (
     <div className={`${c("taskrunner-root")} ${embedded ? c("taskrunner-embedded") : ""}`}>
       {!taskId ? (

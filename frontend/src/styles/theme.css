@@ -14,6 +14,12 @@
    :root, và đó chính là cách bảng màu nâu cũ sống sót được lâu đến vậy.
    ══════════════════════════════════════════════════════════════════════════ */
 
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 :root {
   /* ── Nền và bề mặt ────────────────────────────────────────── */
   --bg: #0b1412;
@@ -80,7 +86,6 @@
   color-scheme: dark;
 }
 
-:global(body.light),
 body.light {
   --bg: #f5f5ef;
   --surface: #fffefa;
@@ -206,6 +211,7 @@ body.light {
    trắng-đen là do mỗi trang tự sơn nền của riêng nó. */
 html,
 body {
+  height: 100%;
   background: var(--bg);
   color: var(--text);
 }

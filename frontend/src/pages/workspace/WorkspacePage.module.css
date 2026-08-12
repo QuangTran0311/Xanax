@@ -20,10 +20,6 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   --ws-col-info: 300px;
 }
 
-:global(body) {
-  font-family: 'Inter', sans-serif;
-}
-
 .workspace-page-root {
   height: 100vh;
   display: flex;
@@ -949,3 +945,15 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   cursor: pointer; font-size:calc(14px * var(--fs-scale)); line-height: 1; padding: 0 2px;
 }
 .chat-attach-chip button:hover { color: var(--fail); }
+
+/* ≤1100px: ẩn cột thông tin để khung chat còn đủ chỗ. */
+@media (max-width: 1100px) {
+  .workspace { grid-template-columns: var(--ws-col-sessions) minmax(0, 1fr); }
+  .info-panel { display: none; }
+}
+
+/* ≤720px: khớp ngăn kéo Hub; chỉ giữ lại khung chat. */
+@media (max-width: 720px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .sessions-panel { display: none; }
+}
