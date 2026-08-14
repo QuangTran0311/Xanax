@@ -14,12 +14,13 @@ from hub.events import event_bus
 
 router = APIRouter()
 logger = logging.getLogger("xanax.health")
-_start_time = time.time()
+# Dùng monotonic để NTP chỉnh lùi giờ sau khi service đã chạy không làm uptime âm.
+_start_time = time.monotonic()
 
 
 @router.get("/health", summary="Health check")
 async def health_check():
-    uptime = time.time() - _start_time
+    uptime = max(0.0, time.monotonic() - _start_time)
     return {
         "status": "ok",
         "service": settings.title,
@@ -65,7 +66,7 @@ async def readiness():
 
 
 def _format_uptime(seconds: float) -> str:
-    s = int(seconds)
+    s = max(0, int(seconds))
     h, rem = divmod(s, 3600)
     m, sec = divmod(rem, 60)
     return f"{h}h {m}m {sec}s"

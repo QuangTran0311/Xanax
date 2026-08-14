@@ -16,6 +16,31 @@ sửa đồng bộ đường dẫn trong `xanax.service`, script backup/restore 
 Đăng nhập bằng SSH key trong một phiên đang mở. Cập nhật hệ thống và cài các gói
 nền; nếu hệ thống yêu cầu reboot thì reboot trước khi đi tiếp:
 
+Image của nhà cung cấp có thể trỏ APT tới mirror ở nước khác, chẳng hạn
+`de.archive.ubuntu.com`, trong khi DNS chỉ trả địa chỉ IPv6 nhưng VPS không có IPv6.
+Khi đó `apt update` sẽ treo đến timeout ở gần như mọi gói. Nhận biết bằng HTTP code
+`000`/timeout từ mirror, kết quả `getent hosts` chỉ có IPv6 và không có địa chỉ IPv6
+global trên máy:
+
+```bash
+curl -sS -o /dev/null --connect-timeout 5 -w '%{http_code}\n' \
+  http://de.archive.ubuntu.com/ubuntu/
+getent hosts de.archive.ubuntu.com
+ip -6 addr show scope global
+```
+
+Đổi mirror theo quốc gia trong `/etc/apt/sources.list.d/ubuntu.sources` sang mirror
+chung và buộc APT dùng IPv4:
+
+```bash
+sudo sed -i -E \
+  's#(https?://)[a-z]{2}\.archive\.ubuntu\.com/ubuntu/?#\1archive.ubuntu.com/ubuntu/#g' \
+  /etc/apt/sources.list.d/ubuntu.sources
+printf '%s\n' 'Acquire::ForceIPv4 "true";' \
+  | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+sudo apt update
+```
+
 ```bash
 sudo apt update
 sudo apt full-upgrade -y
@@ -187,19 +212,34 @@ sudo ss -ltnp | grep ':8000'
 
 Kết quả phải là `127.0.0.1:8000`, không phải `0.0.0.0:8000`.
 
-Thay domain trong Caddyfile, chuẩn bị thư mục access log rồi validate trước khi
-reload:
+Unit gốc của gói Caddy đặt `ProtectSystem=full`, vì vậy `/var/log` là chỉ-đọc đối với
+service. Chỉ tạo `/var/log/caddy` chưa đủ: phải cho phép unit ghi đúng thư mục này
+bằng systemd drop-in, nếu không Caddy chết ngay khi khởi động với `permission denied`.
+
+Thay domain trong Caddyfile, chuẩn bị thư mục access log và drop-in rồi validate
+trước khi reload:
 
 ```bash
 sudo cp /opt/xanax/deploy/Caddyfile /etc/caddy/Caddyfile
 sudo sed -i 's/xanax\.example\.com/domain-that.example/' /etc/caddy/Caddyfile
 sudo install -d -m 0750 -o caddy -g caddy /var/log/caddy
+sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
+printf '%s\n' '[Service]' 'ReadWritePaths=/var/log/caddy' \
+  | sudo tee /etc/systemd/system/caddy.service.d/override.conf
+sudo systemctl daemon-reload
 sudo caddy fmt --overwrite /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo chown -R caddy:caddy /var/log/caddy
 sudo systemctl enable --now caddy
 sudo systemctl reload caddy
 sudo systemctl status caddy --no-pager
 ```
+
+> **Đặc biệt kiểm tra owner của access log.** Nếu trước đó đã chạy `caddy validate`
+> hoặc `caddy run` bằng root, file `/var/log/caddy/xanax-access.log` có thể đã được
+> tạo với owner `root:root` và mode `0600`. Khi service chạy bằng user `caddy`, nó
+> không mở được file; triệu chứng vẫn là `permission denied` dù drop-in đã đúng.
+> Sửa bằng `sudo chown -R caddy:caddy /var/log/caddy`, rồi restart Caddy.
 
 Thay `domain-that.example` bằng domain thật ngay trong lệnh. Caddy tự cấp/gia hạn
 TLS, tự proxy WebSocket và mặc định tự đặt `X-Forwarded-For`,
@@ -238,6 +278,25 @@ Không nghiệm thu bằng `http://IP:8000`; đường đó không được publ
 
 Cài script root-owned ở mục **Backup và restore** ngay sau lần deploy đầu tiên,
 trước lần cập nhật đầu tiên.
+
+### Khi nhà cung cấp đổi IP máy chủ
+
+Sửa bản ghi DNS `A` của domain sang IPv4 mới ngay. Nếu DNS còn trỏ IP cũ,
+Let's Encrypt vẫn kết nối tới máy cũ và Caddy sẽ báo lỗi dạng
+`<ip-cu>: Timeout during connect (likely firewall problem)` khi xin chứng chỉ.
+Hỏi thẳng nameserver gốc thay vì chỉ tin cache của resolver địa phương:
+
+```bash
+nslookup domain-that.example ns1.nameserver.example
+```
+
+Khi nameserver gốc đã trả IP mới, yêu cầu Caddy xin lại chứng chỉ ngay thay vì chờ
+backoff:
+
+```bash
+sudo systemctl restart caddy
+sudo journalctl -u caddy -n 100 --no-pager
+```
 
 ### Cập nhật phiên bản
 

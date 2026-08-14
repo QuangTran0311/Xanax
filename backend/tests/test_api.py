@@ -97,6 +97,28 @@ class TestHealthRoutes:
         assert "uptime_seconds" in data
 
     @pytest.mark.asyncio
+    async def test_health_uptime_ignores_wall_clock_jump(self, monkeypatch):
+        from api.routes import health
+
+        monkeypatch.setattr(health, "_start_time", 100.0)
+        monkeypatch.setattr(health.time, "monotonic", lambda: 101.25)
+        # Mô phỏng NTP kéo đồng hồ tường lùi 7 giờ sau khi service khởi động.
+        wall_times = iter((25_200.0, 0.0))
+        monkeypatch.setattr(health.time, "time", lambda: next(wall_times))
+
+        wall_before = health.time.time()
+        data = await health.health_check()
+        wall_after = health.time.time()
+
+        assert wall_after < wall_before
+        assert data["uptime_seconds"] == 1.25
+        assert data["uptime_seconds"] >= 0
+
+        monkeypatch.setattr(health.time, "monotonic", lambda: 99.0)
+        assert (await health.health_check())["uptime_seconds"] == 0
+        assert health._format_uptime(0) == "0h 0m 0s"
+
+    @pytest.mark.asyncio
     async def test_readiness(self, client, monkeypatch):
         from core.orchestrator import orchestrator
         from core.scheduler import task_scheduler
