@@ -190,9 +190,17 @@ async def test_tien_do_tung_buoc_hien_trong_phong_hop(tmp_path, monkeypatch):
         assert any("Soạn nội dung" in p["label"] for p in progress), progress
         assert progress[-1]["status"] == "done"
 
-        # Mốc cuối phải còn lại trong lịch sử họp cho người vào sau
-        messages = await database.get_meeting_messages(meeting_id)
-        assert any("Đã chạy xong" in m["content"] for m in messages)
+        # Ứng dụng phát sự kiện trước rồi mới ghi DB, nên phải chờ DB riêng.
+        async def _da_luu_moc_chay_xong():
+            messages = await database.get_meeting_messages(meeting_id)
+            return any("Đã chạy xong" in m["content"] for m in messages)
+
+        if not await _cho_toi_khi(_da_luu_moc_chay_xong):
+            messages = await database.get_meeting_messages(meeting_id)
+            raise AssertionError(
+                "Không thấy mốc 'Đã chạy xong' trong lịch sử họp. "
+                f"Đang có: {[m['content'] for m in messages]}"
+            )
     finally:
         wm._meeting_clients.get(meeting_id, set()).discard(fake_send)
 
