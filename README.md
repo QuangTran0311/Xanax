@@ -685,6 +685,7 @@ sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
 | `2.2.0` | Soul theo dự án và theo kỹ năng · ghép ảnh sản phẩm lên nền sinh sẵn (`image_compose.py`) · chế độ ảnh và cổng chọn nguồn ảnh trong quy trình · chọn từng tool của skill MCP cho nhân viên · buổi dạy gắn dự án và cấp tool thật · 4 cột DB mới (đều có giá trị mặc định) |
 | `2.3.0` | Thí nghiệm tự cải thiện: ablation ba tầng tri thức trên cùng model, có giám khảo chấm mù · 3 bảng DB mới · tooltip và toast dùng chung · i18n tách theo trang · bộ chọn lịch chạy cho quy trình · gộp tab Bộ não AI thành 3 mục: Model Pool, Đánh giá model, Thí nghiệm tự cải thiện |
 | `2.4.0` | Sẵn sàng triển khai: chặn khởi động production khi secret còn mặc định · cookie phiên bật `Secure`, tắt API docs khi `HUB_DEBUG=false` · rate limit đăng nhập theo IP + tài khoản, chỉ tin `X-Forwarded-For` khi khai báo có proxy · readiness probe kiểm tra thật database/scheduler/hàng đợi · đồng bộ dependency `pyproject.toml` với `requirements.txt` · thư mục cấu hình Hermes phân giải được trên Linux · bộ cài `deploy/` cho Ubuntu 24.04 (systemd, Caddy, backup/restore, runbook) · test chạy trên DB tạm thay vì database thật |
+| `2.4.1` | Ba lỗi lộ ra khi triển khai thật lên Ubuntu: bộ test không còn đọc `.env` của máy đang chạy (trên server cấu hình production nó báo 13 lỗi giả) · `/api/health` đo uptime bằng đồng hồ đơn điệu nên NTP chỉnh giờ không làm uptime âm · `deploy/*.sh` được đặt bit thực thi trong git để clone trên Linux chạy được (systemd báo `203/EXEC` mà không nhắc gì tới quyền file) |
 
 ---
 
