@@ -1,0 +1,37 @@
+[Unit]
+Description=Xanax FastAPI service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=xanax
+Group=xanax
+
+# PLACEHOLDER: sửa mọi đường /opt/xanax nếu mã nguồn được đặt ở nơi khác.
+WorkingDirectory=/opt/xanax/backend
+EnvironmentFile=/opt/xanax/backend/.env
+Environment="PYTHONUNBUFFERED=1"
+# systemd không đọc PATH từ shell đăng nhập. Giữ các thư mục CLI của user xanax ở đây.
+Environment="PATH=/opt/xanax/.venv/bin:/home/xanax/.local/bin:/home/xanax/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/xanax/.venv/bin/python /opt/xanax/backend/main.py
+
+Restart=always
+RestartSec=5s
+
+NoNewPrivileges=true
+PrivateTmp=true
+# full chỉ khóa ghi /usr, /boot, /efi và /etc; /opt/xanax/backend/data vẫn ghi được.
+# Không dùng strict vì app phải ghi SQLite và toàn bộ backend/data.
+ProtectSystem=full
+# CỐ Ý không bật ProtectHome: claude/codex CLI đọc credential/config trong /home/xanax.
+ProtectHome=false
+UMask=0027
+
+# stdout/stderr đi vào journald; xem bằng: journalctl -u xanax -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xanax
+
+[Install]
+WantedBy=multi-user.target

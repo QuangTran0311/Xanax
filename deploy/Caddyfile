@@ -1,0 +1,24 @@
+# PLACEHOLDER: thay xanax.example.com bằng domain thật đã trỏ DNS về VPS.
+xanax.example.com {
+	encode zstd gzip
+
+	# Backend chưa có trần upload riêng. Giới hạn 50 MB chỉ áp dụng cho route
+	# tải tài sản/ảnh, đủ rộng cho ảnh làm việc nhưng chặn request quá lớn.
+	@asset_upload path /api/assets/upload
+	request_body @asset_upload {
+		max_size 50MB
+	}
+
+	# Caddy v2 tự proxy WebSocket và tự đặt X-Forwarded-For,
+	# X-Forwarded-Proto, X-Forwarded-Host; không thêm header_up thủ công.
+	reverse_proxy 127.0.0.1:8000
+
+	log {
+		output file /var/log/caddy/xanax-access.log {
+			roll_size 20MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+	}
+}

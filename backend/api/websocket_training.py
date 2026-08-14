@@ -21,7 +21,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 import shutil
 from datetime import datetime
@@ -30,6 +29,7 @@ from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
+from core.hermes_paths import hermes_home
 from core.hermes_bridge import hermes
 from hub.database import (
     add_training_message,
@@ -590,24 +590,20 @@ async def _execute_tool_call(call: dict) -> dict:
 
 # ── SOUL.md helpers ───────────────────────────────────────────────────────────
 
-def _soul_path() -> Path:
-    local_app_data = (
-        os.environ.get("LOCALAPPDATA")
-        or os.path.expandvars("%LOCALAPPDATA%")
-        or str(Path.home() / "AppData" / "Local")
-    )
-    return Path(local_app_data) / "hermes" / "SOUL.md"
+def _soul_path() -> Path | None:
+    root = hermes_home()
+    return root / "SOUL.md" if root is not None else None
 
 
 def _read_soul() -> str:
     p = _soul_path()
-    return p.read_text(encoding="utf-8") if p.exists() else ""
+    return p.read_text(encoding="utf-8") if p is not None and p.exists() else ""
 
 
 def _upsert_soul_note(session_id: int, session_title: str, content: str) -> None:
     """Insert or replace the tagged block for this session in SOUL.md."""
     p = _soul_path()
-    if not p.exists():
+    if p is None or not p.exists():
         logger.warning("SOUL.md not found at %s — skipping upsert", p)
         return
 

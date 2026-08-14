@@ -4,8 +4,10 @@ Test này gọi execute_workflow_headless THẬT (không mock) để bắt lỗi
 giữa phòng họp và engine — thứ mà test dùng hàm giả không phát hiện được.
 """
 import asyncio
+import inspect
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -36,6 +38,19 @@ GRAPH = {
 }
 
 
+async def _cho_toi_khi(dieu_kien, timeout=20.0):
+    # Chờ theo mốc thời gian để máy tải nặng không bị hụt ngân sách vì số vòng lặp cố định.
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+        ket_qua = dieu_kien()
+        if inspect.isawaitable(ket_qua):
+            ket_qua = await ket_qua
+        if ket_qua:
+            return True
+    return False
+
+
 async def test_goi_tu_phong_hop_chay_that_va_bao_khi_cho_duyet(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "e2e.db"))
     await database.init_db()
@@ -56,12 +71,11 @@ async def test_goi_tu_phong_hop_chay_that_va_bao_khi_cho_duyet(tmp_path, monkeyp
     assert "quy trình" in notes[0]
 
     # Chờ engine chạy tới cổng duyệt (nó sẽ nằm chờ ở đó)
-    for _ in range(60):
-        await asyncio.sleep(0.05)
+    async def _da_co_tin_nhan_cho_duyet():
         messages = await database.get_meeting_messages(meeting_id)
         if any("chờ CEO duyệt" in m["content"] for m in messages):
-            break
-    else:
+            return True
+    if not await _cho_toi_khi(_da_co_tin_nhan_cho_duyet):
         raise AssertionError(
             "Không có tin nhắn báo chờ duyệt trong phòng họp sau 3s. "
             f"Đang có: {[m['content'] for m in await database.get_meeting_messages(meeting_id)]}"
@@ -108,11 +122,10 @@ async def test_ceo_dang_mo_phong_hop_thay_thong_bao_ngay(tmp_path, monkeypatch):
         await wm._run_workflows_from_meeting(
             meeting_id, project_id, [{"task_id": task_id, "input": "móc khóa"}],
         )
-        for _ in range(60):
-            await asyncio.sleep(0.05)
+        def _da_co_the_duyet():
             if any(p.get("type") == "approval_request" for p in received):
-                break
-        else:
+                return True
+        if not await _cho_toi_khi(_da_co_the_duyet):
             raise AssertionError(f"CEO không nhận được thẻ duyệt realtime. Nhận: {received}")
 
         card = next(p for p in received if p["type"] == "approval_request")
@@ -164,11 +177,10 @@ async def test_tien_do_tung_buoc_hien_trong_phong_hop(tmp_path, monkeypatch):
         await wm._run_workflows_from_meeting(
             meeting_id, project_id, [{"task_id": task_id, "input": "chủ đề"}],
         )
-        for _ in range(80):
-            await asyncio.sleep(0.05)
+        def _da_chay_xong():
             if any(p.get("type") == "workflow_progress" and p.get("status") == "done" for p in received):
-                break
-        else:
+                return True
+        if not await _cho_toi_khi(_da_chay_xong):
             raise AssertionError(f"Không thấy tiến độ chạy xong. Nhận: {received}")
 
         progress = [p for p in received if p.get("type") == "workflow_progress"]

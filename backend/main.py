@@ -2,7 +2,6 @@
 Xanax - UI layer for Hermes local chat.
 """
 import io
-import os
 import sys
 import threading
 import webbrowser
@@ -31,7 +30,8 @@ def print_banner():
     console.print(f"  [bold magenta]{'━' * 52}[/]")
     console.print()
     console.print(f"  [bold green]●[/] UI        [cyan]http://{host}:{port}/[/]")
-    console.print(f"  [bold green]●[/] API Docs  [cyan]http://{host}:{port}/api/docs[/]")
+    if settings.api_docs_enabled:
+        console.print(f"  [bold green]●[/] API Docs  [cyan]http://{host}:{port}/api/docs[/]")
     console.print(f"  [bold green]●[/] Health    [cyan]http://{host}:{port}/api/health[/]")
     console.print()
 
@@ -39,7 +39,7 @@ def print_banner():
 def open_browser():
     """Tự mở trình duyệt tới trang UI sau khi server kịp khởi động.
     Set XANAX_NO_BROWSER=1 để tắt (vd chạy trên server không có màn hình)."""
-    if os.environ.get("XANAX_NO_BROWSER"):
+    if settings.no_browser:
         return
     host = settings.host if settings.host not in ("0.0.0.0", "") else "localhost"
     url = f"http://{host}:{settings.port}/"

@@ -16,6 +16,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from hub.config import settings
 from hub.events import EventType, event_bus
 
 logger = logging.getLogger("xanax.scheduler")
@@ -98,6 +99,18 @@ class TaskScheduler:
         self._workers.clear()
 
         logger.info("TaskScheduler stopped")
+
+    @property
+    def scheduler_running(self) -> bool:
+        return self._running and self._scheduler.running
+
+    @property
+    def worker_pool_running(self) -> bool:
+        return (
+            self._running
+            and len(self._workers) == self._worker_count
+            and all(not worker.done() for worker in self._workers)
+        )
 
     # ── Immediate queue ────────────────────────────────────────────────────
 
@@ -266,4 +279,7 @@ class TaskScheduler:
 
 
 # Global scheduler singleton
-task_scheduler = TaskScheduler()
+task_scheduler = TaskScheduler(
+    max_queue_size=settings.task_queue_max_size,
+    worker_count=settings.task_worker_count,
+)

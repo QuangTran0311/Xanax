@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +41,21 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-to-a-strong-random-secret"
     api_key: str = "xanax-dev-key-0000"
+    cookie_secure: bool | None = None
+    # Chỉ bật khi có reverse proxy tin cậy (Caddy/nginx); chạy trần sẽ cho phép giả mạo IP.
+    trust_proxy_headers: bool = False
+    login_rate_limit_attempts: int = Field(default=8, ge=1)
+    login_rate_limit_window_seconds: int = Field(default=900, ge=1)
+    login_rate_limit_lock_seconds: int = Field(default=900, ge=1)
+
+    # Các biến XANAX_* cũng được đọc từ backend/.env dù model dùng tiền tố HUB_.
+    admin_user: str = Field(default="admin", validation_alias="XANAX_ADMIN_USER")
+    admin_pass: str = Field(
+        default="xanax",
+        validation_alias="XANAX_ADMIN_PASS",
+        repr=False,
+    )
+    no_browser: bool = Field(default=False, validation_alias="XANAX_NO_BROWSER")
 
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -76,6 +92,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return not self.debug
+
+    @property
+    def secure_cookie_enabled(self) -> bool:
+        """Giá trị cuối cùng cho cờ Secure của cookie phiên."""
+        return self.is_production if self.cookie_secure is None else self.cookie_secure
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        return not self.is_production
 
 
 @lru_cache

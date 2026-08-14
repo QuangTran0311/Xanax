@@ -2,8 +2,9 @@
 Soul Sync — tự động cập nhật dữ liệu công ty vào SOUL.md của Hermes mỗi khi Xanax khởi động.
 """
 import logging
-import os
 from pathlib import Path
+
+from core.hermes_paths import hermes_home
 
 logger = logging.getLogger("xanax.soul_sync")
 
@@ -11,14 +12,15 @@ _MARKER_START = "<!-- XANAX_DATA_START -->"
 _MARKER_END   = "<!-- XANAX_DATA_END -->"
 
 
-def _soul_path() -> Path:
-    return Path(os.environ.get("LOCALAPPDATA", "")) / "hermes" / "SOUL.md"
+def _soul_path() -> Path | None:
+    root = hermes_home()
+    return root / "SOUL.md" if root is not None else None
 
 
 async def sync_soul_md() -> None:
     """Đọc DB và ghi dữ liệu mới nhất vào block dữ liệu trong SOUL.md."""
     soul_path = _soul_path()
-    if not soul_path.exists():
+    if soul_path is None or not soul_path.exists():
         logger.warning("SOUL.md not found at %s — skipping sync", soul_path)
         return
 
@@ -138,7 +140,7 @@ _MAX_FEEDBACK   = 40  # giữ tối đa N mục, xóa cũ nhất khi vượt
 def append_feedback_to_soul(output: dict) -> None:
     """Ghi pass/fail output vào block phản hồi trong SOUL.md để Xanax học."""
     soul_path = _soul_path()
-    if not soul_path.exists():
+    if soul_path is None or not soul_path.exists():
         logger.warning("SOUL.md not found — skipping feedback write")
         return
 

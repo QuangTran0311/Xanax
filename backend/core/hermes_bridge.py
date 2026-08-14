@@ -12,17 +12,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import AsyncIterator
 from uuid import uuid4
 
 import httpx
 from dotenv import dotenv_values
 
+from core.hermes_paths import hermes_home
 from hub.config import settings
 
 logger = logging.getLogger("xanax.hermes_bridge")
@@ -62,18 +61,18 @@ class HermesBridge:
 
         Priority:
         1. Xanax HUB_LLM_* env vars
-        2. Hermes local config under %LOCALAPPDATA%\\hermes
+        2. Hermes local config from the platform-specific Hermes home
         3. Project defaults
         """
         base_url = settings.llm_api_base.rstrip("/")
         model = settings.llm_model
         api_key = settings.llm_api_key
 
-        hermes_root = Path(os.environ.get("LOCALAPPDATA", "")) / "hermes"
-        hermes_env = hermes_root / ".env"
-        hermes_config = hermes_root / "config.yaml"
+        hermes_root = hermes_home()
+        hermes_env = hermes_root / ".env" if hermes_root is not None else None
+        hermes_config = hermes_root / "config.yaml" if hermes_root is not None else None
 
-        fallback_env = dotenv_values(hermes_env) if hermes_env.exists() else {}
+        fallback_env = dotenv_values(hermes_env) if hermes_env and hermes_env.exists() else {}
         if not api_key:
             api_key = (
                 fallback_env.get("OPENROUTER_API_KEY")
@@ -82,7 +81,11 @@ class HermesBridge:
             )
 
         # If Xanax is still on the default local Ollama-ish config, prefer Hermes' config.
-        if base_url.rstrip("/") == "http://localhost:11434" and hermes_config.exists():
+        if (
+            base_url.rstrip("/") == "http://localhost:11434"
+            and hermes_config
+            and hermes_config.exists()
+        ):
             config_text = hermes_config.read_text(encoding="utf-8", errors="ignore")
             base_url = self._extract_yaml_value(config_text, "model", "base_url") or base_url
             model = self._extract_yaml_value(config_text, "model", "default") or model

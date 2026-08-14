@@ -5,14 +5,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from core.hermes_paths import hermes_home
 from hub.database import (
     get_agent_config,
     get_project,
@@ -29,14 +28,10 @@ logger = logging.getLogger("xanax.training")
 router = APIRouter()
 
 
-def _soul_path() -> Path:
+def _soul_path():
     """Resolve SOUL.md path at call-time — avoids stale import-time env."""
-    local_app_data = (
-        os.environ.get("LOCALAPPDATA")
-        or os.path.expandvars("%LOCALAPPDATA%")
-        or str(Path.home() / "AppData" / "Local")
-    )
-    return Path(local_app_data) / "hermes" / "SOUL.md"
+    root = hermes_home()
+    return root / "SOUL.md" if root is not None else None
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
@@ -475,7 +470,7 @@ async def reopen_session(session_id: int):
 @router.get("/soul")
 async def get_soul():
     p = _soul_path()
-    if not p.exists():
+    if p is None or not p.exists():
         raise HTTPException(status_code=404, detail=f"SOUL.md not found at: {p}")
     return {"content": p.read_text(encoding="utf-8")}
 
@@ -483,7 +478,7 @@ async def get_soul():
 @router.post("/soul/append")
 async def append_to_soul(req: AppendSoulRequest):
     p = _soul_path()
-    if not p.exists():
+    if p is None or not p.exists():
         raise HTTPException(status_code=404, detail=f"SOUL.md not found at: {p}")
 
     try:

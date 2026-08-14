@@ -12,6 +12,8 @@ from pathlib import Path
 
 import aiosqlite
 
+from hub.config import settings
+
 logger = logging.getLogger("xanax.database")
 
 _VN_OFFSET = timedelta(hours=7)  # Việt Nam không có DST — offset cố định quanh năm
@@ -22,7 +24,16 @@ def _local_now() -> datetime:
     usage tracking, đồng bộ với cách frontend tính ngày/tuần/tháng theo giờ địa phương."""
     return datetime.utcnow() + _VN_OFFSET
 
-DB_PATH = Path(__file__).parent.parent / "xanax.db"
+def _database_path_from_url(database_url: str) -> Path | str:
+    """Chuyển URL SQLite đã cấu hình thành đường dẫn aiosqlite sử dụng trực tiếp."""
+    for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
+        if database_url.startswith(prefix):
+            raw_path = database_url.removeprefix(prefix)
+            return raw_path if raw_path == ":memory:" else Path(raw_path)
+    raise ValueError("HUB_DATABASE_URL phải dùng sqlite+aiosqlite:/// hoặc sqlite:///")
+
+
+DB_PATH = _database_path_from_url(settings.database_url)
 SESSION_TTL_HOURS = 8  # 8 hours — force re-login after one work session
 COOKIE_NAME = "xanax_session"
 

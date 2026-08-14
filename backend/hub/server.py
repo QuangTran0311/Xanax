@@ -2,7 +2,6 @@
 Hub Server Factory – FastAPI application setup
 """
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,6 +25,25 @@ _frontend_dist_path = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 _NO_CACHE_HEADERS = {"Cache-Control": "no-store, must-revalidate"}
 
 
+def _configuration_issues(*, creating_default_user: bool) -> list[str]:
+    """Các cấu hình mặc định không an toàn khi đưa ứng dụng lên production."""
+    issues = []
+    fields = type(settings).model_fields
+    if not settings.secret_key.strip() or settings.secret_key == fields["secret_key"].default:
+        issues.append("HUB_SECRET_KEY vẫn là giá trị mặc định; hãy đặt một secret mạnh")
+    if not settings.api_key.strip() or settings.api_key == fields["api_key"].default:
+        issues.append("HUB_API_KEY vẫn là giá trị mặc định; hãy đặt một API key mạnh")
+    if creating_default_user and (
+        not settings.admin_pass.strip()
+        or settings.admin_pass.strip() == fields["admin_pass"].default
+    ):
+        issues.append(
+            "database chưa có người dùng và XANAX_ADMIN_PASS chưa được đặt hoặc vẫn là 'xanax'; "
+            "hãy đặt mật khẩu quản trị mạnh"
+        )
+    return issues
+
+
 class _NoCacheStatic(StaticFiles):
     """Static files served from a development build must never be stale."""
 
@@ -46,17 +64,28 @@ async def lifespan(_app: FastAPI):
         recover_interrupted_experiments,
     )
     await init_db()
+    creating_default_user = await user_count() == 0
+    configuration_issues = _configuration_issues(
+        creating_default_user=creating_default_user,
+    )
+    if configuration_issues:
+        message = "Cấu hình không an toàn: " + "; ".join(configuration_issues) + "."
+        if settings.is_production:
+            raise RuntimeError("Không thể khởi động production. " + message)
+        logger.warning(message)
+        console.print(f"[bold yellow]⚠  {message}[/]")
+
     await recover_interrupted_experiments()
     await clear_all_sessions()  # force re-login after every server restart
 
-    if await user_count() == 0:
-        default_user = os.environ.get("XANAX_ADMIN_USER", "admin")
-        default_pass = os.environ.get("XANAX_ADMIN_PASS", "xanax")
-        await create_user(default_user, default_pass)
-        console.print(f"[bold yellow]⚠  No users found. Default account created:[/]")
-        console.print(f"   Username: [bold]{default_user}[/]")
-        console.print(f"   Password: [bold]{default_pass}[/]")
-        console.print(f"   [dim]Set XANAX_ADMIN_USER / XANAX_ADMIN_PASS in .env to override.[/]")
+    if creating_default_user:
+        await create_user(settings.admin_user, settings.admin_pass)
+        console.print("[bold yellow]⚠  No users found. Admin account created:[/]")
+        console.print(f"   Username: [bold]{settings.admin_user}[/]")
+        if settings.debug:
+            console.print(f"   Password: [bold]{settings.admin_pass}[/]")
+        else:
+            console.print("   [dim]Password read from XANAX_ADMIN_PASS.[/]")
 
     # ── Session purge task (every 30 min) ──────────────────────
     import asyncio
@@ -121,9 +150,9 @@ def create_app() -> FastAPI:
         title=settings.xanax_name,
         version=settings.version,
         description=f"{settings.xanax_name} – Personal AI Agent powered by Hermes",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if settings.api_docs_enabled else None,
+        redoc_url="/api/redoc" if settings.api_docs_enabled else None,
+        openapi_url="/api/openapi.json" if settings.api_docs_enabled else None,
         lifespan=lifespan,
     )
 
@@ -236,7 +265,7 @@ def create_app() -> FastAPI:
             "chat_base_url": hermes.base_url,
             "chat_model":    hermes.model,
             "chat_online":   hermes_alive,
-            "docs":          "/api/docs",
+            "docs":          "/api/docs" if settings.api_docs_enabled else None,
         }
 
     # Keep this last. Known API/WS prefixes must never fall through to the SPA,

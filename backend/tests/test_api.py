@@ -71,7 +71,8 @@ class TestAuthGuard:
     @pytest.mark.parametrize("path", ["/api/health", "/api/health/ready"])
     async def test_health_stays_public(self, anon_client, path):
         """Probe của reverse proxy/uptime monitor không có cookie phiên."""
-        assert (await anon_client.get(path)).status_code == 200
+        response = await anon_client.get(path)
+        assert response.status_code in (200, 503)
 
     @pytest.mark.asyncio
     async def test_webhook_stays_public(self, anon_client):
@@ -96,10 +97,23 @@ class TestHealthRoutes:
         assert "uptime_seconds" in data
 
     @pytest.mark.asyncio
-    async def test_readiness(self, client):
+    async def test_readiness(self, client, monkeypatch):
+        from core.orchestrator import orchestrator
+        from core.scheduler import task_scheduler
+
+        monkeypatch.setattr(type(orchestrator), "started", property(lambda self: True))
+        monkeypatch.setattr(type(task_scheduler), "scheduler_running", property(lambda self: True))
+        monkeypatch.setattr(type(task_scheduler), "worker_pool_running", property(lambda self: True))
         resp = await client.get("/api/health/ready")
         assert resp.status_code == 200
-        assert resp.json()["ready"] is True
+        data = resp.json()
+        assert data["ready"] is True
+        assert data["checks"] == {
+            "database": True,
+            "orchestrator": True,
+            "scheduler": True,
+            "task_queue": True,
+        }
 
     @pytest.mark.asyncio
     async def test_root(self, anon_client):

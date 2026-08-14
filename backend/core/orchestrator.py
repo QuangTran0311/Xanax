@@ -81,6 +81,10 @@ class AgentOrchestrator:
             await self.cancel_agent(record.record_id)
         logger.info("AgentOrchestrator stopped")
 
+    @property
+    def started(self) -> bool:
+        return self._started
+
     # ── Agent lifecycle ────────────────────────────────────────────────────
 
     async def spawn_agent(

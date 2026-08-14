@@ -1,15 +1,19 @@
 """API Routes – Health check"""
 import platform
+import logging
 import sys
 import time
 from datetime import datetime, timezone
 
+import aiosqlite
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from hub.config import settings
 from hub.events import event_bus
 
 router = APIRouter()
+logger = logging.getLogger("xanax.health")
 _start_time = time.time()
 
 
@@ -33,7 +37,31 @@ async def health_check():
 
 @router.get("/health/ready", summary="Readiness probe")
 async def readiness():
-    return {"ready": True}
+    checks: dict[str, bool] = {}
+
+    try:
+        from hub import database
+
+        async with aiosqlite.connect(database.DB_PATH) as db:
+            async with db.execute("SELECT 1") as cursor:
+                row = await cursor.fetchone()
+        checks["database"] = bool(row and row[0] == 1)
+    except Exception:
+        logger.exception("Readiness database check failed")
+        checks["database"] = False
+
+    from core.orchestrator import orchestrator
+    from core.scheduler import task_scheduler
+
+    checks["orchestrator"] = orchestrator.started
+    checks["scheduler"] = task_scheduler.scheduler_running
+    checks["task_queue"] = task_scheduler.worker_pool_running
+
+    ready = all(checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"ready": ready, "checks": checks},
+    )
 
 
 def _format_uptime(seconds: float) -> str:
