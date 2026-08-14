@@ -51,6 +51,7 @@ import json
 import logging
 import re
 import shutil
+import time
 from collections.abc import Callable, Awaitable
 from datetime import datetime
 from pathlib import Path
@@ -78,6 +79,9 @@ _approval_waiters: dict[int, dict] = {}
 # Nhịp kiểm tra vòng chờ duyệt (giây). Tách thành hằng số để test rút ngắn được
 # thay vì phải chờ hết hạn thật.
 _APPROVAL_POLL_SECONDS = 1.0
+# Cho phép test rút ngắn một phút mà vẫn đi qua đúng logic thật;
+# không đổi giá trị này ở production.
+_APPROVAL_MINUTE_SECONDS = 60.0
 
 # Error patterns that providers stream as content instead of raising HTTP errors
 _STREAM_ERROR_PREFIXES = ("[Error]", "[Hermes error:", "[Xanax error:")
@@ -1833,15 +1837,24 @@ async def _execute_graph_run(
                     preview=review_text, deadline_note=deadline_note,
                     images=image_urls, note=note,
                 )
-                waited = 0.0
+                deadline = (
+                    time.monotonic() + timeout_minutes * _APPROVAL_MINUTE_SECONDS
+                    if timeout_minutes else None
+                )
                 timed_out = False
                 try:
                     while not waiter["event"].is_set() and not _cancel_flags.get(run_id):
+                        poll_timeout = _APPROVAL_POLL_SECONDS
+                        if deadline is not None:
+                            now = time.monotonic()
+                            if now >= deadline:
+                                timed_out = True
+                                break
+                            poll_timeout = min(poll_timeout, deadline - now)
                         try:
-                            await asyncio.wait_for(waiter["event"].wait(), timeout=_APPROVAL_POLL_SECONDS)
+                            await asyncio.wait_for(waiter["event"].wait(), timeout=poll_timeout)
                         except asyncio.TimeoutError:
-                            waited += _APPROVAL_POLL_SECONDS
-                            if timeout_minutes and waited >= timeout_minutes * 60:
+                            if deadline is not None and time.monotonic() >= deadline:
                                 timed_out = True
                                 break
                 finally:

@@ -86,7 +86,7 @@ async def test_het_han_cho_duyet_thi_dung_lai(tmp_path, monkeypatch):
     await database.init_db()
     from api import websocket_workflow as wf
     wf._approval_waiters.clear()
-    # 1 phút chờ thật là quá lâu cho test — rút nhịp đếm xuống còn 10ms.
+    monkeypatch.setattr(wf, "_APPROVAL_MINUTE_SECONDS", 0.05)
     monkeypatch.setattr(wf, "_APPROVAL_POLL_SECONDS", 0.01)
 
     project_id = await database.create_project("Du an B")
@@ -108,6 +108,7 @@ async def test_het_han_co_the_tu_duyet_di_tiep(tmp_path, monkeypatch):
     await database.init_db()
     from api import websocket_workflow as wf
     wf._approval_waiters.clear()
+    monkeypatch.setattr(wf, "_APPROVAL_MINUTE_SECONDS", 0.05)
     monkeypatch.setattr(wf, "_APPROVAL_POLL_SECONDS", 0.01)
 
     project_id = await database.create_project("Du an C")
@@ -120,6 +121,7 @@ async def test_het_han_co_the_tu_duyet_di_tiep(tmp_path, monkeypatch):
         timeout=15,
     )
     assert (await database.get_workflow_run(run_id))["status"] == "completed"
+    assert not wf._approval_waiters, "waiter phải được dọn khi hết hạn"
 
 
 async def test_don_run_treo_khi_khoi_dong_lai(tmp_path, monkeypatch):
