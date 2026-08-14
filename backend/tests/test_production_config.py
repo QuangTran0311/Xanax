@@ -3,7 +3,11 @@ from hub.config import Settings, settings
 from hub.database import _database_path_from_url
 
 
-def test_cookie_secure_defaults_to_production_but_can_be_overridden():
+def test_cookie_secure_defaults_to_production_but_can_be_overridden(monkeypatch):
+    # conftest ghim cookie không Secure cho các HTTP client tích hợp. Test đơn vị
+    # này cần quan sát đúng giá trị mặc định của Settings, độc lập với ghim đó.
+    monkeypatch.delenv("HUB_COOKIE_SECURE", raising=False)
+
     assert Settings(_env_file=None, debug=False).secure_cookie_enabled is True
     assert Settings(_env_file=None, debug=True).secure_cookie_enabled is False
     assert Settings(

@@ -1,7 +1,19 @@
-"""Fixture chung: mọi test dùng database tạm, không chạm vào dữ liệu vận hành."""
+"""Fixture chung: cô lập cấu hình và dữ liệu vận hành khỏi toàn bộ bộ test."""
+import os
 import shutil
 
 import pytest
+
+# Phải đặt trước mọi import api/core/hub bên dưới: hub.config tạo singleton
+# ``settings`` ngay khi module được import, nên fixture hoặc hook chạy sau collection
+# đều quá muộn đối với các module dùng ``from hub.config import settings``.
+os.environ["HUB_DEBUG"] = "true"
+os.environ["HUB_COOKIE_SECURE"] = "false"
+
+from hub import config as hub_config
+
+hub_config.get_settings.cache_clear()
+hub_config.settings = hub_config.get_settings()
 
 from api.routes.auth import login_rate_limiter
 from core import project_storage
