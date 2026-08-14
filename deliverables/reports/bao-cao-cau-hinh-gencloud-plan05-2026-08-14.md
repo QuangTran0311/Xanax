@@ -3,7 +3,7 @@
 **Ngày đánh giá:** 14/08/2026  
 **Nhà cung cấp:** GenCloud  
 **Gói:** Plan 05 – Platinum  
-**Hệ điều hành đã chọn:** Ubuntu 20.04 LTS 64-bit (amd64)  
+**Hệ điều hành đã chọn:** Ubuntu 24.04 LTS x86_64 (amd64)  
 **Mục tiêu:** triển khai Xanax cho cá nhân hoặc nhóm nhỏ
 
 ## 1. Kết luận
@@ -12,7 +12,7 @@ Gói Plan 05 Platinum **đủ và phù hợp để chạy Xanax**. Ứng dụng 
 
 Với giá hiển thị **210.000 đồng/tháng + 10% VAT = 231.000 đồng/tháng**, cấu hình này có tỷ lệ tài nguyên/chi phí tốt trên thông số công bố. Nên thuê một tháng đầu để kiểm tra chất lượng CPU thực tế, tuyến quốc tế và quy trình backup trước khi trả dài hạn.
 
-**Lưu ý quan trọng về hệ điều hành:** Ubuntu 20.04 đã kết thúc giai đoạn bảo trì bảo mật tiêu chuẩn từ tháng 05/2025. Trong năm 2026, máy chủ chỉ nên public Internet nếu đã kích hoạt Ubuntu Pro/ESM hoặc có kế hoạch nâng cấp hệ điều hành. Canonical khuyến nghị dùng phiên bản mới hơn cho máy chủ mới; nếu GenCloud cho đổi template trước khi tạo VPS, Ubuntu 24.04 LTS là lựa chọn tốt hơn về vòng đời hỗ trợ.
+Ubuntu 24.04 LTS là lựa chọn phù hợp cho máy chủ mới: Canonical duy trì bảo mật tiêu chuẩn đến tháng 05/2029 và Python mặc định 3.12 đáp ứng yêu cầu `Python >=3.11` của Xanax. Không cần Ubuntu Pro/ESM trong giai đoạn triển khai ban đầu.
 
 ## 2. Thông số được công bố
 
@@ -85,31 +85,30 @@ Cần hỏi rõ:
 ### 4.4. IPv4 và hệ điều hành
 
 - Trang thông số cho biết có 1 IPv4; vẫn nên xác nhận đó là IPv4 public routable, không phải địa chỉ sau NAT.
-- Xác nhận image đúng là **Ubuntu 20.04 LTS 64-bit/amd64**, có quyền `root` hoặc user được phép `sudo`.
+- Xác nhận image đúng là **Ubuntu 24.04 LTS x86_64/amd64**, có quyền `root` hoặc user được phép `sudo`.
 - Xác nhận có web console/rescue console và chức năng reinstall OS trong bảng điều khiển.
-- Hỏi GenCloud có hỗ trợ đổi sang Ubuntu 24.04 LTS trước khi khởi tạo hay không.
+- Xác nhận kernel, repository và bản cập nhật bảo mật của image hoạt động bình thường ngay sau khi khởi tạo.
 
 ## 5. Lựa chọn hệ điều hành
 
-### Hệ điều hành đã chọn: Ubuntu 20.04 LTS 64-bit
+### Hệ điều hành đã chọn: Ubuntu 24.04 LTS x86_64
 
 Ubuntu phù hợp với cách vận hành server lâu dài: nhẹ hơn Windows, dùng systemd để tự khởi động dịch vụ, dễ cấu hình SSH, firewall, log rotation và reverse proxy. Với 6 GB RAM, hệ điều hành và Xanax có đủ dư địa để chạy 1–2 agent đồng thời.
 
-Tuy nhiên Ubuntu 20.04 có hai vấn đề cần xử lý trước khi triển khai:
+Chọn 24.04 giải quyết luôn hai vướng mắc của các bản LTS cũ hơn:
 
-1. **Vòng đời bảo mật:** hỗ trợ tiêu chuẩn đã kết thúc tháng 05/2025. Nếu tiếp tục dùng 20.04, phải kích hoạt Ubuntu Pro/ESM; Canonical công bố ESM cho 20.04 đến năm 2030. Ubuntu Pro hiện được Canonical cung cấp miễn phí cho mục đích cá nhân và quy mô thương mại nhỏ trên tối đa 5 máy, nhưng điều kiện tài khoản vẫn cần được kiểm tra tại thời điểm kích hoạt.
-2. **Python mặc định:** Ubuntu 20.04 đi kèm Python cũ hơn yêu cầu `Python >=3.11` của Xanax. Cần cài Python 3.11 riêng, không thay thế hoặc xóa Python hệ thống.
+1. **Vòng đời bảo mật:** bảo trì tiêu chuẩn đến tháng 05/2029, không cần Ubuntu Pro/ESM cho giai đoạn đầu.
+2. **Python mặc định:** 24.04 đi kèm Python 3.12, thỏa yêu cầu `Python >=3.11` của Xanax nên không phải cài Python riêng. Vẫn nên dùng virtualenv riêng cho ứng dụng thay vì cài gói vào Python hệ thống.
 
 Nguồn vòng đời chính thức:
 
 - [Ubuntu release cycle](https://ubuntu.com/about/release-cycle)
-- [Ubuntu 20.04 LTS – out of standard support](https://ubuntu.com/20-04)
-- [Ubuntu Expanded Security Maintenance](https://ubuntu.com/security/esm)
+- [Ubuntu 24.04 LTS](https://ubuntu.com/24-04)
 
 ### Khuyến nghị quyết định
 
-- Nếu VPS **chưa được khởi tạo** và GenCloud có Ubuntu 24.04 LTS: nên đổi sang 24.04 để nhận bảo trì tiêu chuẩn đến tháng 05/2029 và có sẵn Python mới hơn.
-- Nếu buộc dùng Ubuntu 20.04: vẫn chạy được Xanax, nhưng Ubuntu Pro/ESM và Python 3.11 riêng trở thành điều kiện bắt buộc trong checklist triển khai.
+- Giữ Ubuntu 24.04 LTS cho máy chủ mới; không có lý do dùng bản LTS cũ hơn.
+- Dùng virtualenv riêng cho Xanax, không cài dependency thẳng vào Python hệ thống.
 - Không cài desktop GUI hoặc control panel nếu không cần; quản trị bằng SSH để tiết kiệm RAM và giảm bề mặt tấn công.
 
 ### Hạng mục tương thích Linux của Xanax
@@ -193,8 +192,8 @@ Không chỉ copy database đang ghi một cách tùy ý. Nên dùng cơ chế S
 ## 9. Kế hoạch nghiệm thu tháng đầu
 
 - [ ] Xác nhận IPv4 public và truy cập SSH bằng key/web console.
-- [ ] Kích hoạt Ubuntu Pro/ESM hoặc đổi sang Ubuntu LTS còn hỗ trợ tiêu chuẩn.
-- [ ] Cài Python 3.11 riêng mà không thay Python hệ thống.
+- [ ] Cập nhật hệ thống lần đầu (`apt update && apt upgrade`) và bật unattended-upgrades cho bản vá bảo mật.
+- [ ] Tạo virtualenv riêng cho Xanax trên Python 3.12 có sẵn, không cài gói vào Python hệ thống.
 - [ ] Sửa và kiểm tra các đường dẫn Windows còn lại trong project.
 - [ ] Đo tốc độ/độ trễ tới các API model thực tế.
 - [ ] Build frontend và chạy backend thành công trên server sạch.
@@ -216,9 +215,9 @@ Không chỉ copy database đang ghi một cách tùy ý. Nên dùng cơ chế S
 | Có IPv4 | Đạt theo công bố |
 | Không cần GPU | Đúng |
 | Chi phí mục tiêu khoảng 200.000 đồng | Đạt, 231.000 đồng gồm VAT |
-| Ubuntu 20.04 chạy được Xanax | Có điều kiện: Python 3.11 + ESM + sửa tương thích Linux |
-| Vòng đời OS phù hợp cho máy mới | Chưa tối ưu; ưu tiên Ubuntu 24.04 nếu đổi được |
+| Ubuntu 24.04 chạy được Xanax | Đạt: Python 3.12 sẵn có, chỉ cần sửa tương thích Linux |
+| Vòng đời OS phù hợp cho máy mới | Đạt: bảo trì tiêu chuẩn đến 05/2029 |
 | Backup rõ ràng | Chưa; cần xác nhận mâu thuẫn |
 | Phù hợp mua dài hạn ngay | Chưa nên; thử một tháng trước |
 
-**Khuyến nghị cuối:** cấu hình Plan 05 Platinum vẫn phù hợp và không cần mua thêm CPU, RAM, IPv4 hoặc SSD. Nếu chưa tạo VPS, nên đổi template sang Ubuntu 24.04 LTS. Nếu giữ Ubuntu 20.04 64-bit, chỉ public Xanax sau khi đã kích hoạt ESM, cài Python 3.11 riêng, sửa các điểm phụ thuộc Windows và hoàn tất kiểm thử trên Linux. Chỉ nên gia hạn dài hạn sau khi đã kiểm tra tuyến quốc tế, hiệu năng vCPU giờ cao điểm và restore backup thành công.
+**Khuyến nghị cuối:** cấu hình Plan 05 Platinum vẫn phù hợp và không cần mua thêm CPU, RAM, IPv4 hoặc SSD. Ubuntu 24.04 LTS x86_64 là template đúng cho máy chủ này. Chỉ public Xanax sau khi đã sửa các điểm phụ thuộc Windows và hoàn tất kiểm thử trên Linux. Chỉ nên gia hạn dài hạn sau khi đã kiểm tra tuyến quốc tế, hiệu năng vCPU giờ cao điểm và restore backup thành công.
