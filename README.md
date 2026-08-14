@@ -139,7 +139,7 @@ Sửa xong: `npm run build` rồi quay lại cách chạy ở mục 3.
 
 ```powershell
 python main.py                            # chạy server
-python -m pytest tests/ -q                # 311 test
+python -m pytest tests/ -q                # 317 test
 python scripts\smoke_hub.py               # Playwright: đi hết 12 tab trên trình duyệt thật
 python tools\migrate_mcp_server_paths.py  # xem trước; thêm --apply để ghi
 ```
@@ -181,9 +181,9 @@ Trình duyệt
 ┌─────────────────────────────────────────────┐
 │  FastAPI  :8000                             │
 │                                             │
-│  /api/*   91 đường dẫn   ─┐                 │
-│           128 operation   ├─ AuthGuard gác  │
-│  /ws/*    6 kênh         ─┘                 │
+│  /api/*   97 đường dẫn   ─┐                 │
+│           135 operation   ├─ AuthGuard gác  │
+│  /ws/*    7 kênh         ─┘                 │
 │                          ─┘                 │
 │  /*       SPA fallback → frontend/dist      │
 └─────────────────────────────────────────────┘
@@ -218,7 +218,7 @@ SPA fallback trả `index.html` cho **mọi** đường dẫn không bắt đầ
 | Quy trình | `/hub/company-runner` | Thiết kế + chạy quy trình nhiều bước, duyệt từng output |
 | Tác vụ tự động | `/hub/auto-runner` | Quy trình chạy theo lịch cron / webhook |
 | Tài sản | `/hub/assets` | File upload + kết quả quy trình đã lưu trữ, tải về |
-| Bộ não AI | `/hub/model` | Model Pool: khai báo model, giới hạn dùng/ngày, test kết nối |
+| Bộ não AI | `/hub/model` | 3 mục: Model Pool · Đánh giá model · Thí nghiệm tự cải thiện |
 | Chi phí | `/hub/cost` | Thống kê token/chi phí, xuất báo cáo `.xlsx` |
 | Cài đặt | `/hub/settings` | Giao diện, ngôn ngữ, thông tin phiên |
 
@@ -340,7 +340,7 @@ xanax/
 │   ├── main.py                      # uvicorn runner + banner + tự mở trình duyệt
 │   ├── requirements.txt
 │   ├── .env                         # cấu hình thật (không commit)
-│   ├── xanax.db                     # SQLite, tự tạo — 27 bảng
+│   ├── xanax.db                     # SQLite, tự tạo — 30 bảng
 │   │
 │   ├── hub/
 │   │   ├── server.py                # create_app(): route, middleware, lifespan,
@@ -357,17 +357,20 @@ xanax/
 │   │   ├── websocket_meeting.py     # /ws/meeting — phòng họp nhiều agent
 │   │   ├── websocket_benchmark.py   # /ws/benchmark
 │   │   ├── websocket_task.py
+│   │   ├── websocket_experiment.py  # /ws/experiments/{id} — chạy thí nghiệm ablation
 │   │   ├── agents/
 │   │   │   ├── subprocess_util.py   # subprocess an toàn trên Windows (BẮT BUỘC)
 │   │   │   ├── claude_runner.py     # wrapper Claude CLI (stream-json)
 │   │   │   └── codex_runner.py      # wrapper Codex CLI (prompt qua stdin)
-│   │   └── routes/                  # 19 module, 91 đường dẫn /api
+│   │   └── routes/                  # 20 module, 97 đường dẫn · 135 operation
 │   │
 │   ├── core/
 │   │   ├── mcp_client.py            # MCP client: stdio/http/sse, chọn tool, ảnh
 │   │   ├── skill_tools.py           # skill type "api" → tool động
 │   │   ├── secret_crypto.py         # AES-256-GCM cho api_key/token
 │   │   ├── model_pool_bridge.py     # gọi model qua pool, LimitExceededError
+│   │   ├── agent_prompt.py          # ghép prompt tri thức dùng chung cho agent
+│   │   ├── experiment_runner.py     # chạy ablation ba tầng + chấm mù
 │   │   ├── cli_provider.py          # gọi model qua CLI gói thuê bao,
 │   │   │                            # build_clean_env() chặn rò rỉ sang gateway
 │   │   ├── hermes_bridge.py         # LLM client + phiên chat in-memory
@@ -393,7 +396,7 @@ xanax/
 │   ├── skills/                      # skill dạng prompt (markdown)
 │   ├── tools/                       # builtin tool + script bảo trì
 │   ├── scripts/smoke_hub.py         # Playwright: 12 tab + state + ảnh run cũ
-│   ├── tests/                       # 311 test
+│   ├── tests/                       # 317 test
 │   └── data/                        # runtime — KHÔNG commit
 │       ├── .secret_key              # ⚠ mất là mất hết token skill
 │       ├── projects/                # archive từng lần chạy
@@ -411,9 +414,10 @@ xanax/
 │   │   ├── main.tsx                 # entry + import font @fontsource
 │   │   ├── routes.tsx               # React Router
 │   │   ├── api/                     # client.ts (một nơi duy nhất gọi API) + types
-│   │   ├── ws/useWebSocket.ts       # hook chung cho cả 6 kênh
+│   │   ├── ws/useWebSocket.ts       # hook chung cho cả 7 kênh
 │   │   ├── store/                   # theme, ngôn ngữ, phiên
-│   │   ├── components/              # Icon, Modal, Markdown, ChatAttach…
+│   │   ├── components/              # Icon, Modal, Markdown, ChatAttach, Tooltip, Toast…
+│   │   ├── i18n/                    # tooltips.ts, taskrunner.ts, workspace.ts
 │   │   └── pages/
 │   │       ├── login/  hub/  workspace/  taskrunner/
 │   └── dist/                        # bản build có hash — KHÔNG commit
@@ -425,7 +429,7 @@ xanax/
 
 ---
 
-## Database — 27 bảng
+## Database — 30 bảng
 
 **File:** `backend/hub/database.py` (schema + migration tự chạy lúc startup)
 
@@ -437,6 +441,7 @@ QUY TRÌNH   workflow_tasks · workflow_runs · workflow_outputs
 HỌP         meetings · meeting_messages
 HUẤN LUYỆN  training_sessions · training_messages · xanax_notes
 ĐÁNH GIÁ    benchmarks · benchmark_results
+THÍ NGHIỆM  experiments · experiment_trials · experiment_judgements
 MODEL       model_pool · model_usage · model_usage_hourly · model_call_log
 TƯ LIỆU     knowledge_documents
 TÀI SẢN     assets
@@ -552,7 +557,7 @@ CLI trả về số token thật trong sự kiện kết thúc, nên trang Chi p
 
 ```powershell
 cd D:\xanax\backend
-python -m pytest tests/ -q            # 311 passed
+python -m pytest tests/ -q            # 317 passed
 python scripts\smoke_hub.py           # Playwright trên trình duyệt thật
 ```
 
@@ -579,7 +584,7 @@ npm run verify:hub-integration
 - [x] Nén gzip cho mọi response
 - [x] Frontend tách chunk theo route; bundle vào đầu 232 kB → **74,6 kB gzip**
 - [x] Bản build **không gọi ra Internet lần nào** — font tự chứa, không CDN
-- [x] 311 test tự động + 4 script verify đối chiếu hợp đồng FE/BE
+- [x] 317 test tự động + 4 script verify đối chiếu hợp đồng FE/BE
 
 Còn phải làm:
 - [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder)
@@ -633,7 +638,7 @@ Còn phải làm:
 10. Mọi lời gọi API đi qua `src/api/client.ts`. Đừng `fetch` trần — nơi đó xử lý 401, 204 và bóc `.detail`.
 11. Mọi WebSocket đi qua `src/ws/useWebSocket.ts`. Mã đóng `1008` là hết phiên: về login, **không** thử lại.
 12. Đổi `graph_json` hay giao thức WS → chạy `npm run verify:*` trước khi commit.
-13. Chuỗi hiển thị phải có cả `vi` và `en` (từ điển `pages/hub/i18n.ts` hoặc `vi ? … : …`).
+13. Chuỗi hiển thị phải có cả `vi` và `en` (từ điển `pages/hub/i18n.ts`, `src/i18n/<trang>.ts` hoặc `vi ? … : …`).
 14. Route nặng thì `React.lazy()`. React Flow và Chart.js chỉ một tab dùng tới.
 15. Xuống dòng bình thường. Nhồi cả component vào một dòng là diff vô dụng và trace lỗi vô nghĩa.
 
@@ -669,6 +674,7 @@ sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
 | `2.0.0` | Tách backend/frontend, viết lại giao diện bằng React + TypeScript (7 giai đoạn). API, WebSocket và schema DB giữ nguyên |
 | `2.1.0` | Hệ màu dùng chung cho cả 4 trang · cỡ chữ chỉnh bằng một biến · khôi phục bộ chọn hình đại diện (30 hình, 20 màu) · font tự chứa · sửa tương phản đạt WCAG AA · nạp `XANAX_SECRET_KEY` từ `.env` · WebSocket trả đúng mã đóng `1008` |
 | `2.2.0` | Soul theo dự án và theo kỹ năng · ghép ảnh sản phẩm lên nền sinh sẵn (`image_compose.py`) · chế độ ảnh và cổng chọn nguồn ảnh trong quy trình · chọn từng tool của skill MCP cho nhân viên · buổi dạy gắn dự án và cấp tool thật · 4 cột DB mới (đều có giá trị mặc định) |
+| `2.3.0` | Thí nghiệm tự cải thiện: ablation ba tầng tri thức trên cùng model, có giám khảo chấm mù · 3 bảng DB mới · tooltip và toast dùng chung · i18n tách theo trang · bộ chọn lịch chạy cho quy trình · gộp tab Bộ não AI thành 3 mục: Model Pool, Đánh giá model, Thí nghiệm tự cải thiện |
 
 ---
 
