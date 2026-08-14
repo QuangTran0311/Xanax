@@ -423,7 +423,6 @@ xanax/
 │   └── dist/                        # bản build có hash — KHÔNG commit
 │
 ├── docs/
-├── deliverables/
 └── README.md
 ```
 
