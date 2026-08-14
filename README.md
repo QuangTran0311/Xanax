@@ -139,7 +139,7 @@ Sửa xong: `npm run build` rồi quay lại cách chạy ở mục 3.
 
 ```powershell
 python main.py                            # chạy server
-python -m pytest tests/ -q                # 317 test
+python -m pytest tests/ -q                # 334 test
 python scripts\smoke_hub.py               # Playwright: đi hết 12 tab trên trình duyệt thật
 python tools\migrate_mcp_server_paths.py  # xem trước; thêm --apply để ghi
 ```
@@ -396,7 +396,7 @@ xanax/
 │   ├── skills/                      # skill dạng prompt (markdown)
 │   ├── tools/                       # builtin tool + script bảo trì
 │   ├── scripts/smoke_hub.py         # Playwright: 12 tab + state + ảnh run cũ
-│   ├── tests/                       # 317 test
+│   ├── tests/                       # 334 test
 │   └── data/                        # runtime — KHÔNG commit
 │       ├── .secret_key              # ⚠ mất là mất hết token skill
 │       ├── projects/                # archive từng lần chạy
@@ -557,7 +557,7 @@ CLI trả về số token thật trong sự kiện kết thúc, nên trang Chi p
 
 ```powershell
 cd D:\xanax\backend
-python -m pytest tests/ -q            # 317 passed
+python -m pytest tests/ -q            # 334 passed
 python scripts\smoke_hub.py           # Playwright trên trình duyệt thật
 ```
 
@@ -576,6 +576,15 @@ npm run verify:hub-integration
 
 ---
 
+## Triển khai production
+
+Runbook Ubuntu 24.04 đầy đủ nằm ở **[deploy/README.md](deploy/README.md)**.
+Kiến trúc chốt: Internet/DNS → Caddy `:443` (TLS + WebSocket) → một process
+FastAPI trên `127.0.0.1:8000` → SQLite và `backend/data`. App chạy bằng user
+`xanax` riêng, do systemd quản lý; cổng 8000 không public.
+
+---
+
 ## Checklist trước khi deploy
 
 Đã xong:
@@ -584,12 +593,12 @@ npm run verify:hub-integration
 - [x] Nén gzip cho mọi response
 - [x] Frontend tách chunk theo route; bundle vào đầu 232 kB → **74,6 kB gzip**
 - [x] Bản build **không gọi ra Internet lần nào** — font tự chứa, không CDN
-- [x] 317 test tự động + 4 script verify đối chiếu hợp đồng FE/BE
+- [x] 334 test tự động + 4 script verify đối chiếu hợp đồng FE/BE
+- [x] Hạ tầng Ubuntu: systemd + Caddy/TLS + backup/restore — xem `deploy/`
 
 Còn phải làm:
 - [ ] Đặt `HUB_SECRET_KEY` và `HUB_API_KEY` thật (đang là placeholder)
 - [ ] `HUB_DEBUG=false` (đang `true` → uvicorn bật reload, và `cors_origins` thành `["*"]`)
-- [ ] Dockerfile + reverse proxy + TLS
 - [ ] Chuyển sang Postgres nếu cần nhiều người dùng đồng thời
 
 ---
@@ -675,6 +684,7 @@ sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
 | `2.1.0` | Hệ màu dùng chung cho cả 4 trang · cỡ chữ chỉnh bằng một biến · khôi phục bộ chọn hình đại diện (30 hình, 20 màu) · font tự chứa · sửa tương phản đạt WCAG AA · nạp `XANAX_SECRET_KEY` từ `.env` · WebSocket trả đúng mã đóng `1008` |
 | `2.2.0` | Soul theo dự án và theo kỹ năng · ghép ảnh sản phẩm lên nền sinh sẵn (`image_compose.py`) · chế độ ảnh và cổng chọn nguồn ảnh trong quy trình · chọn từng tool của skill MCP cho nhân viên · buổi dạy gắn dự án và cấp tool thật · 4 cột DB mới (đều có giá trị mặc định) |
 | `2.3.0` | Thí nghiệm tự cải thiện: ablation ba tầng tri thức trên cùng model, có giám khảo chấm mù · 3 bảng DB mới · tooltip và toast dùng chung · i18n tách theo trang · bộ chọn lịch chạy cho quy trình · gộp tab Bộ não AI thành 3 mục: Model Pool, Đánh giá model, Thí nghiệm tự cải thiện |
+| `2.4.0` | Sẵn sàng triển khai: chặn khởi động production khi secret còn mặc định · cookie phiên bật `Secure`, tắt API docs khi `HUB_DEBUG=false` · rate limit đăng nhập theo IP + tài khoản, chỉ tin `X-Forwarded-For` khi khai báo có proxy · readiness probe kiểm tra thật database/scheduler/hàng đợi · đồng bộ dependency `pyproject.toml` với `requirements.txt` · thư mục cấu hình Hermes phân giải được trên Linux · bộ cài `deploy/` cho Ubuntu 24.04 (systemd, Caddy, backup/restore, runbook) · test chạy trên DB tạm thay vì database thật |
 
 ---
 

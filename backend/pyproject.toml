@@ -7,7 +7,7 @@ name = "xanax"
 # Phải khớp Settings.version trong hub/config.py. App chạy từ mã nguồn chứ không
 # cài bằng pip, nên số ở đây chỉ là metadata đóng gói — config.py mới là số mà
 # banner, /api/health và /api/docs đọc ra. Đổi một chỗ thì đổi cả hai.
-version = "2.3.0"
+version = "2.4.0"
 description = "Xanax Hub Server – Multi-Agent Orchestration Platform powered by Hermes Agent"
 authors = [{ name = "Xanax Team" }]
 readme = "../README.md"
@@ -28,7 +28,11 @@ dependencies = [
     "websockets>=12.0",
     "python-multipart>=0.0.9",
     "aiofiles>=23.2.1",
+    "Pillow>=10.0.0",
     "openpyxl>=3.1.2",
+    "mcp>=1.9,<2",
+    # AES-256-GCM cho api_key/token của skill; thiếu gói này server không import được.
+    "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]
