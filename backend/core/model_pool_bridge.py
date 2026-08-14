@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
+from typing import Literal
 
 import httpx
 
@@ -98,20 +99,29 @@ async def stream_from_pool(
     tools: list[dict] | None = None,
     skill_ids: list[int] | None = None,
     tool_filter: dict[int, list[str]] | None = None,
+    *,
+    usage_policy: Literal["production", "experiment"] = "production",
+    usage_out: dict | None = None,
 ) -> AsyncIterator[str]:
     """
     Stream a completion from the model pool entry identified by model_pool_id.
 
     Yields text chunks. Raises LimitExceededError if daily limits are exceeded.
-    Tracks usage (request count + tokens) automatically.
+    Mặc định kiểm hạn mức và ghi usage như trước. ``usage_policy="experiment"``
+    chỉ bỏ hai side effect đó; mọi nhánh provider/CLI và cách stream vẫn dùng
+    nguyên cơ chế này. ``usage_out`` nhận bản sao số token cuối cùng để runner
+    thí nghiệm lưu vào bảng riêng.
     """
+    if usage_policy not in ("production", "experiment"):
+        raise ValueError(f"usage_policy không hợp lệ: {usage_policy}")
     entry = await get_model_pool_entry(model_pool_id)
     if not entry:
         raise ValueError(f"Model pool entry {model_pool_id} not found")
     if not entry.get("enabled"):
         raise ValueError(f"Model '{entry['name']}' is disabled")
 
-    await _check_daily_limits(entry)
+    if usage_policy == "production":
+        await _check_daily_limits(entry)
 
     api_style = entry.get("api_style") or "openai_compat"
     base_url = entry["base_url"].rstrip("/")
@@ -161,12 +171,16 @@ async def stream_from_pool(
         logger.exception("Model pool stream failed for model %s", model_id)
         raise
     finally:
-        try:
-            await record_model_usage(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
-            await record_model_usage_hourly(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
-            await record_model_call_log(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
-        except Exception:
-            logger.exception("Failed to record model usage")
+        if usage_out is not None:
+            usage_out.clear()
+            usage_out.update(usage_state)
+        if usage_policy == "production":
+            try:
+                await record_model_usage(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
+                await record_model_usage_hourly(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
+                await record_model_call_log(model_pool_id, usage_state["tokens_in"], usage_state["tokens_out"], usage_state["tokens_cache"])
+            except Exception:
+                logger.exception("Failed to record model usage")
 
 
 _IMAGE_MODEL_KEYWORDS = ("dall-e", "dall_e", "image-gen", "imagen", "flux", "ideogram", "midjourney", "sdxl", "stable-diffusion")

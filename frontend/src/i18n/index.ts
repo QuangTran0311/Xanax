@@ -1,3 +1,4 @@
+// Từ điển cũ này hiện chưa được nơi nào import; giữ lại để quyết định ở đợt i18n tiếp theo.
 import { useCallback } from "react";
 
 import { useLanguage, type Language } from "../store/language";

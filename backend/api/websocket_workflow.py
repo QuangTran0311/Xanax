@@ -1021,7 +1021,6 @@ async def _run_agent_step(
 
     agent_config = await get_agent_config(agent_id) if agent_id else None
     agent_name: str = agent_config["name"] if agent_config else node_data.get("agent_name", agent_label)
-    base_prompt: str = agent_config.get("system_prompt", "") if agent_config else ""
 
     # Model lấy từ cấu hình nhân viên (tab Nhân sự) theo thứ tự ưu tiên — quy
     # trình không được chọn lại model để tránh rối luồng hoạt động. Nếu model
@@ -1033,47 +1032,22 @@ async def _run_agent_step(
         except Exception:
             model_pool_ids = []
 
-    skills_content = ""
-    skill_ids: list[int] = []
-    skill_names: set[str] = set()
-    if agent_config:
-        skill_ids = json.loads(agent_config.get("skills_json") or "[]")
-        data_skill_ids = node_data.get("skill_ids")
-        if isinstance(data_skill_ids, list) and data_skill_ids:
-            selected_skill_ids = {
-                int(skill_id) for skill_id in data_skill_ids
-                if str(skill_id).isdigit()
-            }
-            skill_ids = [skill_id for skill_id in skill_ids if skill_id in selected_skill_ids]
-        from core.skill_soul import skill_soul_for_prompt
-        for sid in skill_ids:
-            skill = await get_skill(sid)
-            if skill:
-                skill_names.add(skill["name"])
-                content = json.loads(skill.get("config_json") or "{}").get("content", "")
-                # Phụ lục kỹ năng (Papa dạy trong phòng dạy) ghép ngay sau nội
-                # dung kỹ năng để model đọc liền mạch — xem core/skill_soul.py.
-                appendix = skill_soul_for_prompt(sid, skill["name"])
-                if content or appendix:
-                    skills_content += "\n\n---\n" + "\n\n".join(filter(None, [content, appendix]))
+    # Nạp đúng một lần qua module dùng chung. Chế độ mặc định vẫn đồng bộ soul
+    # nhân viên và mô tả dự án như đường chạy cũ; runner thí nghiệm gọi cùng
+    # module với sync_souls=False để tuyệt đối chỉ đọc.
+    from core.agent_prompt import load_agent_prompt_context
 
-    # soul.md riêng của nhân viên (xem core/agent_soul.py) — mô tả/tính cách + dữ liệu
-    # thực tế + bài học ĐẠT/KHÔNG ĐẠT từ các lần chạy quy trình trước, để nhân viên tự
-    # cải thiện qua từng lần làm việc thay vì lặp lại lỗi cũ.
-    soul_content = ""
-    if agent_config:
-        from core.agent_soul import soul_for_prompt, sync_agent_soul
-        await sync_agent_soul(agent_config)
-        # soul_for_prompt (không phải read_soul): gắn thêm dòng nêu bài học Papa
-        # dạy đè lên khuôn mẫu trong mô tả kỹ năng. Không có dòng đó thì công
-        # thức từng bước của kỹ năng luôn thắng nguyên tắc trong bài học.
-        soul_content = soul_for_prompt(agent_config["id"])
-
-    # Soul dự án — giọng thương hiệu của dự án đang chạy. Đặt CUỐI vì nó có quyền
-    # cao nhất khi tạo ra sản phẩm: cùng nhân viên, cùng kỹ năng, chạy dự án nào
-    # thì ra giọng dự án đó (xem core/project_soul.py).
-    from core.project_soul import project_prompt
-    project_content = await project_prompt(project_id)
+    data_skill_ids = node_data.get("skill_ids")
+    selected_skill_ids = data_skill_ids if isinstance(data_skill_ids, list) else None
+    prompt_context = await load_agent_prompt_context(
+        agent_config,
+        project_id,
+        selected_skill_ids=selected_skill_ids,
+        sync_souls=True,
+        project_mode="product",
+    )
+    skill_ids = prompt_context.skill_ids
+    skill_names = prompt_context.skill_names
 
     # Chốt sẵn chế độ A hay B cho nhân viên tạo ảnh, đúng như phòng dạy học làm
     # (xem api/websocket_training.py). Thiếu dòng này thì nhân viên phải tự suy
@@ -1087,10 +1061,16 @@ async def _run_agent_step(
         from core.image_gen import photo_mode_note
         photo_note = photo_mode_note([product_image] if product_image else [], da_cat=True)
 
-    system_prompt: str = "\n\n".join(filter(
-        None, [base_prompt, skills_content.strip(), soul_content, project_content,
-               photo_note, _WORKFLOW_OUTPUT_RULE,
-               _MULTI_SKILL_RULE if len(skill_ids) > 1 else ""]))
+    from core.agent_prompt import compose_agent_system_prompt
+
+    system_prompt = compose_agent_system_prompt(
+        prompt_context,
+        trailing_parts=[
+            photo_note,
+            _WORKFLOW_OUTPUT_RULE,
+            _MULTI_SKILL_RULE if len(skill_ids) > 1 else "",
+        ],
+    )
 
     output_id = await create_workflow_output(
         run_id=run_id, task_id=task["id"], agent_id=agent_id,

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { AVATAR_COLOR_KEYS, avatarColor } from "./avatarColors";
 import { AVATAR_SHAPE_KEYS, AVATAR_SHAPE_LABEL, shapePath } from "./avatarShapes";
@@ -55,6 +57,7 @@ const blankAgent = (): AgentDraft => ({
 export function AgentsPage() {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const { agents, skills, modelPool, refreshAgents, toast, confirm } = useHub();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [servers, setServers] = useState<McpServer[]>([]);
@@ -135,14 +138,18 @@ export function AgentsPage() {
           </p>
         </div>
         <div className={c("headerActions")}>
-          <button className={c("buttonGhost")} onClick={() => setDepartmentsOpen(true)}>
-            <Icon name="people" />
-            {vi ? "Phòng ban" : "Departments"}
-          </button>
-          <button data-testid="new-agent" className={c("primaryButton")} onClick={() => openAgent()}>
-            <Icon name="bot" />
-            {vi ? "Thêm nhân viên" : "Add employee"}
-          </button>
+          <Tooltip label={tooltip("tooltip.agents.departments_open")}>
+            <button className={c("buttonGhost")} onClick={() => setDepartmentsOpen(true)}>
+              <Icon name="people" />
+              {vi ? "Phòng ban" : "Departments"}
+            </button>
+          </Tooltip>
+          <Tooltip label={tooltip("tooltip.agents.create_open")}>
+            <button data-testid="new-agent" className={c("primaryButton")} onClick={() => openAgent()}>
+              <Icon name="bot" />
+              {vi ? "Thêm nhân viên" : "Add employee"}
+            </button>
+          </Tooltip>
         </div>
       </header>
       <div className={c("toolbar")}>
@@ -167,7 +174,8 @@ export function AgentsPage() {
       </div>
       <section className={c("cardGrid")}>
         {visible.map((agent) => (
-          <button className={c("entityCard")} key={agent.id} onClick={() => openAgent(agent)}>
+          <Tooltip key={agent.id} label={tooltip("tooltip.agents.open", agent.name || "")}>
+          <button className={c("entityCard")} onClick={() => openAgent(agent)}>
             <Avatar agent={agent} />
             <div>
               <h2>{agent.name}</h2>
@@ -182,6 +190,7 @@ export function AgentsPage() {
               {agent.enabled === 0 || agent.enabled === false ? "OFF" : "ON"}
             </span>
           </button>
+          </Tooltip>
         ))}
       </section>
       {!visible.length ? (
@@ -253,6 +262,7 @@ function AvatarPicker({
   onColor: (value: string) => void;
   vi: boolean;
 }) {
+  const tooltip = useTooltipText();
   const tone = avatarColor(color);
   return (
     <div className={c("avatarPicker")}>
@@ -270,27 +280,28 @@ function AvatarPicker({
         <span className={c("pickerLabel")}>{vi ? "Chọn hình" : "Shape"}</span>
         <div className={c("shapeGrid")}>
           {AVATAR_SHAPE_KEYS.map((key) => (
-            <button
-              type="button"
-              key={key}
-              title={AVATAR_SHAPE_LABEL[key] ?? key}
-              aria-pressed={key === shape}
-              className={key === shape ? c("shapeOptOn") : c("shapeOpt")}
-              onClick={() => onShape(key)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width={20}
-                height={20}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-                dangerouslySetInnerHTML={{ __html: shapePath(key) }}
-              />
-            </button>
+            <Tooltip key={key} label={tooltip("tooltip.agents.shape", AVATAR_SHAPE_LABEL[key] ?? key)}>
+              <button
+                type="button"
+                aria-label={tooltip("tooltip.agents.shape", AVATAR_SHAPE_LABEL[key] ?? key)}
+                aria-pressed={key === shape}
+                className={key === shape ? c("shapeOptOn") : c("shapeOpt")}
+                onClick={() => onShape(key)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width={20}
+                  height={20}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: shapePath(key) }}
+                />
+              </button>
+            </Tooltip>
           ))}
         </div>
       </div>
@@ -301,28 +312,29 @@ function AvatarPicker({
           {AVATAR_COLOR_KEYS.map((key) => {
             const item = avatarColor(key);
             return (
-              <button
-                type="button"
-                key={key}
-                title={item.label}
-                aria-pressed={key === color}
-                className={key === color ? c("colorOptOn") : c("colorOpt")}
-                style={{ background: item.bg, color: item.ink }}
-                onClick={() => onColor(key)}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width={16}
-                  height={16}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  dangerouslySetInnerHTML={{ __html: shapePath(shape) }}
-                />
-              </button>
+              <Tooltip key={key} label={tooltip("tooltip.agents.color", item.label)}>
+                <button
+                  type="button"
+                  aria-label={tooltip("tooltip.agents.color", item.label)}
+                  aria-pressed={key === color}
+                  className={key === color ? c("colorOptOn") : c("colorOpt")}
+                  style={{ background: item.bg, color: item.ink }}
+                  onClick={() => onColor(key)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width={16}
+                    height={16}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: shapePath(shape) }}
+                  />
+                </button>
+              </Tooltip>
             );
           })}
         </div>
@@ -384,6 +396,7 @@ function AgentWizard({
   onSave: () => void;
   onDelete: () => void;
 }) {
+  const tooltip = useTooltipText();
   const set = <K extends keyof AgentDraft>(key: K, value: AgentDraft[K]) =>
     setDraft({ ...draft, [key]: value });
   const next = () => {
@@ -406,16 +419,20 @@ function AgentWizard({
           vi ? "Kỹ năng" : "Skills",
           vi ? "Xem lại" : "Review",
         ].map((label, index) => (
-          <button
-            data-testid={`agent-step-${index + 1}`}
-            type="button"
+          <Tooltip
             key={label}
-            className={step === index + 1 ? c("wizardActive") : step > index + 1 ? c("wizardDone") : ""}
-            onClick={() => draft.id && setStep(index + 1)}
+            label={tooltip(draft.id ? "tooltip.agents.wizard_step" : "tooltip.agents.wizard_step_locked", label)}
           >
-            <span>{step > index + 1 ? "✓" : index + 1}</span>
-            {label}
-          </button>
+            <button
+              data-testid={`agent-step-${index + 1}`}
+              type="button"
+              className={step === index + 1 ? c("wizardActive") : step > index + 1 ? c("wizardDone") : ""}
+              onClick={() => draft.id && setStep(index + 1)}
+            >
+              <span>{step > index + 1 ? "✓" : index + 1}</span>
+              {label}
+            </button>
+          </Tooltip>
         ))}
       </div>
       {step === 1 ? (
@@ -491,34 +508,71 @@ function AgentWizard({
                     {index + 1}. {models.find((model) => model.id === id)?.name || `#${id}`}
                   </b>
                   <span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        index && set("model_pool_ids", move(draft.model_pool_ids, index, index - 1))
-                      }
+                    <Tooltip
+                      label={tooltip(
+                        index ? "tooltip.agents.model_up" : "tooltip.agents.model_up_locked",
+                        models.find((model) => model.id === id)?.name || `#${id}`,
+                      )}
                     >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        index < draft.model_pool_ids.length - 1 &&
-                        set("model_pool_ids", move(draft.model_pool_ids, index, index + 1))
-                      }
+                      <button
+                        type="button"
+                        aria-label={tooltip(
+                          index ? "tooltip.agents.model_up" : "tooltip.agents.model_up_locked",
+                          models.find((model) => model.id === id)?.name || `#${id}`,
+                        )}
+                        onClick={() =>
+                          index && set("model_pool_ids", move(draft.model_pool_ids, index, index - 1))
+                        }
+                      >
+                        ↑
+                      </button>
+                    </Tooltip>
+                    <Tooltip
+                      label={tooltip(
+                        index < draft.model_pool_ids.length - 1
+                          ? "tooltip.agents.model_down"
+                          : "tooltip.agents.model_down_locked",
+                        models.find((model) => model.id === id)?.name || `#${id}`,
+                      )}
                     >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        set(
-                          "model_pool_ids",
-                          draft.model_pool_ids.filter((item) => item !== id),
-                        )
-                      }
+                      <button
+                        type="button"
+                        aria-label={tooltip(
+                          index < draft.model_pool_ids.length - 1
+                            ? "tooltip.agents.model_down"
+                            : "tooltip.agents.model_down_locked",
+                          models.find((model) => model.id === id)?.name || `#${id}`,
+                        )}
+                        onClick={() =>
+                          index < draft.model_pool_ids.length - 1 &&
+                          set("model_pool_ids", move(draft.model_pool_ids, index, index + 1))
+                        }
+                      >
+                        ↓
+                      </button>
+                    </Tooltip>
+                    <Tooltip
+                      label={tooltip(
+                        "tooltip.agents.model_remove",
+                        models.find((model) => model.id === id)?.name || `#${id}`,
+                      )}
                     >
-                      ×
-                    </button>
+                      <button
+                        type="button"
+                        aria-label={tooltip(
+                          "tooltip.agents.model_remove",
+                          models.find((model) => model.id === id)?.name || `#${id}`,
+                        )}
+                        onClick={() =>
+                          set(
+                            "model_pool_ids",
+                            draft.model_pool_ids.filter((item) => item !== id),
+                          )
+                        }
+                      >
+                        ×
+                      </button>
+                    </Tooltip>
                   </span>
                 </div>
               ))}
@@ -627,21 +681,29 @@ function AgentWizard({
       ) : null}
       <footer className={c("formActions")}>
         {draft.id ? (
-          <button data-testid="delete-agent" type="button" className={c("dangerLink")} onClick={onDelete}>
-            {vi ? "Xoá nhân viên" : "Delete employee"}
-          </button>
+          <Tooltip label={tooltip("tooltip.agents.delete", draft.name)}>
+            <button data-testid="delete-agent" type="button" className={c("dangerLink")} onClick={onDelete}>
+              {vi ? "Xoá nhân viên" : "Delete employee"}
+            </button>
+          </Tooltip>
         ) : (
           <span />
         )}
         <div>
           {step > 1 ? (
-            <button type="button" className={c("buttonGhost")} onClick={() => setStep(step - 1)}>
-              {vi ? "Quay lại" : "Back"}
-            </button>
+            <Tooltip label={tooltip("tooltip.agents.back")}>
+              <button type="button" className={c("buttonGhost")} onClick={() => setStep(step - 1)}>
+                {vi ? "Quay lại" : "Back"}
+              </button>
+            </Tooltip>
           ) : null}
-          <button data-testid="agent-next-save" type="submit" className={c("primaryButton")}>
-            {step === 5 ? (vi ? "Lưu" : "Save") : vi ? "Tiếp tục" : "Continue"}
-          </button>
+          <Tooltip
+            label={tooltip(step === 5 ? "tooltip.agents.save" : "tooltip.agents.continue", draft.name)}
+          >
+            <button data-testid="agent-next-save" type="submit" className={c("primaryButton")}>
+              {step === 5 ? (vi ? "Lưu" : "Save") : vi ? "Tiếp tục" : "Continue"}
+            </button>
+          </Tooltip>
         </div>
       </footer>
     </form>
@@ -665,6 +727,7 @@ function DepartmentsDialog({
   toast: (message: string, kind?: "success" | "error" | "info") => void;
   confirm: (message: string) => Promise<boolean>;
 }) {
+  const tooltip = useTooltipText();
   const [editing, setEditing] = useState<Partial<Department> | null>(null);
   const save = async () => {
     if (!editing?.name?.trim()) return;
@@ -687,12 +750,14 @@ function DepartmentsDialog({
   };
   return (
     <Dialog title={vi ? "Phòng ban" : "Departments"} onClose={onClose}>
-      <button
-        className={c("primaryButton")}
-        onClick={() => setEditing({ name: "", description: "", color: "#9366ff" })}
-      >
-        + {vi ? "Thêm phòng" : "Add department"}
-      </button>
+      <Tooltip label={tooltip("tooltip.agents.department_create")}>
+        <button
+          className={c("primaryButton")}
+          onClick={() => setEditing({ name: "", description: "", color: "#9366ff" })}
+        >
+          + {vi ? "Thêm phòng" : "Add department"}
+        </button>
+      </Tooltip>
       <div className={c("managementList")}>
         {departments.map((department) => (
           <div key={department.id}>
@@ -704,12 +769,22 @@ function DepartmentsDialog({
                   (vi ? "Chưa có trưởng phòng" : "No department head")}
               </small>
             </span>
-            <button onClick={() => setEditing(department)}>
-              <Icon name="edit" />
-            </button>
-            <button onClick={() => void remove(department)}>
-              <Icon name="trash" />
-            </button>
+            <Tooltip label={tooltip("tooltip.agents.department_edit", department.name)}>
+              <button
+                aria-label={tooltip("tooltip.agents.department_edit", department.name)}
+                onClick={() => setEditing(department)}
+              >
+                <Icon name="edit" />
+              </button>
+            </Tooltip>
+            <Tooltip label={tooltip("tooltip.agents.department_delete", department.name)}>
+              <button
+                aria-label={tooltip("tooltip.agents.department_delete", department.name)}
+                onClick={() => void remove(department)}
+              >
+                <Icon name="trash" />
+              </button>
+            </Tooltip>
           </div>
         ))}
       </div>
@@ -746,12 +821,16 @@ function DepartmentsDialog({
             </select>
           </Field>
           <div className={c("formActions")}>
-            <button className={c("buttonGhost")} onClick={() => setEditing(null)}>
-              {vi ? "Huỷ" : "Cancel"}
-            </button>
-            <button className={c("primaryButton")} onClick={() => void save()}>
-              {vi ? "Lưu" : "Save"}
-            </button>
+            <Tooltip label={tooltip("tooltip.agents.department_cancel")}>
+              <button className={c("buttonGhost")} onClick={() => setEditing(null)}>
+                {vi ? "Huỷ" : "Cancel"}
+              </button>
+            </Tooltip>
+            <Tooltip label={tooltip("tooltip.agents.department_save", editing.name || "")}>
+              <button className={c("primaryButton")} onClick={() => void save()}>
+                {vi ? "Lưu" : "Save"}
+              </button>
+            </Tooltip>
           </div>
         </div>
       ) : null}

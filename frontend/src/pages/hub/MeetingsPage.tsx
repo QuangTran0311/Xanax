@@ -4,6 +4,8 @@ import { apiClient } from "../../api/client";
 import { buildAttachmentBlock, uploadAttachment, type ChatAttachment } from "../../components/ChatAttach";
 import { Icon } from "../../components/Icon";
 import { Markdown } from "../../components/Markdown";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { useWebSocket } from "../../ws/useWebSocket";
 import { useHub } from "./HubContext";
@@ -38,6 +40,7 @@ function statusLabel(status: string | undefined, vi: boolean) {
 export function MeetingsPage() {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const { meetings, agents, projects, refreshMeetings, toast, confirm } = useHub();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -85,10 +88,12 @@ export function MeetingsPage() {
       <div className={c("meetingLayout")}>
         <aside className={c("meetingSidebar")}>
           <div className={c("meetingListActions")}>
-            <button className={c("primaryButton")} onClick={() => setCreating(true)}>
-              <Icon name="meeting" />
-              {vi ? "Cuộc họp mới" : "New meeting"}
-            </button>
+            <Tooltip label={tooltip("tooltip.meetings.create_open")}>
+              <button className={c("primaryButton")} onClick={() => setCreating(true)}>
+                <Icon name="meeting" />
+                {vi ? "Cuộc họp mới" : "New meeting"}
+              </button>
+            </Tooltip>
           </div>
           <div className={c("meetingList")} data-testid="meeting-list">
             {meetings.length ? (
@@ -97,27 +102,25 @@ export function MeetingsPage() {
                   key={meeting.id}
                   className={`${c("meetingListItem")} ${selectedId === meeting.id ? c("meetingListSelected") : ""}`}
                 >
-                  <button onClick={() => setSelectedId(meeting.id)}>
-                    <strong>{meeting.title}</strong>
-                    <small>
-                      {statusLabel(meeting.status, vi)} · {(meeting.participants || []).length}{" "}
-                      {vi ? "nhân viên" : "staff"}
-                    </small>
-                    {meeting.project_id ? (
-                      <span>
-                        <Icon name="folder" />
-                        {projects.find((project) => project.id === meeting.project_id)?.name ||
-                          (vi ? "Dự án" : "Project")}
-                      </span>
-                    ) : null}
-                  </button>
-                  <button
-                    className={c("meetingDelete")}
-                    title={vi ? "Xoá" : "Delete"}
-                    onClick={() => void removeMeeting(meeting)}
-                  >
-                    <Icon name="trash" />
-                  </button>
+                  <Tooltip label={tooltip("tooltip.meetings.open", meeting.title || "")}>
+                    <button className={c("meetingOpen")} type="button" onClick={() => setSelectedId(meeting.id)}>
+                      <span
+                        className={`${c("meetingStatusDot")} ${meeting.status === "active" ? c("meetingStatusActive") : ""}`}
+                        aria-hidden="true"
+                      />
+                      <span className={c("meetingTitle")}>{meeting.title}</span>
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={tooltip("tooltip.meetings.delete", meeting.title || "")}>
+                    <button
+                      type="button"
+                      className={c("meetingDelete")}
+                      aria-label={tooltip("tooltip.meetings.delete", meeting.title || "")}
+                      onClick={() => void removeMeeting(meeting)}
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </Tooltip>
                 </div>
               ))
             ) : (
@@ -145,9 +148,14 @@ export function MeetingsPage() {
           <section className={c("dialog")}>
             <header>
               <h2>{vi ? "Tạo cuộc họp" : "Create meeting"}</h2>
-              <button onClick={() => setCreating(false)}>
-                <Icon name="close" />
-              </button>
+              <Tooltip label={tooltip("tooltip.meetings.create_close")}>
+                <button
+                  aria-label={tooltip("tooltip.meetings.create_close")}
+                  onClick={() => setCreating(false)}
+                >
+                  <Icon name="close" />
+                </button>
+              </Tooltip>
             </header>
             <div className={c("dialogBody")}>
               <div className={c("formStack")}>
@@ -208,12 +216,16 @@ export function MeetingsPage() {
                 <div className={c("formActions")}>
                   <span />
                   <div>
-                    <button className={c("buttonGhost")} onClick={() => setCreating(false)}>
-                      {vi ? "Huỷ" : "Cancel"}
-                    </button>
-                    <button className={c("primaryButton")} onClick={() => void createMeeting()}>
-                      {vi ? "Tạo" : "Create"}
-                    </button>
+                    <Tooltip label={tooltip("tooltip.meetings.create_cancel")}>
+                      <button className={c("buttonGhost")} onClick={() => setCreating(false)}>
+                        {vi ? "Huỷ" : "Cancel"}
+                      </button>
+                    </Tooltip>
+                    <Tooltip label={tooltip("tooltip.meetings.create_confirm")}>
+                      <button className={c("primaryButton")} onClick={() => void createMeeting()}>
+                        {vi ? "Tạo" : "Create"}
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>
@@ -228,12 +240,12 @@ export function MeetingsPage() {
 function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const { agents, projects, refreshMeetings, toast, confirm } = useHub();
   const [live, dispatch] = useReducer(reduceMeetingMessage, emptyMeetingLiveState);
   const [record, setRecord] = useState(meeting);
   const [content, setContent] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [finalizing, setFinalizing] = useState(false);
   const [decision, setDecision] = useState(String(meeting.decision_text || meeting.draft_minutes || ""));
@@ -246,6 +258,7 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
   );
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const attachmentPreviewUrlsRef = useRef(new Set<string>());
   const participantIds = live.participantIds ?? record.participants ?? [];
   const participants = agents.filter((agent) => participantIds.includes(agent.id));
   const mention = /(?:^|\s)@([^\s@]*)$/.exec(content);
@@ -276,6 +289,11 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
   useEffect(() => {
     if (live.error) toast(live.error, "error");
   }, [live.error, toast]);
+  useEffect(() => () => {
+    // Thu hồi mọi URL xem trước còn lại khi rời phòng họp.
+    attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    attachmentPreviewUrlsRef.current.clear();
+  }, []);
 
   const socket = useWebSocket<MeetingServerMessage>({
     path: `/ws/meeting/${meeting.id}`,
@@ -283,6 +301,13 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
     enabled: record.status === "active",
     onMessage: dispatch,
   });
+  const sendTooltip = !content.trim()
+    ? tooltip("tooltip.meetings.send_empty")
+    : attachments.some((attachment) => attachment.uploading)
+      ? tooltip("tooltip.meetings.send_uploading")
+      : !socket.isOpen
+        ? tooltip("tooltip.meetings.send_disconnected")
+        : tooltip("tooltip.meetings.send");
 
   function chooseMention(name: string) {
     if (!mention) return;
@@ -294,7 +319,7 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
   }
   function sendMessage() {
     const clean = content.trim();
-    if (!clean || uploading || !socket.isOpen) return;
+    if (!clean || attachments.some((attachment) => attachment.uploading) || !socket.isOpen) return;
     const payload = clean + buildAttachmentBlock(attachments);
     const targets = participants
       .filter((agent) =>
@@ -303,20 +328,53 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
       .map((agent) => agent.id);
     socket.send({ type: "user_message", content: payload, targets });
     setContent("");
+    attachments.forEach((attachment) => {
+      if (!attachment.preview_url) return;
+      URL.revokeObjectURL(attachment.preview_url);
+      attachmentPreviewUrlsRef.current.delete(attachment.preview_url);
+    });
     setAttachments([]);
   }
   async function addFiles(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
-    try {
-      const uploaded = await Promise.all(Array.from(files).map(uploadAttachment));
-      setAttachments((current) => [...current, ...uploaded]);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "error");
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+    for (const file of Array.from(files ?? [])) {
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      if (previewUrl) attachmentPreviewUrlsRef.current.add(previewUrl);
+      const placeholder: ChatAttachment = {
+        name: file.name,
+        mime: file.type,
+        uploading: true,
+        preview_url: previewUrl,
+      };
+      setAttachments((current) => [...current, placeholder]);
+      try {
+        const uploaded = await uploadAttachment(file);
+        setAttachments((current) =>
+          current.map((attachment) =>
+            attachment === placeholder ? { ...uploaded, preview_url: previewUrl } : attachment,
+          ),
+        );
+      } catch (error) {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          attachmentPreviewUrlsRef.current.delete(previewUrl);
+        }
+        setAttachments((current) => current.filter((attachment) => attachment !== placeholder));
+        const message = error instanceof Error ? error.message : String(error);
+        toast(
+          vi
+            ? `Không tải lên được ${file.name}: ${message}`
+            : `Could not upload ${file.name}: ${message}`,
+          "error",
+        );
+      }
     }
+  }
+  function removeAttachment(attachment: ChatAttachment) {
+    if (attachment.preview_url) {
+      URL.revokeObjectURL(attachment.preview_url);
+      attachmentPreviewUrlsRef.current.delete(attachment.preview_url);
+    }
+    setAttachments((current) => current.filter((item) => item !== attachment));
   }
   async function updateParticipants(next: number[]) {
     try {
@@ -402,15 +460,19 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
                   : `Reconnect ${socket.reconnectAttempt}/5`}
         </span>
         {record.status === "active" ? (
-          <button className={c("buttonDanger")} onClick={() => void endMeeting()}>
-            <Icon name="stop" />
-            {vi ? "Kết thúc" : "End"}
-          </button>
+          <Tooltip label={tooltip("tooltip.meetings.end")}>
+            <button className={c("buttonDanger")} onClick={() => void endMeeting()}>
+              <Icon name="stop" />
+              {vi ? "Kết thúc" : "End"}
+            </button>
+          </Tooltip>
         ) : record.status === "ended" ? (
-          <button className={c("primaryButton")} onClick={() => setFinalizing(true)}>
-            <Icon name="save" />
-            {vi ? "Chốt kế hoạch" : "Finalize"}
-          </button>
+          <Tooltip label={tooltip("tooltip.meetings.finalize_open")}>
+            <button className={c("primaryButton")} onClick={() => setFinalizing(true)}>
+              <Icon name="save" />
+              {vi ? "Chốt kế hoạch" : "Finalize"}
+            </button>
+          </Tooltip>
         ) : null}
       </header>
       <details className={c("participantPanel")}>
@@ -512,40 +574,75 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
         <footer className={c("meetingComposer")}>
           {attachments.length ? (
             <div className={c("attachmentChips")}>
-              {attachments.map((attachment, index) => (
-                <span key={`${attachment.name}-${index}`}>
-                  {attachment.name}
-                  <button
-                    onClick={() =>
-                      setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
-                    }
+              {attachments.map((attachment, index) => {
+                const isImage = attachment.mime?.startsWith("image/") && attachment.preview_url;
+                return (
+                  <span
+                    key={`${attachment.name}-${index}`}
+                    className={`${c("attachmentChip")} ${attachment.uploading ? c("attachmentUploading") : ""}`}
                   >
-                    <Icon name="close" />
-                  </button>
-                </span>
-              ))}
+                    {isImage ? (
+                      <span className={c("attachmentPreview")}>
+                        <img
+                          src={attachment.preview_url}
+                          alt={vi ? `Xem trước ${attachment.name}` : `Preview ${attachment.name}`}
+                        />
+                        {attachment.uploading ? (
+                          <span
+                            className={c("attachmentLoading")}
+                            role="status"
+                            aria-label={vi ? `Đang tải ${attachment.name}` : `Uploading ${attachment.name}`}
+                          />
+                        ) : null}
+                      </span>
+                    ) : attachment.uploading ? (
+                      <span
+                        className={c("attachmentLoading")}
+                        role="status"
+                        aria-label={vi ? `Đang tải ${attachment.name}` : `Uploading ${attachment.name}`}
+                      />
+                    ) : (
+                      <span className={c("attachmentIcon")} aria-hidden="true">📎</span>
+                    )}
+                    <span className={c("attachmentName")}>{attachment.name}</span>
+                    <Tooltip label={tooltip("tooltip.meetings.attachment_remove", attachment.name)}>
+                      <button
+                        type="button"
+                        aria-label={tooltip("tooltip.meetings.attachment_remove", attachment.name)}
+                        onClick={() => removeAttachment(attachment)}
+                      >
+                        ×
+                      </button>
+                    </Tooltip>
+                  </span>
+                );
+              })}
             </div>
           ) : null}
           <div className={c("composerRow")}>
-            <button
-              className={c("attachButton")}
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-              title={vi ? "Đính kèm" : "Attach"}
-            >
-              <Icon name="upload" />
-            </button>
+            <Tooltip label={tooltip("tooltip.meetings.attach")}>
+              <button
+                className={c("attachButton")}
+                aria-label={tooltip("tooltip.meetings.attach")}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Icon name="upload" />
+              </button>
+            </Tooltip>
             <input
               ref={fileRef}
               type="file"
               multiple
               hidden
-              onChange={(event) => void addFiles(event.target.files)}
+              onChange={(event) => {
+                void addFiles(event.target.files);
+                event.target.value = "";
+              }}
             />
             <div className={c("composerInput")}>
               <textarea
                 value={content}
-                rows={2}
+                rows={1}
                 placeholder={
                   vi
                     ? "Nhắn cho Xanax hoặc gõ @ để gọi nhân viên…"
@@ -578,28 +675,38 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
               {mention && mentionCandidates.length ? (
                 <div className={c("mentionMenu")} role="listbox">
                   {mentionCandidates.map((candidate, index) => (
-                    <button
+                    <Tooltip
                       key={`${candidate.id}-${candidate.name}`}
-                      className={index === mentionIndex ? c("mentionActive") : ""}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        chooseMention(candidate.name);
-                      }}
+                      label={tooltip("tooltip.meetings.mention", candidate.name)}
                     >
-                      @{candidate.name}
-                    </button>
+                      <button
+                        className={index === mentionIndex ? c("mentionActive") : ""}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          chooseMention(candidate.name);
+                        }}
+                      >
+                        @{candidate.name}
+                      </button>
+                    </Tooltip>
                   ))}
                 </div>
               ) : null}
             </div>
-            <button
-              className={c("primaryButton")}
-              disabled={!content.trim() || uploading || !socket.isOpen}
-              onClick={sendMessage}
-            >
-              <Icon name="send" />
-              {vi ? "Gửi" : "Send"}
-            </button>
+            <Tooltip label={sendTooltip}>
+              <button
+                className={c("primaryButton")}
+                disabled={
+                  !content.trim() ||
+                  attachments.some((attachment) => attachment.uploading) ||
+                  !socket.isOpen
+                }
+                onClick={sendMessage}
+              >
+                <Icon name="send" />
+                {vi ? "Gửi" : "Send"}
+              </button>
+            </Tooltip>
           </div>
         </footer>
       ) : null}
@@ -608,9 +715,14 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
           <section className={`${c("dialog")} ${c("dialogWide")}`}>
             <header>
               <h2>{vi ? "Chốt biên bản" : "Finalize minutes"}</h2>
-              <button onClick={() => setFinalizing(false)}>
-                <Icon name="close" />
-              </button>
+              <Tooltip label={tooltip("tooltip.meetings.finalize_close")}>
+                <button
+                  aria-label={tooltip("tooltip.meetings.finalize_close")}
+                  onClick={() => setFinalizing(false)}
+                >
+                  <Icon name="close" />
+                </button>
+              </Tooltip>
             </header>
             <div className={c("dialogBody")}>
               <label className={c("field")}>
@@ -627,12 +739,16 @@ function MeetingRoom({ meeting }: { meeting: MeetingRecord }) {
               <div className={c("formActions")}>
                 <span />
                 <div>
-                  <button className={c("buttonGhost")} onClick={() => setFinalizing(false)}>
-                    {vi ? "Đóng" : "Close"}
-                  </button>
-                  <button className={c("primaryButton")} onClick={() => void finalize()}>
-                    {vi ? "Chốt kế hoạch" : "Finalize"}
-                  </button>
+                  <Tooltip label={tooltip("tooltip.meetings.finalize_cancel")}>
+                    <button className={c("buttonGhost")} onClick={() => setFinalizing(false)}>
+                      {vi ? "Đóng" : "Close"}
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={tooltip("tooltip.meetings.finalize_confirm")}>
+                    <button className={c("primaryButton")} onClick={() => void finalize()}>
+                      {vi ? "Chốt kế hoạch" : "Finalize"}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -682,6 +798,7 @@ function ApprovalCard({
   vi: boolean;
   toast: (message: string, kind?: "success" | "error" | "info") => void;
 }) {
+  const tooltip = useTooltipText();
   const [edited, setEdited] = useState(approval.content || "");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -746,12 +863,20 @@ function ApprovalCard({
         <textarea value={reason} rows={2} onChange={(event) => setReason(event.target.value)} />
       </label>
       <footer>
-        <button className={c("buttonGhost")} disabled={busy} onClick={() => void decide("rejected")}>
-          {vi ? "Không duyệt — làm lại" : "Reject — revise"}
-        </button>
-        <button className={c("primaryButton")} disabled={busy} onClick={() => void decide("approved")}>
-          {vi ? "Duyệt & đăng" : "Approve & publish"}
-        </button>
+        <Tooltip
+          label={tooltip(busy ? "tooltip.meetings.action_busy" : "tooltip.meetings.approval_reject")}
+        >
+          <button className={c("buttonGhost")} disabled={busy} onClick={() => void decide("rejected")}>
+            {vi ? "Không duyệt — làm lại" : "Reject — revise"}
+          </button>
+        </Tooltip>
+        <Tooltip
+          label={tooltip(busy ? "tooltip.meetings.action_busy" : "tooltip.meetings.approval_publish")}
+        >
+          <button className={c("primaryButton")} disabled={busy} onClick={() => void decide("approved")}>
+            {vi ? "Duyệt & đăng" : "Approve & publish"}
+          </button>
+        </Tooltip>
       </footer>
     </article>
   );
@@ -768,6 +893,7 @@ function ImageSourceCard({
   vi: boolean;
   toast: (message: string, kind?: "success" | "error" | "info") => void;
 }) {
+  const tooltip = useTooltipText();
   const [busy, setBusy] = useState(false);
   async function choose(mode: "asset" | "generate", assetId?: number) {
     setBusy(true);
@@ -814,32 +940,43 @@ function ImageSourceCard({
         {vi ? "lấy ảnh từ đâu?" : "where should the image come from?"}
       </header>
       <footer>
-        <button className={c("primaryButton")} disabled={busy} onClick={() => void choose("generate")}>
-          {vi ? "Để nhân viên tự vẽ" : "Generate image"}
-        </button>
-        <label className={c("buttonGhost")}>
-          {vi ? "Tải ảnh lên" : "Upload image"}
-          <input
-            type="file"
-            accept="image/*"
-            hidden
-            disabled={busy}
-            onChange={(event) => void upload(event.target.files?.[0])}
-          />
-        </label>
+        <Tooltip
+          label={tooltip(busy ? "tooltip.meetings.action_busy" : "tooltip.meetings.image_generate")}
+        >
+          <button className={c("primaryButton")} disabled={busy} onClick={() => void choose("generate")}>
+            {vi ? "Để nhân viên tự vẽ" : "Generate image"}
+          </button>
+        </Tooltip>
+        <Tooltip
+          label={tooltip(busy ? "tooltip.meetings.action_busy" : "tooltip.meetings.image_upload")}
+        >
+          <label className={c("buttonGhost")}>
+            {vi ? "Tải ảnh lên" : "Upload image"}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              disabled={busy}
+              onChange={(event) => void upload(event.target.files?.[0])}
+            />
+          </label>
+        </Tooltip>
       </footer>
       {request.assets?.length ? (
         <div className={c("imageSourceGrid")}>
           {request.assets.map((asset) => (
-            <button
+            <Tooltip
               key={asset.id}
-              disabled={busy}
-              onClick={() => void choose("asset", asset.id)}
-              title={asset.note}
+              label={tooltip(
+                busy ? "tooltip.meetings.action_busy" : "tooltip.meetings.image_asset",
+                asset.filename,
+              )}
             >
-              <img src={asset.url} alt={asset.filename} />
-              <span>{asset.filename}</span>
-            </button>
+              <button disabled={busy} onClick={() => void choose("asset", asset.id)}>
+                <img src={asset.url} alt={asset.filename} />
+                <span>{asset.filename}</span>
+              </button>
+            </Tooltip>
           ))}
         </div>
       ) : (
@@ -868,6 +1005,7 @@ function MeetingRecord({
   vi: boolean;
   agents: Array<{ id: number; name?: string; role?: string }>;
 }) {
+  const tooltip = useTooltipText();
   const minutes = String(
     record.decision_text || record.draft_minutes || (vi ? "Chưa có nội dung biên bản." : "No minutes yet."),
   );
@@ -960,9 +1098,11 @@ function MeetingRecord({
               </article>
             ))}
           </div>
-          <button className={c("primaryButton")} onClick={() => void approveItems()}>
-            {vi ? "Tạo công việc đã chọn" : "Create selected items"}
-          </button>
+          <Tooltip label={tooltip("tooltip.meetings.create_items")}>
+            <button className={c("primaryButton")} onClick={() => void approveItems()}>
+              {vi ? "Tạo công việc đã chọn" : "Create selected items"}
+            </button>
+          </Tooltip>
         </details>
       ) : null}
     </section>

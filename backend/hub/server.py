@@ -41,8 +41,12 @@ async def lifespan(_app: FastAPI):
     console.print(f"[bold cyan]⚡ {settings.xanax_name} starting...[/]")
 
     # ── Database init ──────────────────────────────────────────
-    from hub.database import init_db, user_count, create_user, clear_all_sessions, purge_expired_sessions
+    from hub.database import (
+        init_db, user_count, create_user, clear_all_sessions, purge_expired_sessions,
+        recover_interrupted_experiments,
+    )
     await init_db()
+    await recover_interrupted_experiments()
     await clear_all_sessions()  # force re-login after every server restart
 
     if await user_count() == 0:
@@ -173,12 +177,14 @@ def create_app() -> FastAPI:
     from api.routes.knowledge      import router as knowledge_router
     from api.routes.ops            import router as ops_router
     from api.routes.assets         import router as assets_router
+    from api.routes.experiments    import router as experiments_router
     from api.websocket            import router as ws_router
     from api.websocket_training   import router as ws_training_router
     from api.websocket_task       import router as ws_task_router
     from api.websocket_meeting    import router as ws_meeting_router
     from api.websocket_benchmark  import router as ws_benchmark_router
     from api.websocket_workflow   import router as ws_workflow_router
+    from api.websocket_experiment import router as ws_experiment_router
 
     app.include_router(health_router,        prefix="/api",                tags=["Health"])
     app.include_router(agents_router,        prefix="/api/agents",         tags=["Agents"])
@@ -199,12 +205,14 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_router,     prefix="/api/knowledge",      tags=["Knowledge"])
     app.include_router(ops_router,           prefix="/api/ops",            tags=["Project Ops"])
     app.include_router(assets_router,        prefix="/api/assets",         tags=["Assets"])
+    app.include_router(experiments_router,   prefix="/api/experiments",    tags=["Experiments"])
     app.include_router(ws_router,                                          tags=["WebSocket"])
     app.include_router(ws_training_router,                                 tags=["WebSocket"])
     app.include_router(ws_task_router,                                     tags=["WebSocket"])
     app.include_router(ws_meeting_router,                                  tags=["WebSocket"])
     app.include_router(ws_benchmark_router,                                tags=["WebSocket"])
     app.include_router(ws_workflow_router,                                 tags=["WebSocket"])
+    app.include_router(ws_experiment_router,                               tags=["WebSocket"])
 
     # ── React production build ────────────────────────────────
     # Hashed Vite assets may be cached in production. During local development,

@@ -62,6 +62,10 @@ Thumbs.db
 # Trạng thái cục bộ của Claude Code — không phải cấu hình dùng chung
 .claude/scheduled_tasks.lock
 
+# Thư mục nháp của codex-bridge: log build, bản chép ngữ cảnh khi nhờ Codex sửa
+# code. Sinh lại được bất cứ lúc nào, không phải tài liệu dự án.
+.codex-tmp/
+
 # Bản sao lưu shortcut Startup của 9router, tạo lúc tắt 9router.
 # Là đường khôi phục cục bộ trên máy này, không phải code dự án —
 # giữ trên đĩa nhưng đừng đưa lên repo.

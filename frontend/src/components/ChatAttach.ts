@@ -8,6 +8,7 @@ export interface ChatAttachment {
   mime?: string;
   uploading?: boolean;
   error?: string;
+  preview_url?: string;
 }
 
 interface UploadResponse {

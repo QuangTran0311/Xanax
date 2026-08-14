@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiClient, ApiError } from "../../api/client";
+import { apiClient } from "../../api/client";
 import { buildAttachmentBlock, uploadAttachment, type ChatAttachment } from "../../components/ChatAttach";
 import { Icon } from "../../components/Icon";
 import { Markdown } from "../../components/Markdown";
+import { enqueueToast, type ToastKind } from "../../components/Toast";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
+import { useWorkspaceText } from "../../i18n/workspace";
 import { sessionApi } from "../../store/session";
 import { useWebSocket } from "../../ws/useWebSocket";
 import type {
@@ -25,7 +29,7 @@ interface CurrentUser { username: string }
 interface SessionListResponse { sessions: TrainingSession[] }
 interface AgentListResponse { agents: AgentOption[] }
 interface ProjectListResponse { projects: ProjectOption[] }
-interface ToolsResponse { tools: ToolOption[]; allowed: string[]; note?: string }
+interface ToolsResponse { tools: ToolOption[]; allowed: string[] }
 interface DistillResponse { notes?: string; lessons?: unknown[] }
 interface CloseResponse {
   written_by_scope?: { agent?: number; project?: number; skill?: number };
@@ -33,14 +37,12 @@ interface CloseResponse {
   project_name?: string;
 }
 
-type ToastKind = "" | "success" | "error";
-
-function fmtDate(value?: string, full = false): string {
+function fmtDate(value: string | undefined, locale: string, full = false): string {
   if (!value) return "—";
   const normalized = value.endsWith("Z") ? value : `${value}Z`;
   return full
-    ? new Date(normalized).toLocaleString("vi-VN")
-    : new Date(normalized).toLocaleDateString("vi-VN");
+    ? new Date(normalized).toLocaleString(locale)
+    : new Date(normalized).toLocaleDateString(locale);
 }
 
 function messageFromError(error: unknown, fallback: string): string {
@@ -49,6 +51,8 @@ function messageFromError(error: unknown, fallback: string): string {
 
 export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
+  const t = useWorkspaceText();
+  const tt = useTooltipText();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [selected, setSelected] = useState<TrainingSession | null>(null);
@@ -62,27 +66,21 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [tools, setTools] = useState<ToolOption[]>([]);
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
-  const [toolsNote, setToolsNote] = useState("");
   const [notesBusy, setNotesBusy] = useState(false);
   const [sessionModal, setSessionModal] = useState(false);
-  const [feedbackModal, setFeedbackModal] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newTask, setNewTask] = useState("");
   const [newAgent, setNewAgent] = useState("");
   const [newProject, setNewProject] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [toastState, setToastState] = useState<{ text: string; kind: ToastKind }>({ text: "", kind: "" });
   const messagesRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<HTMLTextAreaElement>(null);
   const streamTimerRef = useRef<number | null>(null);
   const streamContentRef = useRef("");
-  const toastTimerRef = useRef<number | null>(null);
+  const attachmentPreviewUrlsRef = useRef(new Set<string>());
 
-  const toast = useCallback((text: string, kind: ToastKind = "") => {
-    setToastState({ text, kind });
-    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToastState({ text: "", kind: "" }), 2800);
+  const toast = useCallback((text: string, kind: ToastKind = "info") => {
+    enqueueToast(text, kind);
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -112,6 +110,11 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     return () => window.removeEventListener("storage", onStorage);
   }, [loadRosters, loadSessions, navigate]);
 
+  useEffect(() => () => {
+    attachmentPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    attachmentPreviewUrlsRef.current.clear();
+  }, []);
+
   useEffect(() => {
     const idleMs = 15 * 60 * 1000;
     let idleTimer = 0;
@@ -133,20 +136,16 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
 
   const loadTools = useCallback(async (session: TrainingSession) => {
     if (!session.agent_id) {
-      setTools([]); setAllowedTools([]); setToolsNote("");
+      setTools([]); setAllowedTools([]);
       return;
     }
     try {
       const data = await apiClient.get<ToolsResponse>(`/training/sessions/${session.id}/tools`);
       setTools(data.tools ?? []);
       setAllowedTools(data.allowed ?? []);
-      setToolsNote(data.note ?? "");
-    } catch (error) {
+    } catch {
       setTools([]);
       setAllowedTools([]);
-      setToolsNote(error instanceof ApiError && error.status === 404
-        ? "Server chưa có API này — mã mới chưa được nạp. Khởi động lại server rồi tải lại trang."
-        : `Không đọc được danh sách công cụ: ${messageFromError(error, "lỗi không xác định")}`);
     }
   }, []);
 
@@ -198,8 +197,8 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       setNotesBusy(false);
       setSelected((current) => current ? { ...current, result_notes: message.content } : current);
       toast(message.type === "notes_updated"
-        ? "Đã đúc kết xong — sửa lại nếu cần rồi bấm \"Lưu bài học kinh nghiệm\""
-        : "Đã phân tích xong — sửa lại nếu cần rồi bấm \"Lưu bài học kinh nghiệm\"",
+        ? t("toast.notes_updated")
+        : t("toast.failure_analysed"),
       message.type === "notes_updated" ? "success" : "error");
       return;
     }
@@ -208,9 +207,9 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       streamContentRef.current = "";
       setStreamContent("");
       setNotesBusy(false);
-      toast(`Lỗi: ${message.message}`, "error");
+      toast(t("toast.socket_error", message.message), "error");
     }
-  }, [toast]);
+  }, [t, toast]);
 
   const socket = useWebSocket<TrainingSocketMessage>({
     path: "/ws/training",
@@ -224,12 +223,13 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight });
   }, [messages, streamContent, toolResults]);
 
-  const patchSession = async (body: Record<string, unknown>, success = "Đã lưu") => {
+  const patchSession = async (body: Record<string, unknown>, success?: string) => {
     if (!selected) return;
     const updated = await apiClient.patch<TrainingSession>(`/training/sessions/${selected.id}`, body);
     setSelected((current) => current ? { ...current, ...body, ...updated } : current);
     await loadSessions();
-    if (success) toast(success, "success");
+    const successMessage = success === undefined ? t("toast.saved") : success;
+    if (successMessage) toast(successMessage, "success");
   };
 
   const sendMessage = () => {
@@ -238,6 +238,11 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     if (!text.trim()) return;
     setMessages((current) => [...current, { role: "user", content: text }]);
     setInput("");
+    attachments.forEach((item) => {
+      if (!item.preview_url) return;
+      URL.revokeObjectURL(item.preview_url);
+      attachmentPreviewUrlsRef.current.delete(item.preview_url);
+    });
     setAttachments([]);
     setStreaming(true);
     streamContentRef.current = "";
@@ -249,16 +254,30 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
 
   const attachFiles = async (files: FileList | null) => {
     for (const file of Array.from(files ?? [])) {
-      const placeholder: ChatAttachment = { name: file.name, mime: file.type, uploading: true };
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      if (previewUrl) attachmentPreviewUrlsRef.current.add(previewUrl);
+      const placeholder: ChatAttachment = { name: file.name, mime: file.type, uploading: true, preview_url: previewUrl };
       setAttachments((current) => [...current, placeholder]);
       try {
         const uploaded = await uploadAttachment(file);
-        setAttachments((current) => current.map((item) => item === placeholder ? uploaded : item));
+        setAttachments((current) => current.map((item) => item === placeholder ? { ...uploaded, preview_url: previewUrl } : item));
       } catch (error) {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+          attachmentPreviewUrlsRef.current.delete(previewUrl);
+        }
         setAttachments((current) => current.filter((item) => item !== placeholder));
-        toast(`Không tải lên được ${file.name}: ${messageFromError(error, "lỗi không xác định")}`, "error");
+        toast(t("toast.upload_failed", file.name, messageFromError(error, t("toast.unknown_error"))), "error");
       }
     }
+  };
+
+  const removeAttachment = (attachment: ChatAttachment) => {
+    if (attachment.preview_url) {
+      URL.revokeObjectURL(attachment.preview_url);
+      attachmentPreviewUrlsRef.current.delete(attachment.preview_url);
+    }
+    setAttachments((current) => current.filter((item) => item !== attachment));
   };
 
   const createSession = async () => {
@@ -273,7 +292,7 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     setNewTitle(""); setNewTask(""); setNewAgent(""); setNewProject("");
     await loadSessions();
     await selectSession(session.id);
-    toast("Đã tạo phiên dạy học mới", "success");
+    toast(t("toast.session_created"), "success");
   };
 
   const setStatus = async (status: "pass" | "fail") => {
@@ -285,17 +304,17 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
         const data = await apiClient.post<DistillResponse>(`/training/sessions/${selected.id}/distill`);
         setSelected((current) => current ? { ...current, result_notes: data.notes ?? "" } : current);
         toast(data.lessons?.length
-          ? `Đã đúc kết ${data.lessons.length} bài học — kiểm tra phạm vi ở đầu mỗi dòng rồi bấm \"Lưu bài học kinh nghiệm\"`
-          : "Chưa rút được bài học nào — bạn có thể tự viết vào ô đúc kết", "success");
+          ? t("toast.lessons_distilled", data.lessons.length)
+          : t("toast.no_lessons"), "success");
       } catch (error) {
-        toast(messageFromError(error, "Không đúc kết được"), "error");
+        toast(messageFromError(error, t("toast.distill_failed")), "error");
       } finally {
         setNotesBusy(false);
       }
     } else if (socket.isOpen) {
       setNotesBusy(true);
       socket.send({ action: status === "pass" ? "summarise_pass" : "summarise_fail", session_id: selected.id });
-      toast(status === "pass" ? "Đã ghi nhận — đang đúc kết bài học..." : "Đã ghi nhận — đang phân tích để cải thiện...", status === "pass" ? "success" : "error");
+      toast(status === "pass" ? t("toast.pass_recorded") : t("toast.fail_recorded"), status === "pass" ? "success" : "error");
     }
   };
 
@@ -307,12 +326,12 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       await selectSession(selected.id);
       const counts = data.written_by_scope ?? {};
       const parts: string[] = [];
-      if (counts.agent) parts.push(`${counts.agent} vào soul ${data.agent_name}`);
-      if (counts.project) parts.push(`${counts.project} vào soul dự án ${data.project_name}`);
-      if (counts.skill) parts.push(`${counts.skill} vào phụ lục kỹ năng`);
-      toast(parts.length ? `Đã ghi ${parts.join(", ")} — buổi học đã đóng` : "Đã đóng buổi học", "success");
+      if (counts.agent) parts.push(t("toast.written_agent", counts.agent, data.agent_name ?? ""));
+      if (counts.project) parts.push(t("toast.written_project", counts.project, data.project_name ?? ""));
+      if (counts.skill) parts.push(t("toast.written_skill", counts.skill));
+      toast(parts.length ? t("toast.lesson_closed_with_writes", parts.join(", ")) : t("toast.lesson_closed"), "success");
     } catch (error) {
-      toast(messageFromError(error, "Không đóng được buổi học"), "error");
+      toast(messageFromError(error, t("toast.close_failed")), "error");
     }
   };
 
@@ -321,13 +340,13 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     await apiClient.post(`/training/sessions/${selected.id}/reopen`);
     await loadSessions();
     await selectSession(selected.id);
-    toast("Đã mở lại buổi học", "success");
+    toast(t("toast.lesson_reopened"), "success");
   };
 
   const saveTools = async (next: string[]) => {
     setAllowedTools(next);
     await patchSession({ allowed_tools: next }, "");
-    toast(next.length ? `Học viên được dùng ${next.length} công cụ thật trong buổi này` : "Đã thu lại hết công cụ — học viên chỉ nói chuyện", "success");
+    toast(next.length ? t("toast.tools_allowed", next.length) : t("toast.tools_revoked"), "success");
   };
 
   const tagLine = (label: "nhân viên" | "dự án" | "kỹ năng") => {
@@ -343,21 +362,11 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     }
     index = Math.min(index, lines.length - 1);
     const body = lines[index].replace(/^\s*(?:[-*•]|\d+[.)])?\s*(?:\[[^\]]{1,60}\]\s*)?/, "");
-    if (!body.trim()) { toast("Đặt con trỏ vào dòng bài học rồi bấm", "error"); return; }
+    if (!body.trim()) { toast(t("toast.scope_cursor"), "error"); return; }
     lines[index] = `[${label}] ${body}`;
     const result_notes = lines.join("\n");
     setSelected({ ...selected, result_notes });
     void patchSession({ result_notes }, "");
-  };
-
-  const submitFeedback = () => {
-    if (!selected || !socket.isOpen) { toast("Chưa kết nối WebSocket", "error"); return; }
-    setFeedbackModal(false);
-    setNotesBusy(true);
-    socket.send(feedback.trim()
-      ? { action: "improve_from_fail", session_id: selected.id, feedback: feedback.trim() }
-      : { action: "summarise_pass", session_id: selected.id });
-    toast(feedback.trim() ? "Đang đúc kết từ góp ý..." : "Đang đúc kết tự động...");
   };
 
   const deleteSession = async () => {
@@ -367,7 +376,7 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
     setSelected(null);
     setMessages([]);
     await loadSessions();
-    toast("Đã xoá session", "success");
+    toast(t("toast.session_deleted"), "success");
   };
 
   const logout = async () => {
@@ -377,9 +386,9 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
 
   const connectionText = useMemo(() => {
     if (socket.state === "open") return "";
-    if (socket.reconnectAttempt) return `Mất kết nối — thử lại... (${socket.reconnectAttempt}/5)`;
-    return "Hermes offline — không thể gửi tin nhắn";
-  }, [socket.reconnectAttempt, socket.state]);
+    if (socket.reconnectAttempt) return t("connection.retrying", socket.reconnectAttempt);
+    return t("connection.offline");
+  }, [socket.reconnectAttempt, socket.state, t]);
 
   const isClosed = Boolean(selected?.closed);
   const currentStudent = selected?.agent_id ? selected.agent_name || `#${selected.agent_id}` : null;
@@ -390,28 +399,28 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
       {!embedded ? <header className={c("topbar")}>
         <span className={c("topbar-logo")}><span className={c("dot")} />Xanax</span>
         <nav className={c("topbar-nav")}>
-          <a className={c("active")} href="/workspace">Training</a>
-          <a href="/taskrunner">Quy trình</a>
+          <a className={c("active")} href="/workspace">{t("nav.training")}</a>
+          <a href="/taskrunner">{t("nav.workflows")}</a>
         </nav>
-        <div className={c("topbar-user")}><span>{user?.username ?? "—"}</span><button className={c("btn-logout")} onClick={() => void logout()}>Đăng xuất</button></div>
+        <div className={c("topbar-user")}><span>{user?.username ?? "—"}</span><Tooltip label={tt("tooltip.workspace.logout")}><button className={c("btn-logout")} onClick={() => void logout()}>{t("common.logout")}</button></Tooltip></div>
       </header> : null}
 
       <main className={c("workspace")} data-testid="workspace-page">
         <aside className={c("sessions-panel")}>
-          <div className={c("sessions-header")}><h2>Phiên dạy học AI</h2><button data-testid="new-session" className={c("btn-new")} onClick={() => { void loadRosters(); setSessionModal(true); }} title="Tạo phiên dạy học mới">+</button></div>
+          <div className={c("sessions-header")}><h2>{t("sessions.title")}</h2><Tooltip label={tt("tooltip.workspace.create_session")}><button data-testid="new-session" className={c("btn-new")} aria-label={tt("tooltip.workspace.create_session")} onClick={() => { void loadRosters(); setSessionModal(true); }}>+</button></Tooltip></div>
           <div className={c("sessions-list")}>
-            {!sessions.length ? <div className={c("empty-list")}>Chưa có session nào.<br />Nhấn <strong>+</strong> để tạo mới.</div> : sessions.map((session) => (
-              <button type="button" key={session.id} data-session-id={session.id} className={cx(c("session-item"), session.id === selected?.id && c("active"))} onClick={() => void selectSession(session.id)}>
+            {!sessions.length ? <div className={c("empty-list")}>{t("sessions.empty")}<br />{t("sessions.empty_action_before")} <strong>+</strong> {t("sessions.empty_action_after")}</div> : sessions.map((session) => (
+              <Tooltip key={session.id} label={tt("tooltip.workspace.select_session")}><button type="button" data-session-id={session.id} className={cx(c("session-item"), session.id === selected?.id && c("active"))} onClick={() => void selectSession(session.id)}>
                 <span className={cx(c("session-dot"), c(`dot-${session.status}`))} />
-                <span className={c("session-info")}><span className={c("session-title")}>{session.title}</span><span className={c("session-meta")}>{session.agent_name ? `👤 ${session.agent_name} · ` : ""}{fmtDate(session.created_at)}</span></span>
-              </button>
+                <span className={c("session-info")}><span className={c("session-title")}>{session.title}</span></span>
+              </button></Tooltip>
             ))}
           </div>
         </aside>
 
         <section className={c("chat-panel")}>
           {selected && socket.state !== "open" && !isClosed ? <div className={cx(c("hermes-banner"), c("visible"))}><Icon name="warning" className={c("icon")} size={16} /> {connectionText}</div> : null}
-          {!selected ? <div className={c("chat-empty")}><div className={c("chat-empty-icon")}><Icon name="chat" className={c("icon")} size={40} /></div><h3>Chưa chọn Phiên Dạy Học</h3><p>Chọn một phiên dạy học bên trái hoặc tạo mới để bắt đầu hướng dẫn trợ lý AI.</p></div> : (
+          {!selected ? <div className={c("chat-empty")}><div className={c("chat-empty-icon")}><Icon name="chat" className={c("icon")} size={40} /></div><h3>{t("chat.empty_title")}</h3><p>{t("chat.empty_description")}</p></div> : (
             <>
               <div className={c("chat-messages")} ref={messagesRef}>
                 {messages.map((message, index) => <ChatMessage key={message.id ?? `${message.role}-${index}`} message={message} />)}
@@ -419,11 +428,23 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
                 {toolResults.length ? <div className={cx(c("msg"), c("msg-tool"))}><div className={c("msg-avatar")}><Icon name="bolt" className={c("icon")} /></div><div className={cx(c("msg-bubble"), c("tool-results"))}>{toolResults.map((result, index) => <div key={`${result.action}-${index}`} className={cx(c("tool-result-item"), c(result.ok ? "ok" : "err"))}><Icon name={result.ok ? "check" : "close"} className={c("icon")} size={14} /> <strong>{result.action}</strong>: {result.message || result.error || ""}</div>)}</div></div> : null}
               </div>
               {!isClosed ? <div className={c("chat-input-area")}>
-                {attachments.length ? <div className={c("chat-attach-bar")}>{attachments.map((item, index) => <span key={`${item.name}-${index}`} className={cx(c("chat-attach-chip"), item.uploading && c("uploading"))}>{item.uploading ? "Đang tải " : "📎 "}{item.name}<button type="button" aria-label={`Bỏ ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
+                {attachments.length ? <div className={c("chat-attach-bar")}>{attachments.map((item, index) => {
+                  const isImage = item.mime?.startsWith("image/") && item.preview_url;
+                  return <span key={`${item.name}-${index}`} className={cx(c("chat-attach-chip"), item.uploading && c("uploading"))}>
+                    {isImage ? <span className={c("chat-attach-preview")}>
+                      <img src={item.preview_url} alt={t("chat.preview_alt", item.name)} />
+                      {item.uploading ? <span className={c("chat-attach-loading")} role="status" aria-label={t("chat.uploading_aria", item.name)} /> : null}
+                    </span> : item.uploading
+                      ? <span className={c("chat-attach-loading")} role="status" aria-label={t("chat.uploading_aria", item.name)} />
+                      : <span className={c("chat-attach-icon")} aria-hidden="true">📎</span>}
+                    <span className={c("chat-attach-name")}>{item.name}</span>
+                    <Tooltip label={tt("tooltip.workspace.remove_attachment")}><button type="button" aria-label={t("chat.remove_aria", item.name)} onClick={() => removeAttachment(item)}>×</button></Tooltip>
+                  </span>;
+                })}</div> : null}
                 <div className={c("chat-input-row")}>
-                  <label className={c("btn-attach")} title="Đính kèm ảnh hoặc file"><Icon name="link" /><input type="file" multiple hidden onChange={(event) => { void attachFiles(event.target.files); event.target.value = ""; }} /></label>
-                  <textarea data-testid="chat-input" className={c("chat-input")} value={input} placeholder="Nhắn tin hướng dẫn trợ lý AI..." rows={1} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} />
-                  <button data-testid="send-message" className={c("btn-send")} onClick={sendMessage} disabled={!socket.isOpen || streaming || attachments.some((item) => item.uploading)}><Icon name="send" /></button>
+                  <Tooltip label={tt("tooltip.workspace.attach")}><label className={c("btn-attach")} aria-label={tt("tooltip.workspace.attach")}><Icon name="link" /><input type="file" multiple hidden onChange={(event) => { void attachFiles(event.target.files); event.target.value = ""; }} /></label></Tooltip>
+                  <textarea data-testid="chat-input" className={c("chat-input")} value={input} placeholder={t("chat.input_placeholder")} rows={1} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} />
+                  <Tooltip label={tt("tooltip.workspace.send")}><button data-testid="send-message" className={c("btn-send")} aria-label={tt("tooltip.workspace.send")} onClick={sendMessage} disabled={!socket.isOpen || streaming || attachments.some((item) => item.uploading)}><Icon name="send" /></button></Tooltip>
                 </div>
               </div> : null}
             </>
@@ -431,58 +452,58 @@ export function WorkspacePage({ embedded = false }: { embedded?: boolean }) {
         </section>
 
         <aside className={c("info-panel")}>
-          {!selected ? <div className={c("info-empty")}>Chọn phiên dạy học bên trái để xem thông tin</div> : <div className={cx(c("info-content"), c("visible"))}>
-            <InfoLabel>Tên phiên dạy học</InfoLabel>
-            <input className={c("info-title-edit")} value={selected.title} onChange={(event) => setSelected({ ...selected, title: event.target.value })} onBlur={() => void patchSession({ title: selected.title })} />
+          {!selected ? <div className={c("info-empty")}>{t("info.empty")}</div> : <div className={cx(c("info-content"), c("visible"))}>
+            <div className={c("info-heading")}>
+              <input className={c("info-title-edit")} value={selected.title} onChange={(event) => setSelected({ ...selected, title: event.target.value })} onBlur={() => void patchSession({ title: selected.title })} />
+              <div className={c("info-meta")}>{[
+                currentStudent ? `👤 ${currentStudent}` : null,
+                currentProject ? `📁 ${currentProject}` : null,
+                selected.created_at ? fmtDate(selected.created_at, t("common.locale"), true) : null,
+              ].filter(Boolean).join(" · ")}</div>
+            </div>
             <Divider />
-            <InfoLabel>Kết quả đánh giá</InfoLabel>
-            <StatusBadge status={selected.status} />
-            <div className={c("status-buttons")}><button className={cx(c("btn-status"), c("btn-pass"))} disabled={isClosed} onClick={() => void setStatus("pass")}><Icon name="check" className={c("icon")} size={15} /> Hài lòng</button><button className={cx(c("btn-status"), c("btn-fail"))} disabled={isClosed} onClick={() => void setStatus("fail")}><Icon name="close" className={c("icon")} size={15} /> Cần cải thiện</button></div>
-            <Divider />
-            <InfoLabel>Ngày tạo</InfoLabel><div className={c("info-date")}>{fmtDate(selected.created_at, true)}</div>
-            <Divider />
-            <InfoLabel>Yêu cầu nhiệm vụ huấn luyện</InfoLabel>
-            <textarea className={c("info-task-edit")} value={selected.task_description ?? ""} onChange={(event) => setSelected({ ...selected, task_description: event.target.value })} onBlur={() => void patchSession({ task_description: selected.task_description })} placeholder="Mô tả chi tiết nhiệm vụ bạn muốn trợ lý AI học và thực hiện tốt..." />
+            <div className={c("info-section")}>
+              <InfoLabel>{t("info.evaluation")}</InfoLabel>
+              <div className={c("status-buttons")}><Tooltip label={tt("tooltip.workspace.pass")}><button className={cx(c("btn-status"), c("btn-pass"), selected.status === "pass" && c("btn-status-selected"))} disabled={isClosed} onClick={() => void setStatus("pass")}>{selected.status === "pass" ? <Icon name="check" className={c("icon")} size={14} /> : null} {t("info.pass")}</button></Tooltip><Tooltip label={tt("tooltip.workspace.fail")}><button className={cx(c("btn-status"), c("btn-fail"), selected.status === "fail" && c("btn-status-selected"))} disabled={isClosed} onClick={() => void setStatus("fail")}>{selected.status === "fail" ? <Icon name="check" className={c("icon")} size={14} /> : null} {t("info.fail")}</button></Tooltip></div>
+            </div>
+            <div className={c("info-section")}>
+              <InfoLabel>{t("info.task")}</InfoLabel>
+              <textarea className={c("info-task-edit")} value={selected.task_description ?? ""} onChange={(event) => setSelected({ ...selected, task_description: event.target.value })} onBlur={() => void patchSession({ task_description: selected.task_description })} placeholder={t("info.task_placeholder")} />
+            </div>
 
-            {selected.agent_id ? <><Divider /><InfoLabel>Công cụ cho buổi học này</InfoLabel><div className={c("student-tools")}>
-              {tools.length ? tools.map((tool) => <label key={tool.name} className={c("student-tool")} title={tool.description}><input type="checkbox" checked={allowedTools.includes(tool.name)} disabled={isClosed} onChange={(event) => void saveTools(event.target.checked ? [...allowedTools, tool.name] : allowedTools.filter((name) => name !== tool.name))} /><span>{tool.name}</span></label>) : <span className={c("student-tools-msg")}>{toolsNote || "Học viên này chưa có công cụ nào để cấp. Kỹ năng loại custom không sinh ra công cụ; chỉ skill loại api / builtin / mcp mới có."}</span>}
-              <div className={c("student-tools-warn")}>Công cụ tick ở đây chạy THẬT trong buổi học — không phải mô phỏng. Không tick gì thì học viên chỉ nói chuyện, không làm được việc thật.</div>
-            </div></> : null}
+            {selected.agent_id && tools.length ? <div className={c("info-section")}><InfoLabel>{t("info.tools")}</InfoLabel><div className={c("student-tools")}>
+              {tools.map((tool) => <label key={tool.name} className={c("student-tool")} title={tool.description}><input type="checkbox" checked={allowedTools.includes(tool.name)} disabled={isClosed} onChange={(event) => void saveTools(event.target.checked ? [...allowedTools, tool.name] : allowedTools.filter((name) => name !== tool.name))} /><span>{tool.name}</span></label>)}
+            </div></div> : null}
 
-            <Divider />
-            <InfoLabel>Bài học ghi nhớ (Đúc kết) {notesBusy ? <span className={c("notes-spinner")} /> : null}</InfoLabel>
-            {currentStudent && !isClosed ? <div className={c("scope-bar")}><span className={c("scope-bar-label")}>Gắn phạm vi cho dòng đang sửa:</span><button className={cx(c("scope-chip"), c("scope-agent"))} onClick={() => tagLine("nhân viên")}>nhân viên</button><button className={cx(c("scope-chip"), c("scope-project"))} disabled={!currentProject} title={currentProject ? `Ghi vào soul dự án \"${currentProject}\"` : "Buổi dạy này không gắn dự án nào"} onClick={() => tagLine("dự án")}>dự án</button><button className={cx(c("scope-chip"), c("scope-skill"))} onClick={() => tagLine("kỹ năng")}>kỹ năng</button></div> : null}
-            <textarea data-testid="result-notes" ref={notesRef} className={cx(c("notes-edit"), selected.result_notes && c("has-content"))} value={selected.result_notes ?? ""} readOnly={isClosed} onChange={(event) => setSelected({ ...selected, result_notes: event.target.value })} onBlur={() => void patchSession({ result_notes: selected.result_notes })} placeholder="Bấm 'Hài lòng' hoặc 'Cần cải thiện' để AI đúc kết bản nháp vào đây. Sửa thoải mái — mỗi dòng là một bài học." />
-            {currentStudent && !isClosed ? <div className={c("field-hint")}><strong>nhân viên</strong> → chỉ {currentStudent} nhớ · {currentProject ? <><strong>dự án</strong> → mọi nhân viên làm cho “{currentProject}” đều nhớ · </> : null}<strong>kỹ năng</strong> → ai dùng kỹ năng đó cũng nhớ. Dòng không gắn thẻ mặc định là của riêng nhân viên.</div> : null}
-            <div className={c("field-hint")}>{currentStudent ? `Sửa xong phần đúc kết rồi bấm nút dưới — mỗi dòng thành một bài học trong soul của ${currentStudent}, và buổi học mới đóng.` : "Sửa xong phần đúc kết rồi bấm nút dưới để chốt và đóng buổi học."}</div>
-            <button data-testid="close-lesson" className={cx(c("btn-feedback"), c("visible"))} disabled={isClosed} onClick={() => void closeLesson()}><Icon name="save" className={c("icon")} size={15} /> Lưu bài học kinh nghiệm</button>
-            {isClosed ? <button data-testid="reopen-lesson" className={c("btn-reopen")} onClick={() => void reopenLesson()}>Mở lại buổi học để sửa tiếp</button> : null}
-            <button className={c("btn-refine")} disabled={isClosed} onClick={() => { setFeedback(""); setFeedbackModal(true); }}>Nhờ AI đúc kết lại từ góp ý</button>
-            <Divider />
-            <button className={c("btn-delete-session")} onClick={() => setConfirmDelete(true)}>Xoá phiên dạy học này</button>
+            <div className={c("info-section")}>
+              <InfoLabel primary>{t("notes.title")} {notesBusy ? <span className={c("notes-spinner")} /> : null}</InfoLabel>
+              {currentStudent && !isClosed ? <div className={c("scope-bar")}><span className={c("scope-bar-label")}>{t("notes.scope_label")}</span><Tooltip label={tt("tooltip.workspace.scope_agent", currentStudent)}><button className={cx(c("scope-chip"), c("scope-agent"))} onClick={() => tagLine("nhân viên")}>{t("notes.scope_agent")}</button></Tooltip><Tooltip label={currentProject ? tt("tooltip.workspace.scope_project", currentProject) : tt("tooltip.workspace.scope_project_unavailable")}><button className={cx(c("scope-chip"), c("scope-project"))} disabled={!currentProject} onClick={() => tagLine("dự án")}>{t("notes.scope_project")}</button></Tooltip><Tooltip label={tt("tooltip.workspace.scope_skill")}><button className={cx(c("scope-chip"), c("scope-skill"))} onClick={() => tagLine("kỹ năng")}>{t("notes.scope_skill")}</button></Tooltip></div> : null}
+              <textarea data-testid="result-notes" ref={notesRef} className={cx(c("notes-edit"), selected.result_notes && c("has-content"))} value={selected.result_notes ?? ""} readOnly={isClosed} onChange={(event) => setSelected({ ...selected, result_notes: event.target.value })} onBlur={() => void patchSession({ result_notes: selected.result_notes })} placeholder={t("notes.placeholder")} />
+              {currentStudent && !isClosed ? <div className={c("field-hint")}>{t("notes.hint")}</div> : null}
+              <Tooltip label={tt("tooltip.workspace.close_lesson")}><button data-testid="close-lesson" className={cx(c("btn-feedback"), c("visible"))} disabled={isClosed} onClick={() => void closeLesson()}><Icon name="save" className={c("icon")} size={15} /> {t("notes.save")}</button></Tooltip>
+              {isClosed ? <Tooltip label={tt("tooltip.workspace.reopen_lesson")}><button data-testid="reopen-lesson" className={c("btn-reopen")} onClick={() => void reopenLesson()}>{t("notes.reopen")}</button></Tooltip> : null}
+            </div>
+            <div className={c("info-footer")}>
+              <Divider />
+              <Tooltip label={tt("tooltip.workspace.delete_session")}><button className={c("btn-delete-session")} onClick={() => setConfirmDelete(true)}>{t("session.delete")}</button></Tooltip>
+            </div>
           </div>}
         </aside>
       </main>
 
-      {!embedded ? <footer className={c("page-footer")}>© 2025 Xanax — Personal AI Agent</footer> : null}
+      {!embedded ? <footer className={c("page-footer")}>{t("footer.copyright")}</footer> : null}
 
-      <Modal visible={sessionModal} className="modal-overlay" onBackdrop={() => setSessionModal(false)}><div className={c("modal")}><h3><Icon name="chat" className={c("icon")} size={15} /> Tạo Phiên Dạy Học Mới</h3><input value={newTitle} maxLength={100} autoFocus onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSession(); }} placeholder="Tên phiên dạy học" /><label className={c("field-label")} htmlFor="new-agent">Học viên của buổi dạy</label><select id="new-agent" value={newAgent} onChange={(event) => setNewAgent(event.target.value)}><option value="">Dạy chính Xanax (như trước)</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.role ? ` — ${agent.role}` : ""}</option>)}</select><div className={c("field-hint")}>Mỗi phòng dạy đúng một nhân viên. Chọn xong không đổi được.</div><label className={c("field-label")} htmlFor="new-project">Dự án của buổi dạy</label><select id="new-project" value={newProject} onChange={(event) => setNewProject(event.target.value)}><option value="">Không gắn dự án nào</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><textarea value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Mô tả yêu cầu nhiệm vụ huấn luyện (không bắt buộc)" /><div className={c("modal-footer")}><button className={c("btn-cancel")} onClick={() => setSessionModal(false)}>Huỷ</button><button className={c("btn-create")} onClick={() => void createSession()}>Tạo phiên</button></div></div></Modal>
+      <Modal visible={sessionModal} className="modal-overlay" onBackdrop={() => setSessionModal(false)}><div className={c("modal")}><h3><Icon name="chat" className={c("icon")} size={15} /> {t("session.create_title")}</h3><input value={newTitle} maxLength={100} autoFocus onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSession(); }} placeholder={t("session.name_placeholder")} /><label className={c("field-label")} htmlFor="new-agent">{t("session.student_label")}</label><select id="new-agent" className={c("modal-select")} value={newAgent} onChange={(event) => setNewAgent(event.target.value)}><option value="">{t("session.student_xanax")}</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}{agent.role ? ` — ${agent.role}` : ""}</option>)}</select><div className={c("field-hint")}>{t("session.student_hint")}</div><label className={c("field-label")} htmlFor="new-project">{t("session.project_label")}</label><select id="new-project" className={c("modal-select")} value={newProject} onChange={(event) => setNewProject(event.target.value)}><option value="">{t("session.project_none")}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><textarea value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder={t("session.task_placeholder")} /><div className={c("modal-footer")}><Tooltip label={tt("tooltip.workspace.create_cancel")}><button className={c("btn-cancel")} onClick={() => setSessionModal(false)}>{t("common.cancel")}</button></Tooltip><Tooltip label={tt("tooltip.workspace.create_confirm")}><button className={c("btn-create")} onClick={() => void createSession()}>{t("session.create")}</button></Tooltip></div></div></Modal>
 
-      <Modal visible={feedbackModal} className="fp-overlay" onBackdrop={() => setFeedbackModal(false)}><div className={c("fp-box")}><div className={c("fp-title")}><Icon name="chat" className={c("icon")} size={15} /> Góp ý để Trợ lý AI cải thiện</div><div className={c("fp-hint")}>Nhập <strong>góp ý / hướng dẫn cụ thể</strong> để trợ lý AI ghi nhớ. Để trống để trợ lý tự đúc kết từ cuộc đối thoại.</div><textarea className={c("fp-textarea")} value={feedback} autoFocus onChange={(event) => setFeedback(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && event.ctrlKey) submitFeedback(); }} /><div className={c("fp-footer")}><button className={c("fp-btn-cancel")} onClick={() => setFeedbackModal(false)}>Huỷ</button><button className={c("fp-btn-submit")} onClick={submitFeedback}>Xác nhận</button></div></div></Modal>
+      <Modal visible={confirmDelete} className="cp-overlay" onBackdrop={() => setConfirmDelete(false)}><div className={c("cp-box")}><div className={c("cp-title")}><Icon name="warning" className={c("icon")} size={15} /> {t("delete.title")}</div><div className={c("cp-body")}>{t("delete.body")}</div><div className={c("cp-footer")}><Tooltip label={tt("tooltip.workspace.delete_cancel")}><button className={c("cp-btn-cancel")} onClick={() => setConfirmDelete(false)}>{t("common.cancel")}</button></Tooltip><Tooltip label={tt("tooltip.workspace.delete_confirm")}><button className={c("cp-btn-confirm")} onClick={() => void deleteSession()}>{t("common.delete")}</button></Tooltip></div></div></Modal>
 
-      <Modal visible={confirmDelete} className="cp-overlay" onBackdrop={() => setConfirmDelete(false)}><div className={c("cp-box")}><div className={c("cp-title")}><Icon name="warning" className={c("icon")} size={15} /> Xác nhận xoá</div><div className={c("cp-body")}>Xoá session này? Hành động không thể hoàn tác.</div><div className={c("cp-footer")}><button className={c("cp-btn-cancel")} onClick={() => setConfirmDelete(false)}>Huỷ</button><button className={c("cp-btn-confirm")} onClick={() => void deleteSession()}>Xoá</button></div></div></Modal>
-
-      <div className={cx(c("toast"), toastState.text && c("show"), toastState.kind && c(toastState.kind))}>{toastState.text}</div>
     </div>
   );
 }
 
 function Divider() { return <div className={c("info-divider")} />; }
-function InfoLabel({ children }: { children: React.ReactNode }) { return <div className={c("info-section-label")}>{children}</div>; }
-
-function StatusBadge({ status }: { status: TrainingSession["status"] }) {
-  const content = status === "pass" ? <><Icon name="check" className={c("icon")} size={14} /> Đạt</> : status === "fail" ? <><Icon name="close" className={c("icon")} size={14} /> Không đạt</> : <><span className={cx(c("sdot"), c("on"))} />Đang thực hiện</>;
-  return <span className={cx(c("status-badge"), c(`status-${status}`))}>{content}</span>;
+function InfoLabel({ children, primary = false }: { children: React.ReactNode; primary?: boolean }) {
+  return <div className={c(primary ? "info-section-label-primary" : "info-section-label")}>{children}</div>;
 }
 
 function ChatMessage({ message }: { message: Message }) {
@@ -493,6 +514,14 @@ function ChatMessage({ message }: { message: Message }) {
 function Typing() { return <div className={c("typing-indicator")}><span /><span /><span /></div>; }
 
 function Modal({ visible, className, onBackdrop, children }: { visible: boolean; className: string; onBackdrop: () => void; children: React.ReactNode }) {
+  // Đóng bằng ESC cho cả ba popup của trang, giống hộp xem ảnh trong khung chat.
+  useEffect(() => {
+    if (!visible) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onBackdrop(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [visible, onBackdrop]);
+
   if (!visible) return null;
   return <div className={cx(c(className), c("visible"))} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onBackdrop(); }}>{children}</div>;
 }

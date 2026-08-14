@@ -588,6 +588,92 @@ async def _run_migrations(db) -> None:
             FOREIGN KEY (benchmark_id) REFERENCES benchmarks(id) ON DELETE CASCADE
         )
     """)
+    # Bộ thí nghiệm ablation tự cải thiện. Tách khỏi benchmarks vì đơn vị so
+    # sánh ở đây là điều kiện tri thức, không phải tên model.
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS experiments (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                   TEXT    NOT NULL,
+            agent_id               INTEGER NOT NULL,
+            project_id             INTEGER,
+            benchmark_id           INTEGER NOT NULL,
+            measured_model_pool_id INTEGER NOT NULL,
+            judge_model_pool_id    INTEGER NOT NULL,
+            repetitions            INTEGER NOT NULL DEFAULT 3,
+            status                 TEXT    NOT NULL DEFAULT 'pending',
+            total_trials           INTEGER NOT NULL DEFAULT 0,
+            completed_trials       INTEGER NOT NULL DEFAULT 0,
+            scored_trials          INTEGER NOT NULL DEFAULT 0,
+            warnings_json          TEXT    NOT NULL DEFAULT '[]',
+            config_snapshot_json   TEXT    NOT NULL DEFAULT '{}',
+            soul_snapshot_json     TEXT    NOT NULL DEFAULT '{}',
+            error_text             TEXT    NOT NULL DEFAULT '',
+            created_at             TEXT    NOT NULL DEFAULT (datetime('now')),
+            started_at             TEXT,
+            completed_at           TEXT,
+            updated_at             TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (agent_id) REFERENCES agent_configs(id),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (benchmark_id) REFERENCES benchmarks(id),
+            FOREIGN KEY (measured_model_pool_id) REFERENCES model_pool(id),
+            FOREIGN KEY (judge_model_pool_id) REFERENCES model_pool(id)
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS experiment_judgements (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id      INTEGER NOT NULL,
+            case_index         INTEGER NOT NULL,
+            judge_model_pool_id INTEGER NOT NULL,
+            item_map_json      TEXT    NOT NULL DEFAULT '{}',
+            judge_prompt       TEXT    NOT NULL DEFAULT '',
+            raw_response       TEXT    NOT NULL DEFAULT '',
+            status             TEXT    NOT NULL DEFAULT 'pending',
+            error_text         TEXT    NOT NULL DEFAULT '',
+            elapsed_seconds    REAL    NOT NULL DEFAULT 0,
+            tokens_input       INTEGER NOT NULL DEFAULT 0,
+            tokens_cache       INTEGER NOT NULL DEFAULT 0,
+            tokens_output      INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+            completed_at       TEXT,
+            FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS experiment_trials (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id     INTEGER NOT NULL,
+            condition         TEXT    NOT NULL,
+            case_index        INTEGER NOT NULL,
+            repetition        INTEGER NOT NULL,
+            execution_order   INTEGER NOT NULL,
+            judge_order       INTEGER,
+            prompt            TEXT    NOT NULL,
+            criteria          TEXT    NOT NULL DEFAULT '',
+            response          TEXT    NOT NULL DEFAULT '',
+            score             REAL,
+            score_reason      TEXT    NOT NULL DEFAULT '',
+            status            TEXT    NOT NULL DEFAULT 'pending',
+            error_text        TEXT    NOT NULL DEFAULT '',
+            elapsed_seconds   REAL    NOT NULL DEFAULT 0,
+            tokens_input      INTEGER NOT NULL DEFAULT 0,
+            tokens_cache      INTEGER NOT NULL DEFAULT 0,
+            tokens_output     INTEGER NOT NULL DEFAULT 0,
+            judgement_id      INTEGER,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+            started_at        TEXT,
+            completed_at      TEXT,
+            FOREIGN KEY (experiment_id) REFERENCES experiments(id) ON DELETE CASCADE,
+            FOREIGN KEY (judgement_id) REFERENCES experiment_judgements(id),
+            UNIQUE(experiment_id, condition, case_index, repetition)
+        )
+    """)
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_experiment_trials_run ON experiment_trials(experiment_id, execution_order)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_experiment_trials_summary ON experiment_trials(experiment_id, condition, score)"
+    )
     await db.execute("""
         CREATE TABLE IF NOT EXISTS task_alerts (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1530,6 +1616,276 @@ async def get_benchmark_results(benchmark_id: int) -> list[dict]:
             (benchmark_id,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+
+# ── Thí nghiệm cơ chế tự cải thiện ──────────────────────────────────────────
+
+async def create_experiment(
+    name: str,
+    agent_id: int,
+    project_id: int | None,
+    benchmark_id: int,
+    measured_model_pool_id: int,
+    judge_model_pool_id: int,
+    repetitions: int = 3,
+    warnings_json: str = "[]",
+) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO experiments
+               (name,agent_id,project_id,benchmark_id,measured_model_pool_id,
+                judge_model_pool_id,repetitions,warnings_json)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (name, agent_id, project_id, benchmark_id, measured_model_pool_id,
+             judge_model_pool_id, repetitions, warnings_json),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def list_experiments() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT e.*, a.name AS agent_name, p.name AS project_name,
+                      b.name AS benchmark_name, measured.name AS measured_model_name,
+                      judge.name AS judge_model_name
+               FROM experiments e
+               LEFT JOIN agent_configs a ON a.id=e.agent_id
+               LEFT JOIN projects p ON p.id=e.project_id
+               LEFT JOIN benchmarks b ON b.id=e.benchmark_id
+               LEFT JOIN model_pool measured ON measured.id=e.measured_model_pool_id
+               LEFT JOIN model_pool judge ON judge.id=e.judge_model_pool_id
+               ORDER BY e.created_at DESC, e.id DESC"""
+        ) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+
+async def get_experiment(experiment_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT e.*, a.name AS agent_name, p.name AS project_name,
+                      b.name AS benchmark_name, measured.name AS measured_model_name,
+                      measured.model_id AS measured_model_id,
+                      judge.name AS judge_model_name, judge.model_id AS judge_model_id
+               FROM experiments e
+               LEFT JOIN agent_configs a ON a.id=e.agent_id
+               LEFT JOIN projects p ON p.id=e.project_id
+               LEFT JOIN benchmarks b ON b.id=e.benchmark_id
+               LEFT JOIN model_pool measured ON measured.id=e.measured_model_pool_id
+               LEFT JOIN model_pool judge ON judge.id=e.judge_model_pool_id
+               WHERE e.id=?""",
+            (experiment_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def update_experiment(experiment_id: int, **kwargs) -> bool:
+    allowed = {
+        "status", "total_trials", "completed_trials", "scored_trials",
+        "warnings_json", "config_snapshot_json", "soul_snapshot_json",
+        "error_text", "started_at", "completed_at",
+    }
+    fields: list[str] = []
+    values: list = []
+    for key, value in kwargs.items():
+        if key in allowed:
+            fields.append(f"{key}=?")
+            values.append(value)
+    if not fields:
+        return False
+    fields.append("updated_at=datetime('now')")
+    values.append(experiment_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"UPDATE experiments SET {','.join(fields)} WHERE id=?", values
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def claim_experiment_run(
+    experiment_id: int,
+    *,
+    total_trials: int,
+    config_snapshot_json: str,
+    soul_snapshot_json: str,
+    warnings_json: str,
+) -> bool:
+    """Chuyển pending→running nguyên tử để hai client không chạy trùng."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """UPDATE experiments SET status='running', total_trials=?,
+                      completed_trials=0, scored_trials=0,
+                      config_snapshot_json=?, soul_snapshot_json=?, warnings_json=?,
+                      error_text='', started_at=datetime('now'), completed_at=NULL,
+                      updated_at=datetime('now')
+               WHERE id=? AND status='pending'""",
+            (total_trials, config_snapshot_json, soul_snapshot_json,
+             warnings_json, experiment_id),
+        )
+        await db.commit()
+        return cur.rowcount == 1
+
+
+async def create_experiment_trials(experiment_id: int, trials: list[dict]) -> None:
+    """Tạo toàn bộ ô đo trước khi gọi model để huỷ giữa chừng vẫn thấy phần thiếu."""
+    values = [(
+        experiment_id, item["condition"], item["case_index"], item["repetition"],
+        item["execution_order"], item["prompt"], item.get("criteria", ""),
+    ) for item in trials]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executemany(
+            """INSERT INTO experiment_trials
+               (experiment_id,condition,case_index,repetition,execution_order,prompt,criteria)
+               VALUES (?,?,?,?,?,?,?)""",
+            values,
+        )
+        await db.commit()
+
+
+async def list_experiment_trials(experiment_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM experiment_trials WHERE experiment_id=? ORDER BY execution_order,id",
+            (experiment_id,),
+        ) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+
+async def get_experiment_trial(trial_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM experiment_trials WHERE id=?", (trial_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def update_experiment_trial(trial_id: int, **kwargs) -> bool:
+    allowed = {
+        "judge_order", "response", "score", "score_reason", "status",
+        "error_text", "elapsed_seconds", "tokens_input", "tokens_cache",
+        "tokens_output", "judgement_id", "started_at", "completed_at",
+    }
+    fields: list[str] = []
+    values: list = []
+    for key, value in kwargs.items():
+        if key in allowed:
+            fields.append(f"{key}=?")
+            values.append(value)
+    if not fields:
+        return False
+    values.append(trial_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"UPDATE experiment_trials SET {','.join(fields)} WHERE id=?", values
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def create_experiment_judgement(
+    experiment_id: int,
+    case_index: int,
+    judge_model_pool_id: int,
+    item_map_json: str,
+    judge_prompt: str,
+) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO experiment_judgements
+               (experiment_id,case_index,judge_model_pool_id,item_map_json,judge_prompt,status)
+               VALUES (?,?,?,?,?,'running')""",
+            (experiment_id, case_index, judge_model_pool_id, item_map_json, judge_prompt),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def update_experiment_judgement(judgement_id: int, **kwargs) -> bool:
+    allowed = {
+        "raw_response", "status", "error_text", "elapsed_seconds",
+        "tokens_input", "tokens_cache", "tokens_output", "completed_at",
+    }
+    fields: list[str] = []
+    values: list = []
+    for key, value in kwargs.items():
+        if key in allowed:
+            fields.append(f"{key}=?")
+            values.append(value)
+    if not fields:
+        return False
+    values.append(judgement_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"UPDATE experiment_judgements SET {','.join(fields)} WHERE id=?", values
+        )
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def list_experiment_judgements(experiment_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM experiment_judgements WHERE experiment_id=? ORDER BY case_index,id",
+            (experiment_id,),
+        ) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+
+async def refresh_experiment_progress(experiment_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT COUNT(*),
+                      COALESCE(SUM(CASE WHEN status NOT IN ('pending','running','cancelled') THEN 1 ELSE 0 END),0),
+                      COALESCE(SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END),0)
+               FROM experiment_trials WHERE experiment_id=?""",
+            (experiment_id,),
+        ) as cur:
+            total, completed, scored = await cur.fetchone()
+        await db.execute(
+            """UPDATE experiments SET total_trials=?,completed_trials=?,scored_trials=?,
+                      updated_at=datetime('now') WHERE id=?""",
+            (total, completed, scored, experiment_id),
+        )
+        await db.commit()
+    return {"total_trials": total, "completed_trials": completed, "scored_trials": scored}
+
+
+async def cancel_unfinished_experiment_trials(experiment_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE experiment_trials SET status='cancelled',completed_at=datetime('now')
+               WHERE experiment_id=? AND status IN ('pending','running','generated')""",
+            (experiment_id,),
+        )
+        await db.execute(
+            """UPDATE experiment_judgements
+               SET status='cancelled',completed_at=datetime('now')
+               WHERE experiment_id=? AND status='running'""",
+            (experiment_id,),
+        )
+        await db.commit()
+
+
+async def recover_interrupted_experiments() -> int:
+    """Đánh dấu lượt đang chạy khi server cũ đã chết; không xoá dữ liệu dở dang."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE experiment_trials SET status='interrupted',completed_at=datetime('now')
+               WHERE status='running'"""
+        )
+        cur = await db.execute(
+            """UPDATE experiments SET status='interrupted',completed_at=datetime('now'),
+                      error_text='Server dừng khi thí nghiệm đang chạy',updated_at=datetime('now')
+               WHERE status='running'"""
+        )
+        await db.commit()
+        return cur.rowcount
 
 
 # ── Task Alerts ───────────────────────────────────────────────────────────────

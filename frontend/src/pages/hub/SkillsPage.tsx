@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { Dialog } from "./Dialog";
 import { useHub } from "./HubContext";
@@ -42,6 +44,7 @@ interface ConnectionResult {
 export function SkillsPage() {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const { skills, refreshSkills, toast, confirm } = useHub();
   const [servers, setServers] = useState<McpServer[]>([]);
   const [registry, setRegistry] = useState<ToolInfo[]>([]);
@@ -125,10 +128,12 @@ export function SkillsPage() {
           <h1>{vi ? "Kỹ năng" : "Skills"}</h1>
           <p>{vi ? "Công cụ nhân viên AI có thể sử dụng" : "Tools available to AI employees"}</p>
         </div>
-        <button data-testid="new-skill" className={c("primaryButton")} onClick={() => open()}>
-          <Icon name="puzzle" />
-          {vi ? "Thêm kỹ năng" : "Add skill"}
-        </button>
+        <Tooltip label={tooltip("tooltip.skills.create_open")}>
+          <button data-testid="new-skill" className={c("primaryButton")} onClick={() => open()}>
+            <Icon name="puzzle" />
+            {vi ? "Thêm kỹ năng" : "Add skill"}
+          </button>
+        </Tooltip>
       </header>
       <div className={c("toolbar")}>
         <input
@@ -139,13 +144,14 @@ export function SkillsPage() {
         />
         <div className={c("filterBar")}>
           {types.map(([key, label]) => (
-            <button
-              key={key}
-              className={filter === key ? c("activePill") : c("pill")}
-              onClick={() => setFilter(key)}
-            >
-              {label} ({key === "all" ? skills.length : skills.filter((skill) => skill.type === key).length})
-            </button>
+            <Tooltip key={key} label={tooltip("tooltip.skills.filter", label)}>
+              <button
+                className={filter === key ? c("activePill") : c("pill")}
+                onClick={() => setFilter(key)}
+              >
+                {label} ({key === "all" ? skills.length : skills.filter((skill) => skill.type === key).length})
+              </button>
+            </Tooltip>
           ))}
         </div>
       </div>
@@ -153,27 +159,29 @@ export function SkillsPage() {
         {visible.map((skill) => {
           const server = servers.find((item) => item.skill_id === skill.id);
           return (
-            <button className={c("entityCard")} key={skill.id} onClick={() => open(skill)}>
-              <span className={c("entityIcon")}>
-                <Icon name={skill.type === "mcp" ? "plug" : skill.type === "api" ? "api" : "bolt"} />
-              </span>
-              <div>
-                <h2>{skill.name}</h2>
-                <p>{skill.description || (vi ? "Chưa có mô tả" : "No description")}</p>
-                {skill.type === "mcp" ? (
-                  <small>
-                    {server?.connected
-                      ? `${server.available.length} tool`
-                      : server?.error || (vi ? "Đang kết nối…" : "Connecting…")}
-                  </small>
-                ) : (
-                  <small>{skill.type}</small>
-                )}
-              </div>
-              <span className={skill.enabled === 0 || skill.enabled === false ? c("offBadge") : c("onBadge")}>
-                {skill.enabled === 0 || skill.enabled === false ? "OFF" : "ON"}
-              </span>
-            </button>
+            <Tooltip key={skill.id} label={tooltip("tooltip.skills.open", skill.name || "")}>
+              <button className={c("entityCard")} onClick={() => open(skill)}>
+                <span className={c("entityIcon")}>
+                  <Icon name={skill.type === "mcp" ? "plug" : skill.type === "api" ? "api" : "bolt"} />
+                </span>
+                <div>
+                  <h2>{skill.name}</h2>
+                  <p>{skill.description || (vi ? "Chưa có mô tả" : "No description")}</p>
+                  {skill.type === "mcp" ? (
+                    <small>
+                      {server?.connected
+                        ? `${server.available.length} tool`
+                        : server?.error || (vi ? "Đang kết nối…" : "Connecting…")}
+                    </small>
+                  ) : (
+                    <small>{skill.type}</small>
+                  )}
+                </div>
+                <span className={skill.enabled === 0 || skill.enabled === false ? c("offBadge") : c("onBadge")}>
+                  {skill.enabled === 0 || skill.enabled === false ? "OFF" : "ON"}
+                </span>
+              </button>
+            </Tooltip>
           );
         })}
       </section>
@@ -227,6 +235,7 @@ function SkillWizard({
   onSave: () => void;
   onDelete: () => void;
 }) {
+  const tooltip = useTooltipText();
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<ConnectionResult | null>(null);
   const [discovered, setDiscovered] = useState<string[]>(
@@ -305,16 +314,20 @@ function SkillWizard({
       <div className={c("wizardTabs")}>
         {[vi ? "Thông tin" : "Details", vi ? "Kết nối" : "Connection", vi ? "Xem lại" : "Review"].map(
           (label, index) => (
-            <button
-              data-testid={`skill-step-${index + 1}`}
-              type="button"
+            <Tooltip
               key={label}
-              className={step === index + 1 ? c("wizardActive") : step > index + 1 ? c("wizardDone") : ""}
-              onClick={() => draft.id && setStep(index + 1)}
+              label={tooltip(draft.id ? "tooltip.skills.wizard_step" : "tooltip.skills.wizard_step_locked", label)}
             >
-              <span>{step > index + 1 ? "✓" : index + 1}</span>
-              {label}
-            </button>
+              <button
+                data-testid={`skill-step-${index + 1}`}
+                type="button"
+                className={step === index + 1 ? c("wizardActive") : step > index + 1 ? c("wizardDone") : ""}
+                onClick={() => draft.id && setStep(index + 1)}
+              >
+                <span>{step > index + 1 ? "✓" : index + 1}</span>
+                {label}
+              </button>
+            </Tooltip>
           ),
         )}
       </div>
@@ -351,19 +364,20 @@ function SkillWizard({
         <div className={c("formStack")}>
           <div className={c("typeChoices")}>
             {(["builtin", "api", "mcp", "custom"] as SkillType[]).map((type) => (
-              <button
-                type="button"
-                key={type}
-                className={draft.type === type ? c("typeSelected") : ""}
-                onClick={() => setType(type)}
-              >
-                <Icon
-                  name={
-                    type === "mcp" ? "plug" : type === "api" ? "api" : type === "custom" ? "code" : "bolt"
-                  }
-                />
-                <strong>{type}</strong>
-              </button>
+              <Tooltip key={type} label={tooltip("tooltip.skills.type", type)}>
+                <button
+                  type="button"
+                  className={draft.type === type ? c("typeSelected") : ""}
+                  onClick={() => setType(type)}
+                >
+                  <Icon
+                    name={
+                      type === "mcp" ? "plug" : type === "api" ? "api" : type === "custom" ? "code" : "bolt"
+                    }
+                  />
+                  <strong>{type}</strong>
+                </button>
+              </Tooltip>
             ))}
           </div>
           <SkillConfig
@@ -380,16 +394,18 @@ function SkillWizard({
           />
           {draft.type === "api" || draft.type === "mcp" ? (
             <>
-              <button
-                data-testid="test-skill-connection"
-                type="button"
-                className={c("buttonGhost")}
-                disabled={testing}
-                onClick={() => void testConnection()}
-              >
-                <Icon name="plug" />
-                {testing ? (vi ? "Đang thử…" : "Testing…") : vi ? "Kiểm tra kết nối" : "Test connection"}
-              </button>
+              <Tooltip label={tooltip(testing ? "tooltip.skills.test_running" : "tooltip.skills.test")}>
+                <button
+                  data-testid="test-skill-connection"
+                  type="button"
+                  className={c("buttonGhost")}
+                  disabled={testing}
+                  onClick={() => void testConnection()}
+                >
+                  <Icon name="plug" />
+                  {testing ? (vi ? "Đang thử…" : "Testing…") : vi ? "Kiểm tra kết nối" : "Test connection"}
+                </button>
+              </Tooltip>
               {result ? (
                 <div className={result.ok ? c("connectionOk") : c("connectionFail")}>
                   <strong>
@@ -432,21 +448,36 @@ function SkillWizard({
       ) : null}
       <footer className={c("formActions")}>
         {draft.id ? (
-          <button data-testid="delete-skill" type="button" className={c("dangerLink")} onClick={onDelete}>
-            {vi ? "Xoá kỹ năng" : "Delete skill"}
-          </button>
+          <Tooltip label={tooltip("tooltip.skills.delete", draft.name || "")}>
+            <button data-testid="delete-skill" type="button" className={c("dangerLink")} onClick={onDelete}>
+              {vi ? "Xoá kỹ năng" : "Delete skill"}
+            </button>
+          </Tooltip>
         ) : (
           <span />
         )}
         <div>
           {step > 1 ? (
-            <button type="button" className={c("buttonGhost")} onClick={() => setStep(step - 1)}>
-              {vi ? "Quay lại" : "Back"}
-            </button>
+            <Tooltip label={tooltip("tooltip.skills.back")}>
+              <button type="button" className={c("buttonGhost")} onClick={() => setStep(step - 1)}>
+                {vi ? "Quay lại" : "Back"}
+              </button>
+            </Tooltip>
           ) : null}
-          <button data-testid="skill-next-save" type="submit" className={c("primaryButton")}>
-            {step === 3 ? (vi ? "Lưu" : "Save") : vi ? "Tiếp tục" : "Continue"}
-          </button>
+          <Tooltip
+            label={tooltip(
+              step === 3
+                ? "tooltip.skills.save"
+                : step === 1 && !draft.name.trim()
+                  ? "tooltip.skills.continue_name_required"
+                  : "tooltip.skills.continue",
+              draft.name,
+            )}
+          >
+            <button data-testid="skill-next-save" type="submit" className={c("primaryButton")}>
+              {step === 3 ? (vi ? "Lưu" : "Save") : vi ? "Tiếp tục" : "Continue"}
+            </button>
+          </Tooltip>
         </div>
       </footer>
     </form>

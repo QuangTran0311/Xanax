@@ -1,6 +1,7 @@
+import { taskrunnerText, type TaskrunnerTranslator } from "../../i18n/taskrunner";
 import type { WorkflowMessageType, WorkflowSocketMessage } from "./types";
 
-/** Exhaustive list extracted from websocket_workflow.py, including compatibility aliases. */
+/** Danh sách đầy đủ lấy từ websocket_workflow.py, gồm cả bí danh tương thích. */
 export const WORKFLOW_MESSAGE_TYPES = [
   "active_runs", "agent_chunk", "agent_done", "agent_error", "agent_image",
   "agent_start", "approval_rejected", "approval_request", "approval_resumed",
@@ -34,54 +35,58 @@ export interface WorkflowEventResult {
   toast?: { text: string; kind: "success" | "error" | "info" };
 }
 
-/** One explicit branch for every server message: additions cannot disappear silently. */
-export function reduceWorkflowEvent(message: WorkflowSocketMessage, activeNodeId?: string): WorkflowEventResult {
+/** Mỗi thông điệp server có một nhánh rõ ràng để loại mới không bị bỏ qua âm thầm. */
+export function reduceWorkflowEvent(
+  message: WorkflowSocketMessage,
+  activeNodeId?: string,
+  text: TaskrunnerTranslator = (key, ...args) => taskrunnerText("vi", key, ...args),
+): WorkflowEventResult {
   const nodeId = message.node_id || activeNodeId;
   switch (message.type) {
     case "active_runs": return {};
     case "attached": return { reset: true };
-    case "attach_failed": return { terminal: "error", forgetRun: true, toast: { text: "Không còn lần chạy để nối lại.", kind: "error" } };
+    case "attach_failed": return { terminal: "error", forgetRun: true, toast: { text: text("protocol.attach_failed"), kind: "error" } };
     case "run_started": return { rememberRun: message.run_id };
     case "node_start":
     case "agent_start":
     case "tool_call_start":
     case "delay_start":
-      return { nodeId: message.node_id, nodeStatus: { state: "running", detail: String(message.agent_name || message.tool_name || "Đang chạy") } };
+      return { nodeId: message.node_id, nodeStatus: { state: "running", detail: String(message.agent_name || message.tool_name || text("protocol.running")) } };
     case "agent_chunk":
     case "workflow_progress":
-      return { nodeId, nodeStatus: { state: "running", detail: String(message.content || "Đang chạy") } };
+      return { nodeId, nodeStatus: { state: "running", detail: String(message.content || text("protocol.running")) } };
     case "agent_image":
     case "function":
-      return { nodeId, nodeStatus: { state: "running", detail: String(message.content || message.result || "Đã nhận kết quả") } };
+      return { nodeId, nodeStatus: { state: "running", detail: String(message.content || message.result || text("protocol.result_received")) } };
     case "agent_done":
     case "tool_call_done":
     case "data_set":
     case "delay_done":
     case "condition_result":
     case "node_done":
-      return { nodeId, nodeStatus: { state: "done", detail: String(message.result ?? "Đã hoàn thành") } };
+      return { nodeId, nodeStatus: { state: "done", detail: String(message.result ?? text("protocol.done")) } };
     case "approval_resumed":
-      return { nodeId, nodeStatus: { state: "done", detail: "Đã duyệt" }, clearApproval: true };
+      return { nodeId, nodeStatus: { state: "done", detail: text("protocol.approved") }, clearApproval: true };
     case "run_paused_for_approval":
     case "approval_request":
-      return { nodeId: message.node_id, nodeStatus: { state: "paused", detail: `Đang chờ ${String(message.approver || "CEO")} duyệt` }, approval: message };
+      return { nodeId: message.node_id, nodeStatus: { state: "paused", detail: text("protocol.waiting_approval", String(message.approver || "CEO")) }, approval: message };
     case "run_paused_for_image_source":
     case "image_source_request":
-      return { nodeId: message.node_id, nodeStatus: { state: "paused", detail: "Đang hỏi nguồn ảnh" }, imageSource: message };
+      return { nodeId: message.node_id, nodeStatus: { state: "paused", detail: text("protocol.waiting_image") }, imageSource: message };
     case "image_source_chosen":
-      return { nodeId: message.node_id, nodeStatus: { state: "running", detail: message.mode === "asset" ? "Dùng ảnh có sẵn" : "Nhân viên tự vẽ ảnh" }, clearImageSource: true };
+      return { nodeId: message.node_id, nodeStatus: { state: "running", detail: text(message.mode === "asset" ? "protocol.use_asset" : "protocol.generate_image") }, clearImageSource: true };
     case "approval_rejected":
-      return { clearApproval: true, toast: { text: `Đã từ chối — đang chạy lại bước trước (lần ${message.attempt || 1}).`, kind: "info" } };
+      return { clearApproval: true, toast: { text: text("protocol.rejected", Number(message.attempt || 1)), kind: "info" } };
     case "agent_error":
     case "tool_call_error":
-      return { nodeId, nodeStatus: { state: "error", detail: String(message.content || "Thất bại") } };
-    case "run_done": return { terminal: "done", forgetRun: true, toast: { text: "Quy trình đã hoàn thành.", kind: "success" } };
-    case "run_cancelled": return { terminal: "cancelled", forgetRun: true, toast: { text: "Đã huỷ lần chạy.", kind: "info" } };
+      return { nodeId, nodeStatus: { state: "error", detail: String(message.content || text("protocol.failed")) } };
+    case "run_done": return { terminal: "done", forgetRun: true, toast: { text: text("protocol.run_done"), kind: "success" } };
+    case "run_cancelled": return { terminal: "cancelled", forgetRun: true, toast: { text: text("protocol.run_cancelled"), kind: "info" } };
     case "run_error":
-      return { terminal: "error", forgetRun: true, toast: { text: String(message.content || "Quy trình thất bại."), kind: "error" } };
+      return { terminal: "error", forgetRun: true, toast: { text: String(message.content || text("protocol.run_failed")), kind: "error" } };
     case "run_failed":
-      return { terminal: "error", forgetRun: true, nodeId: message.node_id, nodeStatus: message.node_id ? { state: "error", detail: String(message.content || "Thất bại") } : undefined, toast: { text: String(message.content || "Quy trình thất bại."), kind: "error" } };
-    case "cancelling": return { toast: { text: "Đang huỷ lần chạy...", kind: "info" } };
-    case "error": return { toast: { text: String(message.content || "Lỗi WebSocket."), kind: "error" } };
+      return { terminal: "error", forgetRun: true, nodeId: message.node_id, nodeStatus: message.node_id ? { state: "error", detail: String(message.content || text("protocol.failed")) } : undefined, toast: { text: String(message.content || text("protocol.run_failed")), kind: "error" } };
+    case "cancelling": return { toast: { text: text("protocol.cancelling"), kind: "info" } };
+    case "error": return { toast: { text: String(message.content || text("common.websocket_error")), kind: "error" } };
   }
 }

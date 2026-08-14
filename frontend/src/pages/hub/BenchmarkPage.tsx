@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { useHub } from "./HubContext";
 import styles from "./HubPage.module.css";
 
 const c = (name: string) => styles[name] ?? name;
-interface Benchmark {
+export interface Benchmark {
   id: number;
   name: string;
   role_description?: string;
@@ -36,11 +38,21 @@ interface Progress {
   scores?: Scores;
 }
 
-export function BenchmarkPage() {
+export function BenchmarkPage({
+  benchmarks,
+  createRequest,
+  refreshBenchmarks,
+  hidden,
+}: {
+  benchmarks: Benchmark[];
+  createRequest: number;
+  refreshBenchmarks: () => Promise<void>;
+  hidden?: boolean;
+}) {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const { modelPool, toast, confirm } = useHub();
-  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
   const [selected, setSelected] = useState<Benchmark | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
@@ -52,16 +64,22 @@ export function BenchmarkPage() {
   const [progress, setProgress] = useState<Progress[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
-  const load = useCallback(async () => {
-    const data = await apiClient.get<{ benchmarks: Benchmark[] }>(
-      "/benchmarks/",
-    );
-    setBenchmarks(data.benchmarks || []);
-  }, []);
+
   useEffect(() => {
-    void load();
     return () => socketRef.current?.close();
-  }, [load]);
+  }, []);
+
+  useEffect(() => {
+    if (createRequest <= 0) return;
+    setCreating(true);
+    setSelected(null);
+    setDraft({
+      name: "",
+      role_description: "",
+      models: [],
+      test_cases: [{ prompt: "", criteria: "" }],
+    });
+  }, [createRequest]);
   const open = async (benchmark: Benchmark) => {
     setSelected(benchmark);
     setCreating(false);
@@ -95,7 +113,7 @@ export function BenchmarkPage() {
     });
     setSelected(benchmark);
     setCreating(false);
-    await load();
+    await refreshBenchmarks();
     run(benchmark.id, draft.models);
   };
   const run = (id: number, models: string[]) => {
@@ -145,7 +163,7 @@ export function BenchmarkPage() {
         );
       if (message.type === "complete") {
         setResults(message.results || []);
-        void load();
+        void refreshBenchmarks();
         socket.close(1000);
       }
       if (message.type === "error")
@@ -162,42 +180,17 @@ export function BenchmarkPage() {
       return;
     await apiClient.delete(`/benchmarks/${benchmark.id}`);
     if (selected?.id === benchmark.id) setSelected(null);
-    await load();
+    await refreshBenchmarks();
   };
   return (
-    <div className={c("page")}>
-      <header className={c("pageHeader")}>
-        <div>
-          <h1>{vi ? "Đánh giá model" : "Model benchmarks"}</h1>
-          <p>
-            {vi
-              ? "So sánh chất lượng và tốc độ model theo vai trò"
-              : "Compare model quality and speed for a role"}
-          </p>
-        </div>
-        <button
-          data-testid="new-benchmark"
-          className={c("primaryButton")}
-          onClick={() => {
-            setCreating(true);
-            setSelected(null);
-            setDraft({
-              name: "",
-              role_description: "",
-              models: [],
-              test_cases: [{ prompt: "", criteria: "" }],
-            });
-          }}
-        >
-          <Icon name="flask" />
-          {vi ? "Tạo bài đánh giá" : "Create benchmark"}
-        </button>
-      </header>
-      <div className={c("splitView")}>
-        <aside className={c("sideList")}>
-          {benchmarks.map((benchmark) => (
+    <div className={c("splitView")} hidden={hidden}>
+      <aside className={c("sideList")}>
+        {benchmarks.map((benchmark) => (
+          <Tooltip
+            key={benchmark.id}
+            label={tooltip("tooltip.benchmark.open", benchmark.name || "")}
+          >
             <button
-              key={benchmark.id}
               className={selected?.id === benchmark.id ? c("sideSelected") : ""}
               onClick={() => void open(benchmark)}
             >
@@ -206,26 +199,30 @@ export function BenchmarkPage() {
                 {benchmark.status} · {(benchmark.models || []).length} models
               </small>
             </button>
-          ))}
-        </aside>
-        <section className={c("detailPane")}>
-          {creating ? (
-            <BenchmarkForm
-              draft={draft}
-              setDraft={setDraft}
-              models={modelPool
-                .map((model) => model.model_id || model.name || "")
-                .filter(Boolean)}
-              vi={vi}
-              onRun={createAndRun}
-            />
-          ) : selected ? (
-            <>
-              <header className={c("detailHeader")}>
-                <div>
-                  <h2>{selected.name}</h2>
-                  <p>{selected.role_description}</p>
-                </div>
+          </Tooltip>
+        ))}
+      </aside>
+      <section className={c("detailPane")}>
+        {creating ? (
+          <BenchmarkForm
+            draft={draft}
+            setDraft={setDraft}
+            models={modelPool
+              .map((model) => model.model_id || model.name || "")
+              .filter(Boolean)}
+            vi={vi}
+            onRun={createAndRun}
+          />
+        ) : selected ? (
+          <>
+            <header className={c("detailHeader")}>
+              <div>
+                <h2>{selected.name}</h2>
+                <p>{selected.role_description}</p>
+              </div>
+              <Tooltip
+                label={tooltip("tooltip.benchmark.delete", selected.name || "")}
+              >
                 <button
                   className={c("dangerLink")}
                   onClick={() => void remove(selected)}
@@ -233,43 +230,43 @@ export function BenchmarkPage() {
                   <Icon name="trash" />
                   {vi ? "Xoá" : "Delete"}
                 </button>
-              </header>
-              {progress.length && !results.length ? (
-                <div className={c("progressList")}>
-                  {progress.map((item) => (
-                    <div key={item.model}>
-                      <span
-                        className={
-                          item.done ? c("progressDone") : c("progressRunning")
-                        }
-                      />
-                      <strong>{item.model}</strong>
-                      <small>{item.text}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {results.length ? (
-                <Results results={results} vi={vi} />
-              ) : selected.status !== "completed" && !progress.length ? (
-                <div className={c("empty")}>
-                  <Icon name="clock" />
-                  {vi
-                    ? "Bài đánh giá chưa hoàn tất"
-                    : "Benchmark has not completed"}
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <div className={c("empty")}>
-              <Icon name="flask" />
-              {vi
-                ? "Chọn hoặc tạo một bài đánh giá"
-                : "Select or create a benchmark"}
-            </div>
-          )}
-        </section>
-      </div>
+              </Tooltip>
+            </header>
+            {progress.length && !results.length ? (
+              <div className={c("progressList")}>
+                {progress.map((item) => (
+                  <div key={item.model}>
+                    <span
+                      className={
+                        item.done ? c("progressDone") : c("progressRunning")
+                      }
+                    />
+                    <strong>{item.model}</strong>
+                    <small>{item.text}</small>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {results.length ? (
+              <Results results={results} vi={vi} />
+            ) : selected.status !== "completed" && !progress.length ? (
+              <div className={c("empty")}>
+                <Icon name="clock" />
+                {vi
+                  ? "Bài đánh giá chưa hoàn tất"
+                  : "Benchmark has not completed"}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className={c("empty")}>
+            <Icon name="flask" />
+            {vi
+              ? "Chọn hoặc tạo một bài đánh giá"
+              : "Select or create a benchmark"}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -297,6 +294,7 @@ function BenchmarkForm({
   vi: boolean;
   onRun: () => Promise<void>;
 }) {
+  const tooltip = useTooltipText();
   return (
     <div className={c("formStack")}>
       <Field label={vi ? "Tên bài đánh giá" : "Benchmark name"}>
@@ -339,17 +337,20 @@ function BenchmarkForm({
       <div className={c("testCases")}>
         <header>
           <strong>{vi ? "Câu hỏi thử nghiệm" : "Test cases"}</strong>
-          <button
-            className={c("buttonGhost")}
-            onClick={() =>
-              setDraft({
-                ...draft,
-                test_cases: [...draft.test_cases, { prompt: "", criteria: "" }],
-              })
-            }
-          >
-            +
-          </button>
+          <Tooltip label={tooltip("tooltip.benchmark.case_add")}>
+            <button
+              className={c("buttonGhost")}
+              aria-label={tooltip("tooltip.benchmark.case_add")}
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  test_cases: [...draft.test_cases, { prompt: "", criteria: "" }],
+                })
+              }
+            >
+              +
+            </button>
+          </Tooltip>
         </header>
         {draft.test_cases.map((item, index) => (
           <div key={index}>
@@ -383,29 +384,34 @@ function BenchmarkForm({
                 })
               }
             />
-            <button
-              onClick={() =>
-                setDraft({
-                  ...draft,
-                  test_cases: draft.test_cases.filter(
-                    (_, currentIndex) => currentIndex !== index,
-                  ),
-                })
-              }
-            >
-              ×
-            </button>
+            <Tooltip label={tooltip("tooltip.benchmark.case_remove", index + 1)}>
+              <button
+                aria-label={tooltip("tooltip.benchmark.case_remove", index + 1)}
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    test_cases: draft.test_cases.filter(
+                      (_, currentIndex) => currentIndex !== index,
+                    ),
+                  })
+                }
+              >
+                ×
+              </button>
+            </Tooltip>
           </div>
         ))}
       </div>
-      <button
-        data-testid="run-benchmark"
-        className={c("primaryButton")}
-        onClick={() => void onRun()}
-      >
-        <Icon name="play" />
-        {vi ? "Tạo và chạy" : "Create and run"}
-      </button>
+      <Tooltip label={tooltip("tooltip.benchmark.run")}>
+        <button
+          data-testid="run-benchmark"
+          className={c("primaryButton")}
+          onClick={() => void onRun()}
+        >
+          <Icon name="play" />
+          {vi ? "Tạo và chạy" : "Create and run"}
+        </button>
+      </Tooltip>
     </div>
   );
 }

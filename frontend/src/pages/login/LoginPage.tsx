@@ -2,6 +2,8 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { sessionApi } from "../../store/session";
 import { useTheme } from "../../store/theme";
 import styles from "./LoginPage.module.css";
@@ -10,6 +12,7 @@ const IDLE_MESSAGE = "Phiên làm việc đã hết hạn do không có thao tá
 
 export function LoginPage() {
   const { theme, toggleTheme } = useTheme();
+  const tooltip = useTooltipText();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,8 +78,12 @@ export function LoginPage() {
     }
   }
 
-  const themeLabel =
-    theme === "light" ? "Chuyển sang giao diện tối" : "Chuyển sang giao diện sáng";
+  const themeLabel = tooltip(
+    theme === "light" ? "tooltip.login.theme_dark" : "tooltip.login.theme_light",
+  );
+  const passwordLabel = tooltip(
+    showPassword ? "tooltip.login.password_hide" : "tooltip.login.password_show",
+  );
 
   return (
     <>
@@ -131,15 +138,16 @@ export function LoginPage() {
         <div className={styles["neon-divider"]} />
 
         <main className={styles["panel-right"]}>
-          <button
-            type="button"
-            className={styles["theme-toggle"]}
-            onClick={toggleTheme}
-            aria-label={themeLabel}
-            title={themeLabel}
-          >
-            <Icon name={theme === "light" ? "moon" : "sun"} />
-          </button>
+          <Tooltip label={themeLabel}>
+            <button
+              type="button"
+              className={styles["theme-toggle"]}
+              onClick={toggleTheme}
+              aria-label={themeLabel}
+            >
+              <Icon name={theme === "light" ? "moon" : "sun"} />
+            </button>
+          </Tooltip>
           <div className={styles["form-wrap"]}>
             <div className={styles["form-header"]}>
               <div className={styles["form-eyebrow"]}>
@@ -186,14 +194,16 @@ export function LoginPage() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                   />
-                  <button
-                    type="button"
-                    className={styles["toggle-btn"]}
-                    aria-label="Hiện/ẩn mật khẩu"
-                    onClick={() => setShowPassword((current) => !current)}
-                  >
-                    <Icon name={showPassword ? "eyeOff" : "eye"} size={16} strokeWidth={1.5} />
-                  </button>
+                  <Tooltip label={passwordLabel}>
+                    <button
+                      type="button"
+                      className={styles["toggle-btn"]}
+                      aria-label={passwordLabel}
+                      onClick={() => setShowPassword((current) => !current)}
+                    >
+                      <Icon name={showPassword ? "eyeOff" : "eye"} size={16} strokeWidth={1.5} />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
               <div className={styles.forgot}><a href="#">Quên mật khẩu?</a></div>
@@ -204,10 +214,12 @@ export function LoginPage() {
               >
                 {error}
               </div>
-              <button type="submit" className={styles["submit-btn"]} disabled={loading}>
-                <span>{loading ? "Đang xác thực..." : "Đăng nhập"}</span>
-                {loading ? <span className={styles.spinner} aria-hidden="true" /> : <Icon name="loginArrow" size={16} strokeWidth={2} />}
-              </button>
+              <Tooltip label={tooltip("tooltip.login.submit")}>
+                <button type="submit" className={styles["submit-btn"]} disabled={loading}>
+                  <span>{loading ? "Đang xác thực..." : "Đăng nhập"}</span>
+                  {loading ? <span className={styles.spinner} aria-hidden="true" /> : <Icon name="loginArrow" size={16} strokeWidth={2} />}
+                </button>
+              </Tooltip>
             </form>
           </div>
           <div className={styles["panel-footer"]}>v1.0 · Antigravity × Hermes Agent</div>

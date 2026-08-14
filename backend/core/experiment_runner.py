@@ -1,0 +1,547 @@
+"""Runner nền cho thí nghiệm ablation ba tầng tri thức.
+
+Mọi lượt sinh và chấm đều đi qua ``stream_from_pool`` với chính sách experiment:
+cùng provider/CLI như production, nhưng không kiểm/ghi hạn mức thật.  Module này
+không import bất kỳ hàm append/sync soul nào.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import random
+import secrets
+import statistics
+import time
+from collections import defaultdict
+from datetime import datetime, timezone
+
+from core.agent_prompt import (
+    AgentPromptContext,
+    PromptLayerFlags,
+    compose_agent_system_prompt,
+    load_agent_prompt_context,
+)
+from core.model_pool_bridge import stream_from_pool
+from hub.database import (
+    cancel_unfinished_experiment_trials,
+    claim_experiment_run,
+    create_experiment_judgement,
+    create_experiment_trials,
+    get_agent_config,
+    get_benchmark,
+    get_experiment,
+    get_model_pool_entry,
+    get_project,
+    list_experiment_trials,
+    refresh_experiment_progress,
+    update_experiment,
+    update_experiment_judgement,
+    update_experiment_trial,
+)
+
+logger = logging.getLogger("xanax.experiment_runner")
+
+# Thứ tự này là thứ tự trình bày trong báo cáo; thứ tự THỰC THI được xáo riêng.
+CONDITIONS: dict[str, PromptLayerFlags] = {
+    "khong_soul": PromptLayerFlags(False, False, False),
+    "soul_nhan_vien": PromptLayerFlags(True, False, False),
+    "them_ky_nang": PromptLayerFlags(True, True, False),
+    "day_du": PromptLayerFlags(True, True, True),
+}
+
+JUDGE_SYSTEM = """Bạn là giám khảo độc lập, nghiêm khắc cho một nghiên cứu AI.
+Chấm MỖI câu trả lời độc lập theo đúng đề bài và tiêu chí được cung cấp, thang 0-10.
+Không xếp hạng tương đối giữa các câu. Không suy đoán nguồn gốc hay cách tạo câu trả lời.
+Chỉ trả JSON hợp lệ theo dạng:
+{"scores":[{"id":"mã ẩn danh","score":7.5,"reason":"lý do ngắn gọn"}]}"""
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _safe_model_snapshot(entry: dict) -> dict:
+    """Không bao giờ đóng băng api_key hay thư mục tài khoản CLI vào kết quả."""
+    return {
+        "id": entry.get("id"),
+        "name": entry.get("name", ""),
+        "provider": entry.get("provider", ""),
+        "api_style": entry.get("api_style", ""),
+        "model_id": entry.get("model_id", ""),
+    }
+
+
+def _parse_json_object(text: str) -> dict:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("Giám khảo không trả JSON object")
+    value = json.loads(cleaned[start:end + 1])
+    if not isinstance(value, dict):
+        raise ValueError("Kết quả chấm không phải JSON object")
+    return value
+
+
+def _valid_scores(raw: str, allowed_ids: set[str]) -> dict[str, tuple[float, str]]:
+    """Chỉ nhận điểm có id đúng và trong thang; tuyệt đối không tự điền điểm 5."""
+    value = _parse_json_object(raw)
+    rows = value.get("scores")
+    if not isinstance(rows, list):
+        raise ValueError("JSON chấm thiếu mảng scores")
+    result: dict[str, tuple[float, str]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        opaque_id = str(row.get("id", ""))
+        score = row.get("score")
+        if opaque_id not in allowed_ids or opaque_id in result:
+            continue
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            continue
+        score_value = float(score)
+        if not 0 <= score_value <= 10:
+            continue
+        result[opaque_id] = (score_value, str(row.get("reason", "")).strip())
+    return result
+
+
+def calculate_experiment_summary(trials: list[dict]) -> dict:
+    """Tổng hợp toàn bộ và từng đề bằng độ lệch chuẩn mẫu (n-1)."""
+    rows: list[dict] = []
+    means: dict[str, float | None] = {}
+    for condition in CONDITIONS:
+        scores = [float(t["score"]) for t in trials
+                  if t.get("condition") == condition and t.get("score") is not None]
+        mean = statistics.fmean(scores) if scores else None
+        stddev = statistics.stdev(scores) if len(scores) >= 2 else (0.0 if scores else None)
+        means[condition] = mean
+        rows.append({
+            "condition": condition,
+            "mean": round(mean, 4) if mean is not None else None,
+            "stddev": round(stddev, 4) if stddev is not None else None,
+            "n": len(scores),
+            "delta_vs_control": None,
+        })
+
+    control = means.get("khong_soul")
+    for row in rows:
+        mean = means[row["condition"]]
+        if control is not None and mean is not None:
+            row["delta_vs_control"] = round(mean - control, 4)
+
+    def delta(after: str, before: str) -> float | None:
+        a, b = means.get(after), means.get(before)
+        return round(a - b, 4) if a is not None and b is not None else None
+
+    case_summaries: list[dict] = []
+    case_indices = sorted({int(t["case_index"]) for t in trials if t.get("case_index") is not None})
+    for case_index in case_indices:
+        case_trials = [t for t in trials if int(t.get("case_index", -1)) == case_index]
+        case_means: dict[str, float | None] = {}
+        condition_rows: list[dict] = []
+        for condition in CONDITIONS:
+            scores = [float(t["score"]) for t in case_trials
+                      if t.get("condition") == condition and t.get("score") is not None]
+            mean = statistics.fmean(scores) if scores else None
+            stddev = statistics.stdev(scores) if len(scores) >= 2 else (0.0 if scores else None)
+            case_means[condition] = mean
+            condition_rows.append({
+                "condition": condition,
+                "mean": round(mean, 4) if mean is not None else None,
+                "stddev": round(stddev, 4) if stddev is not None else None,
+                "n": len(scores),
+                "delta_vs_control": None,
+            })
+        case_control = case_means.get("khong_soul")
+        for row in condition_rows:
+            mean = case_means[row["condition"]]
+            if case_control is not None and mean is not None:
+                row["delta_vs_control"] = round(mean - case_control, 4)
+        case_summaries.append({
+            "case_index": case_index,
+            "prompt": case_trials[0].get("prompt", "") if case_trials else "",
+            "conditions": condition_rows,
+        })
+
+    return {
+        "conditions": rows,
+        "cases": case_summaries,
+        "layer_contributions": {
+            "soul_nhan_vien": delta("soul_nhan_vien", "khong_soul"),
+            "phu_luc_ky_nang": delta("them_ky_nang", "soul_nhan_vien"),
+            "soul_du_an": delta("day_du", "them_ky_nang"),
+            "tong_day_du_vs_doi_chung": delta("day_du", "khong_soul"),
+        },
+        "stddev_method": "sample_n_minus_1",
+    }
+
+
+class ExperimentRunnerManager:
+    def __init__(self) -> None:
+        self._tasks: dict[int, asyncio.Task] = {}
+        self._subscribers: dict[int, set[asyncio.Queue]] = defaultdict(set)
+
+    async def start(self, experiment_id: int) -> bool:
+        current = self._tasks.get(experiment_id)
+        if current and not current.done():
+            return False
+        experiment = await get_experiment(experiment_id)
+        if not experiment or experiment.get("status") != "pending":
+            return False
+        task = asyncio.create_task(self._run(experiment_id), name=f"experiment-{experiment_id}")
+        self._tasks[experiment_id] = task
+        task.add_done_callback(lambda _task, eid=experiment_id: self._tasks.pop(eid, None))
+        return True
+
+    async def cancel(self, experiment_id: int) -> bool:
+        experiment = await get_experiment(experiment_id)
+        if not experiment or experiment.get("status") not in ("pending", "running"):
+            return False
+        task = self._tasks.get(experiment_id)
+        if task and not task.done():
+            task.cancel()
+        else:
+            await cancel_unfinished_experiment_trials(experiment_id)
+            await update_experiment(
+                experiment_id, status="cancelled", completed_at=_utc_now(),
+                error_text="Đã huỷ theo yêu cầu người dùng",
+            )
+            await self.broadcast(experiment_id, {"type": "cancelled", "experiment_id": experiment_id})
+        return True
+
+    def subscribe(self, experiment_id: int) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+        self._subscribers[experiment_id].add(queue)
+        return queue
+
+    def unsubscribe(self, experiment_id: int, queue: asyncio.Queue) -> None:
+        subscribers = self._subscribers.get(experiment_id)
+        if not subscribers:
+            return
+        subscribers.discard(queue)
+        if not subscribers:
+            self._subscribers.pop(experiment_id, None)
+
+    async def broadcast(self, experiment_id: int, event: dict) -> None:
+        for queue in list(self._subscribers.get(experiment_id, set())):
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                # Tiến độ luôn có thể dựng lại từ DB; bỏ event cũ tốt hơn chặn runner.
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(event)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    pass
+
+    async def _call_model(self, model_pool_id: int, messages: list[dict]) -> tuple[str, float, dict]:
+        usage: dict = {}
+        chunks: list[str] = []
+        started = time.monotonic()
+        async for chunk in stream_from_pool(
+            model_pool_id,
+            messages,
+            usage_policy="experiment",
+            usage_out=usage,
+        ):
+            chunks.append(chunk)
+        return "".join(chunks).strip(), time.monotonic() - started, usage
+
+    async def _run(self, experiment_id: int) -> None:
+        try:
+            await self._run_inner(experiment_id)
+        except asyncio.CancelledError:
+            await cancel_unfinished_experiment_trials(experiment_id)
+            await refresh_experiment_progress(experiment_id)
+            await update_experiment(
+                experiment_id,
+                status="cancelled",
+                completed_at=_utc_now(),
+                error_text="Đã huỷ theo yêu cầu người dùng",
+            )
+            await self.broadcast(experiment_id, {
+                "type": "cancelled", "experiment_id": experiment_id,
+            })
+        except Exception as exc:
+            logger.exception("Thí nghiệm %s thất bại", experiment_id)
+            await update_experiment(
+                experiment_id,
+                status="failed",
+                completed_at=_utc_now(),
+                error_text=str(exc),
+            )
+            await self.broadcast(experiment_id, {
+                "type": "error", "experiment_id": experiment_id, "message": str(exc),
+            })
+
+    async def _run_inner(self, experiment_id: int) -> None:
+        experiment = await get_experiment(experiment_id)
+        if not experiment:
+            raise ValueError("Không tìm thấy thí nghiệm")
+        agent = await get_agent_config(experiment["agent_id"])
+        project = await get_project(experiment["project_id"]) if experiment.get("project_id") else None
+        benchmark = await get_benchmark(experiment["benchmark_id"])
+        measured = await get_model_pool_entry(experiment["measured_model_pool_id"])
+        judge = await get_model_pool_entry(experiment["judge_model_pool_id"])
+        if not agent or not benchmark or not measured or not judge:
+            raise ValueError("Cấu hình tham chiếu đã bị xoá trước khi chạy")
+        if experiment.get("project_id") and not project:
+            raise ValueError("Dự án đã bị xoá trước khi chạy")
+        if not measured.get("enabled") or not judge.get("enabled"):
+            raise ValueError("Model bị đo hoặc model giám khảo đang bị tắt")
+
+        try:
+            test_cases = json.loads(benchmark.get("test_cases_json") or "[]")
+        except json.JSONDecodeError as exc:
+            raise ValueError("Bộ đề có JSON không hợp lệ") from exc
+        test_cases = [case for case in test_cases
+                      if isinstance(case, dict) and str(case.get("prompt", "")).strip()]
+        if not test_cases:
+            raise ValueError("Bộ đề không có câu hỏi hợp lệ")
+
+        # Chế độ chỉ đọc là ranh giới an toàn quan trọng nhất của runner.
+        context = await load_agent_prompt_context(
+            agent, experiment.get("project_id"), sync_souls=False, project_mode="product"
+        )
+        warnings = json.loads(experiment.get("warnings_json") or "[]")
+        same_judge_model = (
+            (measured.get("model_id") or "").strip().casefold()
+            == (judge.get("model_id") or "").strip().casefold()
+        )
+        if same_judge_model and not any(
+            item.get("code") == "judge_same_as_measured" for item in warnings if isinstance(item, dict)
+        ):
+            warnings.append({
+                "code": "judge_same_as_measured",
+                "message": "Không có model giám khảo khác; model đang bị đo tự chấm chính nó.",
+            })
+
+        total = len(CONDITIONS) * len(test_cases) * int(experiment["repetitions"])
+        trial_specs: list[dict] = []
+        for condition in CONDITIONS:
+            for case_index, case in enumerate(test_cases):
+                for repetition in range(1, int(experiment["repetitions"]) + 1):
+                    trial_specs.append({
+                        "condition": condition,
+                        "case_index": case_index,
+                        "repetition": repetition,
+                        "prompt": str(case.get("prompt", "")),
+                        "criteria": str(case.get("criteria", "")),
+                    })
+        random.SystemRandom().shuffle(trial_specs)
+        for index, item in enumerate(trial_specs, start=1):
+            item["execution_order"] = index
+
+        context_snapshot = context.to_snapshot()
+        config_snapshot = {
+            "agent": {
+                "id": agent.get("id"), "name": agent.get("name", ""),
+                "role": agent.get("role", ""), "system_prompt": agent.get("system_prompt", ""),
+                "skills_json": agent.get("skills_json", "[]"),
+            },
+            "project": project or None,
+            "benchmark": {
+                "id": benchmark.get("id"), "name": benchmark.get("name", ""),
+                "test_cases": test_cases,
+            },
+            "measured_model": _safe_model_snapshot(measured),
+            "judge_model": _safe_model_snapshot(judge),
+            "repetitions": int(experiment["repetitions"]),
+            "conditions": {
+                name: {
+                    "agent_soul": flags.agent_soul,
+                    "skill_souls": flags.skill_souls,
+                    "project_soul": flags.project_soul,
+                }
+                for name, flags in CONDITIONS.items()
+            },
+            # Lưu luôn các mảnh prompt để tái lập byte-for-byte dù DB đổi sau này.
+            "prompt_context": context_snapshot,
+        }
+        soul_snapshot = {
+            "agent": context.agent_soul_raw,
+            "skills": [
+                {"id": skill.id, "name": skill.name, "content": skill.soul_raw}
+                for skill in context.skills
+            ],
+            "project": context.project_soul_raw,
+        }
+        claimed = await claim_experiment_run(
+            experiment_id,
+            total_trials=total,
+            config_snapshot_json=json.dumps(config_snapshot, ensure_ascii=False),
+            soul_snapshot_json=json.dumps(soul_snapshot, ensure_ascii=False),
+            warnings_json=json.dumps(warnings, ensure_ascii=False),
+        )
+        if not claimed:
+            return
+        await create_experiment_trials(experiment_id, trial_specs)
+        await self.broadcast(experiment_id, {
+            "type": "started", "experiment_id": experiment_id,
+            "total_trials": total, "conditions": list(CONDITIONS),
+        })
+
+        # Dùng lại chính snapshot vừa lưu, không đọc soul thêm lần nào trong lúc chạy.
+        frozen_context = AgentPromptContext.from_snapshot(context_snapshot)
+        trials = await list_experiment_trials(experiment_id)
+        for trial in trials:
+            await update_experiment_trial(trial["id"], status="running", started_at=_utc_now())
+            layers = CONDITIONS[trial["condition"]]
+            system_prompt = compose_agent_system_prompt(frozen_context, layers=layers)
+            messages: list[dict] = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": trial["prompt"]})
+            try:
+                response, elapsed, usage = await self._call_model(measured["id"], messages)
+                await update_experiment_trial(
+                    trial["id"],
+                    response=response,
+                    status="generated",
+                    elapsed_seconds=elapsed,
+                    tokens_input=usage.get("tokens_in", 0),
+                    tokens_cache=usage.get("tokens_cache", 0),
+                    tokens_output=usage.get("tokens_out", 0),
+                    completed_at=_utc_now(),
+                )
+                event_status = "generated"
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Lượt thí nghiệm %s lỗi sinh câu trả lời: %s", trial["id"], exc)
+                await update_experiment_trial(
+                    trial["id"], status="generation_error", error_text=str(exc),
+                    completed_at=_utc_now(),
+                )
+                event_status = "generation_error"
+            progress = await refresh_experiment_progress(experiment_id)
+            await self.broadcast(experiment_id, {
+                "type": "generation_progress", "experiment_id": experiment_id,
+                "trial_id": trial["id"], "execution_order": trial["execution_order"],
+                "status": event_status, **progress,
+            })
+
+        # Chấm theo từng đề để mọi câu trong một batch dùng đúng cùng tiêu chí.
+        generated = await list_experiment_trials(experiment_id)
+        by_case: dict[int, list[dict]] = defaultdict(list)
+        for trial in generated:
+            if trial.get("status") == "generated":
+                by_case[int(trial["case_index"])].append(trial)
+        for case_index in sorted(by_case):
+            await self._judge_case(
+                experiment_id, judge["id"], test_cases[case_index], by_case[case_index]
+            )
+
+        final_trials = await list_experiment_trials(experiment_id)
+        progress = await refresh_experiment_progress(experiment_id)
+        has_errors = any(t.get("status") in ("generation_error", "judge_error") for t in final_trials)
+        status = "completed_with_errors" if has_errors else "completed"
+        await update_experiment(experiment_id, status=status, completed_at=_utc_now())
+        await self.broadcast(experiment_id, {
+            "type": "complete", "experiment_id": experiment_id, "status": status,
+            "summary": calculate_experiment_summary(final_trials), **progress,
+        })
+
+    async def _judge_case(
+        self,
+        experiment_id: int,
+        judge_model_pool_id: int,
+        case: dict,
+        trials: list[dict],
+    ) -> None:
+        pending = list(trials)
+        last_error = ""
+        for _attempt in range(2):
+            if not pending:
+                break
+            shuffled = list(pending)
+            random.SystemRandom().shuffle(shuffled)
+            opaque_to_trial: dict[str, dict] = {}
+            for trial in shuffled:
+                opaque_to_trial[secrets.token_hex(8)] = trial
+
+            responses = "\n\n".join(
+                f"### Mã {opaque_id}\n{trial.get('response', '')}"
+                for opaque_id, trial in opaque_to_trial.items()
+            )
+            judge_prompt = (
+                f"Đề bài:\n{case.get('prompt', '')}\n\n"
+                f"Tiêu chí chấm:\n{case.get('criteria') or 'Đúng, đầy đủ, hữu ích và rõ ràng.'}\n\n"
+                "Thang điểm: 0 đến 10. Hãy trả đúng một phần tử scores cho mỗi mã dưới đây.\n\n"
+                f"Các câu trả lời (thứ tự đã xáo ngẫu nhiên):\n{responses}"
+            )
+            item_map = {opaque_id: trial["id"] for opaque_id, trial in opaque_to_trial.items()}
+            judgement_id = await create_experiment_judgement(
+                experiment_id, int(shuffled[0]["case_index"]), judge_model_pool_id,
+                json.dumps(item_map), judge_prompt,
+            )
+            for order, trial in enumerate(shuffled, start=1):
+                await update_experiment_trial(
+                    trial["id"], judgement_id=judgement_id, judge_order=order
+                )
+
+            raw = ""
+            elapsed = 0.0
+            usage: dict = {}
+            try:
+                raw, elapsed, usage = await self._call_model(judge_model_pool_id, [
+                    {"role": "system", "content": JUDGE_SYSTEM},
+                    {"role": "user", "content": judge_prompt},
+                ])
+                parsed = _valid_scores(raw, set(opaque_to_trial))
+                completed_ids: set[int] = set()
+                for opaque_id, (score, reason) in parsed.items():
+                    trial = opaque_to_trial[opaque_id]
+                    await update_experiment_trial(
+                        trial["id"], score=score, score_reason=reason,
+                        status="scored", completed_at=_utc_now(),
+                    )
+                    completed_ids.add(trial["id"])
+                pending = [trial for trial in pending if trial["id"] not in completed_ids]
+                last_error = "Giám khảo trả thiếu hoặc sai định dạng một số mã" if pending else ""
+                await update_experiment_judgement(
+                    judgement_id, raw_response=raw,
+                    status="partial" if pending else "completed",
+                    error_text=last_error, elapsed_seconds=elapsed,
+                    tokens_input=usage.get("tokens_in", 0),
+                    tokens_cache=usage.get("tokens_cache", 0),
+                    tokens_output=usage.get("tokens_out", 0),
+                    completed_at=_utc_now(),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = str(exc)
+                await update_experiment_judgement(
+                    judgement_id, raw_response=raw, status="error",
+                    error_text=last_error, elapsed_seconds=elapsed,
+                    tokens_input=usage.get("tokens_in", 0),
+                    tokens_cache=usage.get("tokens_cache", 0),
+                    tokens_output=usage.get("tokens_out", 0),
+                    completed_at=_utc_now(),
+                )
+
+            progress = await refresh_experiment_progress(experiment_id)
+            await self.broadcast(experiment_id, {
+                "type": "judging_progress", "experiment_id": experiment_id,
+                "case_index": int(shuffled[0]["case_index"]),
+                "remaining_in_case": len(pending), **progress,
+            })
+
+        for trial in pending:
+            await update_experiment_trial(
+                trial["id"], status="judge_error",
+                error_text=last_error or "Không nhận được điểm hợp lệ sau 2 lần chấm",
+                completed_at=_utc_now(),
+            )
+
+
+experiment_runner = ExperimentRunnerManager()

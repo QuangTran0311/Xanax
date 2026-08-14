@@ -133,6 +133,7 @@
     }
     .submit-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
     .submit-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .fields > :global(.tooltip-trigger--boxed):has(> .submit-btn) { width: 100%; }
     .spinner {
       width: 16px; height: 16px; border: 2px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
       border-top-color: var(--on-accent); border-radius: 50%; animation: spin .7s linear infinite;

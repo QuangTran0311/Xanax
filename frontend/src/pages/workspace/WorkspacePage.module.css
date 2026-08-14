@@ -141,8 +141,10 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 
 .sessions-list {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
 }
 .sessions-list::-webkit-scrollbar { width: 4px; }
@@ -156,7 +158,8 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  min-width: 0;
   gap: 8px;
   margin-bottom: 2px;
   border-left: 2px solid transparent;
@@ -170,23 +173,18 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 4px;
 }
 .dot-in_progress { background: var(--pending); }
 .dot-pass        { background: var(--pass); }
 .dot-fail        { background: var(--fail); }
 .session-info { flex: 1; min-width: 0; }
 .session-title {
+  display: block;
   font-size:calc(13px * var(--fs-scale));
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.session-meta {
-  font-size:calc(11px * var(--fs-scale));
-  color: var(--muted);
-  margin-top: 2px;
 }
 
 /* ── Center: Chat ── */
@@ -425,13 +423,29 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .info-content::-webkit-scrollbar-track { background: transparent; }
 .info-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+.info-heading,
+.info-section {
+  display: flex;
+  flex-direction: column;
+}
+.info-heading { gap: 5px; }
+.info-section { gap: 7px; }
+.info-section .field-hint,
+.info-section .scope-bar { margin: 0; }
+
 .info-section-label {
   font-size:calc(11px * var(--fs-scale));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
-  margin-bottom: 6px;
+}
+.info-section-label-primary {
+  display: flex;
+  align-items: center;
+  font-size:calc(16px * var(--fs-scale));
+  font-weight: 600;
+  color: var(--text);
 }
 .info-title-edit {
   width: 100%;
@@ -441,60 +455,62 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   padding: 8px 10px;
   color: var(--text);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   outline: none;
   transition: border-color 0.15s;
 }
 .info-title-edit:focus { border-color: var(--cyan); }
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 20px;
-  font-size:calc(12px * var(--fs-scale));
-  font-weight: 600;
+.info-meta {
+  font-size:calc(11px * var(--fs-scale));
+  line-height: 1.4;
+  color: var(--muted);
 }
-.status-in_progress { background: rgba(var(--amber-rgb),0.15); color: var(--pending); border: 1px solid rgba(var(--amber-rgb),0.3); }
-.status-pass        { background: rgba(var(--green-rgb),0.15);  color: var(--pass);    border: 1px solid rgba(var(--green-rgb),0.3); }
-.status-fail        { background: rgba(var(--red-rgb),0.15);  color: var(--fail);    border: 1px solid rgba(var(--red-rgb),0.3); }
 
-.status-buttons { display: flex; gap: 8px; margin-top: 8px; }
+.status-buttons { display: flex; }
+.status-buttons > :global(.tooltip-trigger--boxed) { flex: 1; min-width: 0; }
+.status-buttons > :global(.tooltip-trigger--boxed) > .btn-status { width: 100%; }
 .btn-status {
   flex: 1;
   padding: 7px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   font-family: inherit;
-  font-size:calc(12px * var(--fs-scale));
+  font-size:calc(11px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   border: 1px solid;
   transition: all 0.15s;
 }
-.btn-pass { background: rgba(var(--green-rgb),0.1); border-color: rgba(var(--green-rgb),0.3); color: var(--pass); }
-.btn-pass:hover { background: rgba(var(--green-rgb),0.2); }
-.btn-fail { background: rgba(var(--red-rgb),0.1); border-color: rgba(var(--red-rgb),0.3); color: var(--fail); }
-.btn-fail:hover { background: rgba(var(--red-rgb),0.2); }
-.btn-status:disabled, .btn-feedback:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.btn-pass { border-radius: 8px 0 0 8px; background: rgba(var(--green-rgb),0.06); border-color: rgba(var(--green-rgb),0.22); color: var(--pass); }
+.btn-pass:hover:not(:disabled) { background: rgba(var(--green-rgb),0.13); }
+.btn-fail { margin-left: -1px; border-radius: 0 8px 8px 0; background: rgba(var(--red-rgb),0.06); border-color: rgba(var(--red-rgb),0.22); color: var(--fail); }
+.btn-fail:hover:not(:disabled) { background: rgba(var(--red-rgb),0.13); }
+.btn-pass.btn-status-selected { background: rgba(var(--green-rgb),0.2); border-color: rgba(var(--green-rgb),0.55); }
+.btn-fail.btn-status-selected { background: rgba(var(--red-rgb),0.2); border-color: rgba(var(--red-rgb),0.55); }
+.btn-status-selected { position: relative; z-index: 1; }
+.btn-status:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.btn-status-selected:disabled { opacity: 1; }
+.btn-feedback:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
-.info-date { font-size:calc(13px * var(--fs-scale)); color: var(--muted); }
 .info-task-edit, .notes-edit {
   width: 100%;
-  min-height: 80px;
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   color: var(--text);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   resize: vertical;
   outline: none;
   transition: border-color 0.15s;
   line-height: 1.5;
 }
+.info-task-edit { min-height: 80px; }
+.notes-edit { min-height: 170px; }
 .info-task-edit:focus { border-color: var(--cyan); }
 .notes-edit[readonly] {
   color: var(--muted);
@@ -504,7 +520,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .notes-edit[readonly].has-content { color: var(--text); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notes-spinner {
-  display: inline-block; width: 10px; height: 10px; margin-left: 4px;
+  display: inline-block; width: 12px; height: 12px; margin-left: 4px;
   border: 2px solid var(--border); border-top-color: var(--cyan); border-radius: 50%;
   animation: spin .8s linear infinite;
 }
@@ -517,7 +533,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--purple);
   font-family: inherit;
-  font-size:calc(12px * var(--fs-scale));
+  font-size:calc(11.5px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -525,87 +541,8 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   text-align: center;
 }
 .btn-feedback.visible { display: block; }
+:global(.tooltip-trigger--boxed):has(> .btn-feedback) { width: 100%; }
 .btn-feedback:hover { background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.14), rgba(var(--purple-rgb),0.14)); border-color: rgba(var(--purple-rgb),0.5); }
-
-/* ── Feedback popup ── */
-.fp-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.65);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 1500;
-}
-.fp-overlay.visible { display: flex; }
-.fp-box {
-  background: var(--bg2);
-  border-radius: var(--radius);
-  padding: 24px;
-  width: 560px;
-  max-width: 92vw;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  box-shadow: var(--shadow-hover);
-}
-.fp-title {
-  font-family: 'Quicksand', sans-serif;
-  font-size:calc(16px * var(--fs-scale));
-  font-weight: 700;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.fp-hint {
-  font-size:calc(12px * var(--fs-scale));
-  color: var(--muted);
-  line-height: 1.6;
-}
-.fp-hint strong { color: var(--text); }
-.fp-textarea {
-  width: 100%;
-  min-height: 100px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 10px 12px;
-  color: var(--text);
-  font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s;
-  line-height: 1.6;
-}
-.fp-textarea:focus { border-color: var(--cyan); }
-.fp-textarea::placeholder { color: var(--muted); }
-.fp-footer { display: flex; gap: 8px; justify-content: flex-end; }
-.fp-btn-cancel {
-  padding: 8px 18px;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--muted);
-  font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.fp-btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
-.fp-btn-submit {
-  padding: 8px 20px;
-  background: var(--cyan);
-  border: none;
-  border-radius: 8px;
-  color: var(--on-accent);
-  font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.fp-btn-submit:hover { opacity: 0.85; }
 
 /* ── Confirm popup ── */
 .cp-overlay {
@@ -617,11 +554,13 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   z-index: 1600;
 }
 .cp-overlay.visible { display: flex; }
+/* Cùng khuôn hộp thoại với .modal — hai popup của trang phải trông như một. */
 .cp-box {
-  background: var(--bg2);
-  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 24px;
-  width: 340px;
+  width: min(420px, 100%);
   max-width: 92vw;
   display: flex;
   flex-direction: column;
@@ -634,7 +573,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   color: var(--danger);
 }
 .cp-body {
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12.5px * var(--fs-scale));
   color: var(--muted);
   line-height: 1.6;
 }
@@ -646,11 +585,11 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
-.cp-btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
+.cp-btn-cancel:hover { border-color: var(--accent); color: var(--accent); }
 .cp-btn-confirm {
   padding: 8px 20px;
   background: var(--danger);
@@ -658,7 +597,7 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--on-danger);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -716,6 +655,16 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .btn-delete-session:hover { opacity: 1; background: rgba(var(--red-rgb),0.05); }
 .info-divider { height: 1px; background: var(--border); }
 
+/* Nút xoá luôn nằm sát đáy panel: `margin-top: auto` đẩy nó xuống khi nội dung
+   ngắn, còn khi nội dung dài quá phải cuộn thì nó tự trôi về cuối như thường. */
+.info-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 6px;
+}
+
 /* ── Modal ── */
 .modal-overlay {
   position: fixed; inset: 0;
@@ -726,39 +675,60 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   z-index: 999;
 }
 .modal-overlay.visible { display: flex; }
+/* Hộp thoại của trang Dạy AI đi theo đúng khuôn hộp thoại của Hub (Dialog.tsx):
+   nền --surface, có viền, bo 14px, rộng tối đa 420px. Trước đây nó rộng 380px,
+   không viền và tiêu đề dùng font Quicksand cùng token --ink của bảng màu nâu
+   cũ — mở lên là thấy nó không cùng một bộ với phần còn lại của app. */
 .modal {
-  background: var(--bg2);
-  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 24px;
-  width: 380px;
+  width: min(420px, 100%);
   max-width: 90vw;
   box-shadow: var(--shadow-hover);
 }
 .modal h3 {
-  font-family: 'Quicksand', sans-serif;
-  font-size:calc(17px * var(--fs-scale));
+  font-size:calc(15px * var(--fs-scale));
   font-weight: 700;
   margin-bottom: 16px;
-  color: var(--ink);
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.modal input, .modal textarea {
+.modal input, .modal textarea, .modal-select {
   width: 100%;
-  background: var(--bg3);
+  background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 9px 11px;
   color: var(--text);
   font-family: inherit;
-  font-size:calc(14px * var(--fs-scale));
+  font-size:calc(12.5px * var(--fs-scale));
   outline: none;
   margin-bottom: 12px;
   transition: border-color 0.15s;
 }
-.modal input:focus, .modal textarea:focus { border-color: var(--cyan); }
+.modal input::placeholder, .modal textarea::placeholder { color: var(--muted); }
+.modal input:focus, .modal textarea:focus, .modal-select:focus { border-color: var(--accent); }
 .modal textarea { resize: vertical; min-height: 80px; }
+
+/* Ô chọn học viên / dự án. Phải tự vẽ mũi tên: `appearance: none` gỡ bỏ luôn
+   mũi tên gốc của trình duyệt, mà mũi tên gốc thì đổi màu theo hệ điều hành
+   chứ không theo theme của app. Hai bản màu cho hai theme nằm ngay dưới. */
+.modal-select {
+  appearance: none;
+  padding-right: 30px;
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 10px 7px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 7'%3E%3Cpath fill='%239daea8' d='M0 1h10L5 7z'/%3E%3C/svg%3E");
+  cursor: pointer;
+}
+:global(body.light) .modal-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 7'%3E%3Cpath fill='%235f6d67' d='M0 1h10L5 7z'/%3E%3C/svg%3E");
+}
 .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 .btn-cancel {
   padding: 8px 18px;
@@ -767,65 +737,37 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: 8px;
   color: var(--muted);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   cursor: pointer;
   transition: all 0.15s;
 }
-.btn-cancel:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn-cancel:hover { border-color: var(--accent); color: var(--accent); }
 .btn-create {
   padding: 8px 18px;
-  background: var(--cyan);
+  background: var(--accent);
   border: none;
   border-radius: 8px;
   color: var(--on-accent);
   font-family: inherit;
-  font-size:calc(13px * var(--fs-scale));
+  font-size:calc(12px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
 }
 .btn-create:hover { opacity: 0.85; }
 
-/* ── Toast ── */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%) translateY(60px);
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size:calc(13px * var(--fs-scale));
-  color: var(--text);
-  z-index: 2000;
-  transition: transform 0.3s ease;
-  pointer-events: none;
-}
-.toast.show    { transform: translateX(-50%) translateY(0); }
-.toast.success { border-color: rgba(var(--green-rgb),0.5);  color: var(--pass); }
-.toast.error   { border-color: rgba(var(--red-rgb),0.5);  color: var(--fail); }
-
 /* ── Buổi dạy có học viên ──────────────────────────────────────────────── */
 
+/* Nhãn trong hộp thoại dùng chung một kiểu với nhãn khối ở panel thông tin
+   (.info-section-label) để hai nơi nhìn như một. */
 .field-label {
   display: block;
-  margin: 12px 0 4px;
-  font-size:calc(12px * var(--fs-scale));
+  margin: 12px 0 5px;
+  font-size:calc(11px * var(--fs-scale));
   font-weight: 600;
-  color: var(--text);
-}
-
-#new-agent,
-#new-project {
-  width: 100%;
-  padding: 9px 10px;
-  font: inherit;
-  font-size:calc(13px * var(--fs-scale));
-  color: var(--text);
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 6px);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
 }
 
 .field-hint {
@@ -870,12 +812,9 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .scope-chip.scope-project:hover:not(:disabled) { background: var(--mint); }
 .scope-chip.scope-skill:hover:not(:disabled)   { background: var(--peach); }
 
-/* Nút phụ dưới ô đúc kết. "Lưu bài học kinh nghiệm" (btn-feedback) là hành động
-   chính và giữ nguyên kiểu cũ; hai nút này nhạt hơn để không tranh chỗ với nó. */
-.btn-reopen,
-.btn-refine {
+/* Nút mở lại là hành động phụ, nhạt hơn nút lưu bài học kinh nghiệm. */
+.btn-reopen {
   width: 100%;
-  margin-top: 8px;
   padding: 8px 10px;
   font: inherit;
   font-size:calc(12px * var(--fs-scale));
@@ -886,35 +825,13 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
   border-radius: var(--radius-sm, 6px);
 }
 
-.btn-reopen:hover,
-.btn-refine:hover { color: var(--text); border-color: var(--muted); }
+.btn-reopen:hover { color: var(--text); border-color: var(--muted); }
 
-.btn-refine:disabled { opacity: .45; cursor: default; }
-
-/* Ảnh học viên vẽ thử ngay trong buổi học. Ảnh gốc 1080x1350 nên không chặn lại
-   là nó đẩy phồng cả khung chat. */
-.msg-bubble img {
-  max-width: min(360px, 100%);
-  height: auto;
-  border-radius: 10px;
-  border: 1px solid var(--border, #334155);
-  margin-top: 8px;
-  display: block;
-}
-
-/* Cấp công cụ thật cho học viên trong buổi dạy. Dòng cảnh báo cố tình nổi màu:
-   tick vào đây là công cụ chạy thật, không phải mô phỏng. */
-.student-tools { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+/* Danh sách công cụ có thể cấp cho học viên trong buổi dạy. */
+.student-tools { display: flex; flex-direction: column; gap: 5px; }
 .student-tool { display: flex; align-items: center; gap: 7px; font-size:calc(12px * var(--fs-scale)); cursor: pointer; }
 .student-tool input { cursor: pointer; }
 .student-tool input:disabled { cursor: default; }
-.student-tools-warn {
-  margin-top: 8px; padding: 7px 9px; border-radius: 6px;
-  font-size:calc(11px * var(--fs-scale)); line-height: 1.5; color: var(--gold);
-  background: rgba(var(--amber-rgb), 0.10);
-  border: 1px solid rgba(var(--amber-rgb), 0.30);
-}
-.student-tools-msg { font-size:calc(11px * var(--fs-scale)); color: var(--muted); font-style: italic; line-height: 1.5; }
 
 /* ── Đính kèm file trong khung chat ── */
 .btn-attach {
@@ -934,17 +851,34 @@ svg.icon { width: 20px; height: 20px; stroke-linecap: round; stroke-linejoin: ro
 .chat-attach-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .chat-attach-chip {
   display: inline-flex; align-items: center; gap: 6px;
-  max-width: 240px; padding: 4px 8px;
+  max-width: 280px; min-height: 50px; padding: 4px 8px 4px 4px;
   background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
   font-size:calc(12px * var(--fs-scale)); color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden; white-space: nowrap;
 }
 .chat-attach-chip.uploading { color: var(--muted); font-style: italic; }
+.chat-attach-preview {
+  position: relative; width: 40px; height: 40px; flex: 0 0 40px;
+  overflow: hidden; border-radius: 5px; background: var(--surface2);
+}
+.chat-attach-preview img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.chat-attach-chip.uploading .chat-attach-preview img { opacity: .45; }
+.chat-attach-loading {
+  position: absolute; inset: 11px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%; animation: chat-attach-spin .8s linear infinite;
+}
+.chat-attach-chip > .chat-attach-loading {
+  position: static; width: 16px; height: 16px; flex: 0 0 16px; margin-left: 4px;
+}
+.chat-attach-icon { flex: 0 0 auto; padding-left: 4px; }
+.chat-attach-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chat-attach-chip button {
+  flex: 0 0 auto;
   background: none; border: none; color: var(--muted);
   cursor: pointer; font-size:calc(14px * var(--fs-scale)); line-height: 1; padding: 0 2px;
 }
 .chat-attach-chip button:hover { color: var(--fail); }
+@keyframes chat-attach-spin { to { transform: rotate(360deg); } }
 
 /* ≤1100px: ẩn cột thông tin để khung chat còn đủ chỗ. */
 @media (max-width: 1100px) {

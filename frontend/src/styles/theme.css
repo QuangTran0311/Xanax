@@ -230,3 +230,379 @@ body,
 html {
   transition: background-color 0.18s ease, color 0.18s ease;
 }
+
+/* Tooltip dùng chung được render qua portal lên body để thoát mọi vùng overflow. */
+.tooltip-bubble {
+  position: fixed;
+  z-index: 10000;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 7px 9px;
+  color: var(--text);
+  background: var(--surface3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: calc(11px * var(--fs-scale));
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.tooltip-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: var(--surface3);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.tooltip-bubble--above .tooltip-arrow {
+  bottom: -5px;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.tooltip-bubble--below .tooltip-arrow {
+  top: -5px;
+  border-top: 1px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
+}
+
+/* Wrapper luôn tồn tại nhưng mặc định không tạo hộp, nên không chen thêm một
+   phần tử vào grid/flex của cha. */
+.tooltip-trigger {
+  display: contents;
+}
+
+/* Form control disabled không phát sự kiện chuột. Chỉ lúc đó wrapper mới tạo
+   hộp thật để hứng hover, nhưng vẫn giữ nguyên cùng một phần tử DOM. */
+.tooltip-trigger--boxed {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.tooltip-trigger--boxed > * {
+  max-width: 100%;
+}
+
+/* Hàng đợi toast dùng chung: phần tử mới nằm dưới cùng và đẩy các phần tử cũ lên. */
+.toast-stack {
+  position: fixed;
+  z-index: 10000;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, calc(100vw - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.toast-notification {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  flex: 0 0 auto;
+  gap: 11px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 14px 18px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-left-width: 4px;
+  border-radius: 10px;
+  box-shadow: var(--shadow-hover);
+  font-size: calc(14px * var(--fs-scale));
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: toast-notification-in 280ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.toast-notification > svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+}
+
+.toast-notification--success { border-color: var(--accent); }
+.toast-notification--success > svg { color: var(--accent); }
+.toast-notification--error { border-color: var(--danger); }
+.toast-notification--error > svg { color: var(--danger); }
+.toast-notification--info { border-color: var(--info); }
+.toast-notification--info > svg { color: var(--info); }
+
+.toast-notification--leaving {
+  animation: toast-notification-out 180ms ease-in both;
+}
+
+.toast-notification--no-animation {
+  animation: none;
+}
+
+@keyframes toast-notification-in {
+  0% { opacity: 0; transform: translateY(34px) scale(.96); }
+  72% { opacity: 1; transform: translateY(-3px) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-notification-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(18px) scale(.98); }
+}
+
+@media (max-width: 600px) {
+  .toast-stack {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .toast-notification {
+    padding: 12px 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-notification { animation-duration: .01ms; }
+}
+
+/* ── Ảnh trong nội dung Markdown và hộp xem ảnh dùng chung ─────────────── */
+.markdown-chat-content p:has(.markdown-chat-thumbnail) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.markdown-chat-content p:has(.markdown-chat-thumbnail) > br {
+  display: none;
+}
+
+.markdown-chat-thumbnail {
+  width: 180px;
+  height: 180px;
+  max-width: 100%;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: zoom-in;
+}
+
+.markdown-chat-thumbnail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.markdown-chat-thumbnail-error {
+  object-fit: contain;
+  color: var(--muted);
+  background: var(--surface2);
+  cursor: default;
+  opacity: .7;
+}
+
+/* Link tài liệu trong mọi vùng Markdown được trình bày như một tệp có thể tải.
+   Giới hạn chiều rộng để thẻ vẫn gọn trong bong bóng chat hẹp. */
+.markdown-chat-file {
+  width: min(320px, 100%);
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  margin: 3px 0;
+  padding: 9px 10px;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  vertical-align: middle;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.markdown-chat-file:hover,
+.markdown-chat-file:focus-visible {
+  color: var(--text);
+  background: var(--surface3);
+  border-color: var(--accent);
+  text-decoration: none;
+  outline: none;
+}
+
+.markdown-chat-file-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: calc(9px * var(--fs-scale));
+  font-weight: 800;
+}
+
+.markdown-chat-file[data-file-kind="word"] .markdown-chat-file-icon { color: var(--blue); background: rgba(var(--blue-rgb), .1); border-color: rgba(var(--blue-rgb), .3); }
+.markdown-chat-file[data-file-kind="pdf"] .markdown-chat-file-icon { color: var(--red); background: rgba(var(--red-rgb), .1); border-color: rgba(var(--red-rgb), .3); }
+.markdown-chat-file[data-file-kind="presentation"] .markdown-chat-file-icon { color: var(--amber); background: rgba(var(--amber-rgb), .1); border-color: rgba(var(--amber-rgb), .3); }
+.markdown-chat-file[data-file-kind="archive"] .markdown-chat-file-icon { color: var(--purple); background: rgba(var(--purple-rgb), .1); border-color: rgba(var(--purple-rgb), .3); }
+
+.markdown-chat-file-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.markdown-chat-file-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: calc(12px * var(--fs-scale));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-chat-file-copy small {
+  color: var(--muted);
+  font-size: calc(10px * var(--fs-scale));
+}
+
+.markdown-chat-file-download {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: calc(20px * var(--fs-scale));
+  line-height: 1;
+}
+
+.markdown-chat-file:hover .markdown-chat-file-download { color: var(--accent); }
+
+.markdown-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--sidebar) 90%, transparent);
+}
+
+.markdown-lightbox-figure {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: auto;
+}
+
+.markdown-lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  display: block;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.markdown-lightbox-caption {
+  max-width: min(92vw, 760px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: calc(12px * var(--fs-scale));
+  overflow-wrap: anywhere;
+}
+
+.markdown-lightbox-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.markdown-lightbox-actions a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown-lightbox-actions a:hover {
+  text-decoration: underline;
+}
+
+.markdown-lightbox-close,
+.markdown-lightbox-prev,
+.markdown-lightbox-next {
+  position: fixed;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: calc(28px * var(--fs-scale));
+  line-height: 1;
+}
+
+.markdown-lightbox-close:hover,
+.markdown-lightbox-prev:hover,
+.markdown-lightbox-next:hover,
+.markdown-lightbox-close:focus-visible,
+.markdown-lightbox-prev:focus-visible,
+.markdown-lightbox-next:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.markdown-lightbox-close { top: 18px; right: 18px; }
+.markdown-lightbox-prev { top: 50%; left: 18px; transform: translateY(-50%); }
+.markdown-lightbox-next { top: 50%; right: 18px; transform: translateY(-50%); }
+
+.markdown-lightbox-count {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: calc(11px * var(--fs-scale));
+}
+
+@media (max-width: 520px) {
+  .markdown-lightbox { padding: 58px 10px 18px; }
+  .markdown-lightbox-prev { left: 8px; }
+  .markdown-lightbox-next { right: 8px; }
+  .markdown-lightbox-caption { align-items: flex-start; flex-direction: column; gap: 5px; }
+}

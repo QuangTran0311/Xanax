@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { Icon } from "../../components/Icon";
+import { enqueueToast, type ToastKind } from "../../components/Toast";
+import { Tooltip } from "../../components/Tooltip";
+import { useTaskrunnerText } from "../../i18n/taskrunner";
+import { useTooltipText } from "../../i18n/tooltips";
 import { sessionApi } from "../../store/session";
 import type { ProjectSubtab } from "../hub/types";
 import { WorkflowEditor } from "./WorkflowEditor";
@@ -27,6 +30,8 @@ export function TaskrunnerPage({
   basePath = "/taskrunner",
   onOpenProject,
 }: TaskrunnerPageProps = {}) {
+  const tt = useTooltipText();
+  const text = useTaskrunnerText();
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ taskId?: string }>();
@@ -36,20 +41,13 @@ export function TaskrunnerPage({
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [username, setUsername] = useState("—");
-  const [toastState, setToastState] = useState<{
-    text: string;
-    kind: "success" | "error" | "info";
-  } | null>(null);
 
   useEffect(() => {
     if (kindOverride) setKind(kindOverride);
   }, [kindOverride]);
 
-  const toast = useCallback((text: string, toastKind: "success" | "error" | "info" = "info") => {
-    setToastState({ text, kind: toastKind });
-    window.setTimeout(() => {
-      setToastState((current) => current?.text === text ? null : current);
-    }, 3200);
+  const toast = useCallback((text: string, toastKind: ToastKind = "info") => {
+    enqueueToast(text, toastKind);
   }, []);
 
   const loadTasks = useCallback(async () => {
@@ -84,8 +82,8 @@ export function TaskrunnerPage({
 
   const goBack = () => navigate(basePath);
 
-  // Hub keeps both runner tabs mounted, so #page-wrap, #grid-wrap, and #add-workflow-btn can be duplicated.
-  // Do not query these elements by ID; migrating them to classes requires a dedicated phase.
+  // Hub giữ cả hai tab runner cùng được mount nên các ID page-wrap, grid-wrap và
+  // add-workflow-btn có thể bị trùng. Không truy vấn chúng bằng ID trong đợt này.
   return (
     <div className={`${c("taskrunner-root")} ${embedded ? c("taskrunner-embedded") : ""}`}>
       {!taskId ? (
@@ -93,12 +91,12 @@ export function TaskrunnerPage({
           {!embedded ? (
             <div id="topbar">
               <span className={c("logo")}><span className={c("dot")} />Xanax</span>
-              <span className={c("page-title")}>Quy trình</span>
+              <span className={c("page-title")}>{text("kind.company")}</span>
               <span className={c("topbar-user")}>
                 {username}
-                <button onClick={() => void sessionApi.logout().then(() => navigate("/login"))}>
-                  Đăng xuất
-                </button>
+                <Tooltip label={tt("tooltip.taskrunner.logout")}><button onClick={() => void sessionApi.logout().then(() => navigate("/login"))}>
+                  {text("common.logout")}
+                </button></Tooltip>
               </span>
             </div>
           ) : null}
@@ -127,12 +125,6 @@ export function TaskrunnerPage({
         />
       )}
 
-      {toastState ? (
-        <div className={`${c("react-toast")} ${c(toastState.kind)}`}>
-          <Icon name={toastState.kind === "success" ? "check" : toastState.kind === "error" ? "warning" : "info"} />
-          {toastState.text}
-        </div>
-      ) : null}
     </div>
   );
 }

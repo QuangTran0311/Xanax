@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Icon, type IconName } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { sessionApi } from "../../store/session";
 import { useTheme } from "../../store/theme";
@@ -78,6 +80,7 @@ function HubShell() {
   const active = (tab || "home") as HubTab;
   const currentSubpath = location.pathname.split("/").slice(3).join("/");
   const { language } = useLanguage();
+  const tooltip = useTooltipText();
   const { theme, toggleTheme } = useTheme();
   const {
     username,
@@ -177,63 +180,78 @@ function HubShell() {
           <span><i /></span>
           <div><strong>{serverOnline ? (language === "vi" ? "Hệ thống ổn định" : "System healthy") : hubText(language, "common.server_down")}</strong><small>{serverOnline ? (language === "vi" ? "Tất cả dịch vụ hoạt động" : "All services operational") : (language === "vi" ? "Đang thử kết nối lại" : "Trying to reconnect")}</small></div>
         </div>
-        <button
-          className={c("collapseButton")}
-          onClick={() => setSidebarCompact(!sidebarCompact)}
-          title={sidebarCompact ? (language === "vi" ? "Mở rộng" : "Expand") : (language === "vi" ? "Thu gọn" : "Collapse")}
-          aria-label={sidebarCompact ? (language === "vi" ? "Mở rộng sidebar" : "Expand sidebar") : (language === "vi" ? "Thu gọn sidebar" : "Collapse sidebar")}
-        >
-          <Icon name={sidebarCompact ? "arrowRight" : "arrowLeft"} />
-          <span>{language === "vi" ? "Thu gọn" : "Collapse"}</span>
-        </button>
+        <Tooltip label={tooltip(sidebarCompact ? "tooltip.hub.sidebar_expand" : "tooltip.hub.sidebar_collapse")}>
+          <button
+            className={c("collapseButton")}
+            onClick={() => setSidebarCompact(!sidebarCompact)}
+            aria-label={tooltip(sidebarCompact ? "tooltip.hub.sidebar_expand" : "tooltip.hub.sidebar_collapse")}
+          >
+            <Icon name={sidebarCompact ? "arrowRight" : "arrowLeft"} />
+            <span>{language === "vi" ? "Thu gọn" : "Collapse"}</span>
+          </button>
+        </Tooltip>
       </aside>
 
-      <button
-        className={c("sidebarScrim")}
-        aria-label={language === "vi" ? "Đóng điều hướng" : "Close navigation"}
-        onClick={() => setMobileSidebarOpen(false)}
-      />
+      <Tooltip label={tooltip("tooltip.hub.navigation_close")}>
+        <button
+          className={c("sidebarScrim")}
+          aria-label={tooltip("tooltip.hub.navigation_close")}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      </Tooltip>
 
       <div className={c("workspace")}>
         <header className={c("topbar")}>
           <div className={c("topbarLeading")}>
-            <button
-              className={c("mobileMenuButton")}
-              onClick={() => setMobileSidebarOpen((current) => !current)}
-              aria-expanded={mobileSidebarOpen}
-              aria-label={language === "vi" ? "Mở điều hướng" : "Open navigation"}
-            >
-              <Icon name={mobileSidebarOpen ? "close" : "sliders"} />
-            </button>
+            <Tooltip label={tooltip(mobileSidebarOpen ? "tooltip.hub.navigation_close" : "tooltip.hub.navigation_open")}>
+              <button
+                className={c("mobileMenuButton")}
+                onClick={() => setMobileSidebarOpen((current) => !current)}
+                aria-expanded={mobileSidebarOpen}
+                aria-label={tooltip(mobileSidebarOpen ? "tooltip.hub.navigation_close" : "tooltip.hub.navigation_open")}
+              >
+                <Icon name={mobileSidebarOpen ? "close" : "sliders"} />
+              </button>
+            </Tooltip>
             <span className={serverOnline ? c("online") : c("offline")}>
               <i />
               {serverOnline ? (language === "vi" ? "Hệ thống trực tuyến" : "System online") : hubText(language, "common.server_down")}
             </span>
           </div>
           <div className={c("topbarActions")}>
-            <button onClick={toggleTheme} title={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")} aria-label={theme === "light" ? (language === "vi" ? "Chuyển sang giao diện tối" : "Switch to dark mode") : (language === "vi" ? "Chuyển sang giao diện sáng" : "Switch to light mode")}>
-              <Icon name={theme === "light" ? "moon" : "sun"} />
-            </button>
-            <div className={c("accountMenu")} ref={accountMenuRef}>
+            <Tooltip label={tooltip(theme === "light" ? "tooltip.hub.theme_dark" : "tooltip.hub.theme_light")}>
               <button
-                className={c("accountSummary")}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={accountMenuOpen}
-                onClick={() => setAccountMenuOpen((current) => !current)}
+                className={c("topbarIconButton")}
+                onClick={toggleTheme}
+                aria-label={tooltip(theme === "light" ? "tooltip.hub.theme_dark" : "tooltip.hub.theme_light")}
               >
-                <span><Icon name="user" /></span>
-                <strong>{loading ? "…" : username}</strong>
+                <Icon name={theme === "light" ? "moon" : "sun"} />
               </button>
+            </Tooltip>
+            <div className={c("accountMenu")} ref={accountMenuRef}>
+              <Tooltip label={tooltip(accountMenuOpen ? "tooltip.hub.account_close" : "tooltip.hub.account_open")}>
+                <button
+                  className={c("accountSummary")}
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={accountMenuOpen}
+                  onClick={() => setAccountMenuOpen((current) => !current)}
+                >
+                  <span><Icon name="user" /></span>
+                  <strong>{loading ? "…" : username}</strong>
+                </button>
+              </Tooltip>
               {accountMenuOpen && (
                 <div className={c("accountDropdown")} role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void sessionApi.logout().finally(() => navigate("/login", { replace: true }))}
-                  >
-                    {hubText(language, "common.logout")}
-                  </button>
+                  <Tooltip label={tooltip("tooltip.common.logout")}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void sessionApi.logout().finally(() => navigate("/login", { replace: true }))}
+                    >
+                      {hubText(language, "common.logout")}
+                    </button>
+                  </Tooltip>
                 </div>
               )}
             </div>

@@ -4,6 +4,8 @@ import { Doughnut, Line } from "react-chartjs-2";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip as UiTooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { useTheme } from "../../store/theme";
 import { useHub } from "./HubContext";
@@ -23,6 +25,7 @@ function money(totals: Record<string, number> = {}): string { const entries = Ob
 
 export function CostPage() {
   const { language } = useLanguage(); const { theme } = useTheme(); const { toast } = useHub();
+  const tooltip = useTooltipText();
   const [period, setPeriod] = useState<Period>("day"); const [report, setReport] = useState<CostReport | null>(null);
   const [overview, setOverview] = useState<CostOverview | null>(null); const [loading, setLoading] = useState(true);
   const [showTokens, setShowTokens] = useState(false); const [expanded, setExpanded] = useState<string | null>(null);
@@ -100,7 +103,7 @@ export function CostPage() {
   const periods: Array<[Period, string]> = [["day", hubText(language, "cost.day")], ["week", hubText(language, "cost.week")], ["month", hubText(language, "cost.month")]];
   return <div className={c("page")}>
     <header className={c("pageHeader")}><div><h1>{hubText(language, "cost.title")}</h1><p>{hubText(language, "cost.subtitle")}</p></div><a className={c("primaryButton")} href={`/api/model-pool/cost/export.xlsx?period=${period}`} download><Icon name="download" />{hubText(language, "cost.export")}</a></header>
-    <div className={c("toolbar")}><div className={c("segmented")}>{periods.map(([key, label]) => <button key={key} className={period === key ? c("selected") : ""} onClick={() => { setPeriod(key); setExpanded(null); }}>{label}</button>)}</div><label className={c("checkLabel")}><input type="checkbox" checked={showTokens} onChange={(event) => setShowTokens(event.target.checked)} />{hubText(language, "cost.show_tokens")}</label><span className={c("range")}>{report ? `${formatDate(report.date_from)} → ${formatDate(report.date_to)}` : ""}</span></div>
+    <div className={c("toolbar")}><div className={c("segmented")}>{periods.map(([key, label]) => <UiTooltip key={key} label={tooltip("tooltip.cost.period", label)}><button className={period === key ? c("selected") : ""} onClick={() => { setPeriod(key); setExpanded(null); }}>{label}</button></UiTooltip>)}</div><label className={c("checkLabel")}><input type="checkbox" checked={showTokens} onChange={(event) => setShowTokens(event.target.checked)} />{hubText(language, "cost.show_tokens")}</label><span className={c("range")}>{report ? `${formatDate(report.date_from)} → ${formatDate(report.date_to)}` : ""}</span></div>
     {loading ? <div className={c("loading")}><Icon name="sync" />{hubText(language, "common.loading")}</div> : <>
       <section className={c("costSummary")}><Summary label={language === "vi" ? "Hôm nay" : "Today"} value={money(overview?.today.totals)} /><Summary label={language === "vi" ? "Tuần này" : "This week"} value={money(overview?.this_week.totals)} /><Summary label={language === "vi" ? "Tháng này" : "This month"} value={money(overview?.this_month.totals)} /><Summary label={language === "vi" ? "Từ trước đến giờ" : "All time"} value={money(overview?.all_time)} /></section>
       <section className={c("chartGrid")}><article className={c("panel")}><h2>{hubText(language, "cost.trend")}</h2><div className={c("chartBox")}><Line data={trendData} options={chartOptions} /></div></article><article className={c("panel")}><h2>{hubText(language, "cost.by_model")}</h2><div className={c("chartBox")}><Doughnut data={modelData} options={chartOptions} /></div></article></section>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { Dialog } from "./Dialog";
 import { useHub } from "./HubContext";
@@ -51,6 +53,7 @@ interface KnowledgeDoc {
 export function ProjectsPage() {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const tooltip = useTooltipText();
   const {
     projects,
     agents,
@@ -113,14 +116,16 @@ export function ProjectsPage() {
                 : "Track work, workflows, and knowledge by project"}
             </p>
           </div>
-          <button
-            data-testid="new-project"
-            className={c("primaryButton")}
-            onClick={() => setProjectDraft({ name: "", description: "" })}
-          >
-            <Icon name="folder" />
-            {vi ? "Tạo dự án" : "Create project"}
-          </button>
+          <Tooltip label={tooltip("tooltip.projects.create_open")}>
+            <button
+              data-testid="new-project"
+              className={c("primaryButton")}
+              onClick={() => setProjectDraft({ name: "", description: "" })}
+            >
+              <Icon name="folder" />
+              {vi ? "Tạo dự án" : "Create project"}
+            </button>
+          </Tooltip>
         </header>
         <div className={c("toolbar")}>
           <input
@@ -132,19 +137,20 @@ export function ProjectsPage() {
         </div>
         <section className={c("projectGrid")}>
           {visible.map((item) => (
-            <button
-              key={item.id}
-              className={c("projectCard")}
-              onClick={() => {
-                setCurrentProjectId(item.id);
-                setSubtab("overview");
-              }}
-            >
-              <Icon name="folder" />
-              <h2>{item.name}</h2>
-              <p>{item.description || "—"}</p>
-              <span>{item.status || "active"}</span>
-            </button>
+            <Tooltip key={item.id} label={tooltip("tooltip.projects.open", item.name || "")}>
+              <button
+                className={c("projectCard")}
+                onClick={() => {
+                  setCurrentProjectId(item.id);
+                  setSubtab("overview");
+                }}
+              >
+                <Icon name="folder" />
+                <h2>{item.name}</h2>
+                <p>{item.description || "—"}</p>
+                <span>{item.status || "active"}</span>
+              </button>
+            </Tooltip>
           ))}
         </section>
         {!visible.length ? (
@@ -168,33 +174,39 @@ export function ProjectsPage() {
   return (
     <div className={c("page")}>
       <header className={c("projectHeader")}>
-        <button
-          className={c("backLink")}
-          onClick={() => setCurrentProjectId(null)}
-        >
-          <Icon name="arrowLeft" />
-          {vi ? "Tất cả dự án" : "All projects"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.back")}>
+          <button
+            className={c("backLink")}
+            onClick={() => setCurrentProjectId(null)}
+          >
+            <Icon name="arrowLeft" />
+            {vi ? "Tất cả dự án" : "All projects"}
+          </button>
+        </Tooltip>
         <div>
           <h1>{project.name}</h1>
           <p>{project.description || "—"}</p>
         </div>
-        <button
-          data-testid="edit-project"
-          className={c("buttonGhost")}
-          onClick={() => setProjectDraft(project)}
-        >
-          <Icon name="edit" />
-          {vi ? "Sửa" : "Edit"}
-        </button>
-        <button
-          data-testid="delete-project"
-          className={c("buttonDanger")}
-          onClick={() => void removeProject()}
-        >
-          <Icon name="trash" />
-          {vi ? "Xoá" : "Delete"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.edit", project.name || "")}>
+          <button
+            data-testid="edit-project"
+            className={c("buttonGhost")}
+            onClick={() => setProjectDraft(project)}
+          >
+            <Icon name="edit" />
+            {vi ? "Sửa" : "Edit"}
+          </button>
+        </Tooltip>
+        <Tooltip label={tooltip("tooltip.projects.delete", project.name || "")}>
+          <button
+            data-testid="delete-project"
+            className={c("buttonDanger")}
+            onClick={() => void removeProject()}
+          >
+            <Icon name="trash" />
+            {vi ? "Xoá" : "Delete"}
+          </button>
+        </Tooltip>
       </header>
       <ProjectDashboard
         project={project}
@@ -235,6 +247,7 @@ function ProjectDashboard({
   toast: (message: string, kind?: "success" | "error" | "info") => void;
   confirm: (message: string) => Promise<boolean>;
 }) {
+  const tooltip = useTooltipText();
   const [ops, setOps] = useState<OpsItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -361,13 +374,14 @@ function ProjectDashboard({
     <>
       <div className={c("subtabs")}>
         {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            className={subtab === key ? c("subtabActive") : ""}
-            onClick={() => setSubtab(key)}
-          >
-            {label}
-          </button>
+          <Tooltip key={key} label={tooltip("tooltip.projects.tab", label)}>
+            <button
+              className={subtab === key ? c("subtabActive") : ""}
+              onClick={() => setSubtab(key)}
+            >
+              {label}
+            </button>
+          </Tooltip>
         ))}
       </div>
       {subtab === "overview" ? (
@@ -469,12 +483,14 @@ function ProjectDashboard({
             }
           />
           <div className={c("formActions")}>
-            <button
-              className={c("primaryButton")}
-              onClick={() => void saveFeedback()}
-            >
-              {vi ? "Gửi phản hồi" : "Send feedback"}
-            </button>
+            <Tooltip label={tooltip("tooltip.projects.feedback_send", feedback.item.workflowName)}>
+              <button
+                className={c("primaryButton")}
+                onClick={() => void saveFeedback()}
+              >
+                {vi ? "Gửi phản hồi" : "Send feedback"}
+              </button>
+            </Tooltip>
           </div>
         </Dialog>
       ) : null}
@@ -576,6 +592,7 @@ function ReviewQueue({
   onApprove: (id: number) => Promise<void>;
   onFeedback: (item: OpsItem, action: "failed" | "needs_revision") => void;
 }) {
+  const tooltip = useTooltipText();
   const waiting = ops.filter((item) => item.status === "waiting_review");
   return (
     <div className={c("reviewList")}>
@@ -588,25 +605,31 @@ function ReviewQueue({
             </header>
             <p>{item.summary}</p>
             <footer>
-              <button
-                className={c("primaryButton")}
-                onClick={() => void onApprove(item.id)}
-              >
-                <Icon name="check" />
-                {vi ? "Duyệt" : "Approve"}
-              </button>
-              <button
-                className={c("buttonDanger")}
-                onClick={() => onFeedback(item, "failed")}
-              >
-                {vi ? "Không đạt" : "Fail"}
-              </button>
-              <button
-                className={c("buttonGhost")}
-                onClick={() => onFeedback(item, "needs_revision")}
-              >
-                {vi ? "Yêu cầu sửa" : "Request revision"}
-              </button>
+              <Tooltip label={tooltip("tooltip.projects.review_approve", item.workflowName)}>
+                <button
+                  className={c("primaryButton")}
+                  onClick={() => void onApprove(item.id)}
+                >
+                  <Icon name="check" />
+                  {vi ? "Duyệt" : "Approve"}
+                </button>
+              </Tooltip>
+              <Tooltip label={tooltip("tooltip.projects.review_fail", item.workflowName)}>
+                <button
+                  className={c("buttonDanger")}
+                  onClick={() => onFeedback(item, "failed")}
+                >
+                  {vi ? "Không đạt" : "Fail"}
+                </button>
+              </Tooltip>
+              <Tooltip label={tooltip("tooltip.projects.review_revision", item.workflowName)}>
+                <button
+                  className={c("buttonGhost")}
+                  onClick={() => onFeedback(item, "needs_revision")}
+                >
+                  {vi ? "Yêu cầu sửa" : "Request revision"}
+                </button>
+              </Tooltip>
             </footer>
           </article>
         ))
@@ -686,17 +709,20 @@ function WorkItems({
   onEdit: (item: Partial<WorkItem>) => void;
   onDelete: (item: WorkItem) => Promise<void>;
 }) {
+  const tooltip = useTooltipText();
   return (
     <>
       <div className={c("sectionActions")}>
-        <button
-          className={c("primaryButton")}
-          onClick={() =>
-            onEdit({ title: "", status: "backlog", priority: "medium" })
-          }
-        >
-          + {vi ? "Công việc" : "Work item"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.work_create")}>
+          <button
+            className={c("primaryButton")}
+            onClick={() =>
+              onEdit({ title: "", status: "backlog", priority: "medium" })
+            }
+          >
+            + {vi ? "Công việc" : "Work item"}
+          </button>
+        </Tooltip>
       </div>
       <div className={c("workBoard")}>
         {["backlog", "in_progress", "review", "done"].map((status) => (
@@ -714,12 +740,22 @@ function WorkItems({
                     · {item.priority}
                   </small>
                   <footer>
-                    <button onClick={() => onEdit(item)}>
-                      <Icon name="edit" />
-                    </button>
-                    <button onClick={() => void onDelete(item)}>
-                      <Icon name="trash" />
-                    </button>
+                    <Tooltip label={tooltip("tooltip.projects.work_edit", item.title)}>
+                      <button
+                        aria-label={tooltip("tooltip.projects.work_edit", item.title)}
+                        onClick={() => onEdit(item)}
+                      >
+                        <Icon name="edit" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label={tooltip("tooltip.projects.work_delete", item.title)}>
+                      <button
+                        aria-label={tooltip("tooltip.projects.work_delete", item.title)}
+                        onClick={() => void onDelete(item)}
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </Tooltip>
                   </footer>
                 </article>
               ))}
@@ -740,15 +776,18 @@ function Knowledge({
   onEdit: (doc: Partial<KnowledgeDoc>) => void;
   onDelete: (doc: KnowledgeDoc) => Promise<void>;
 }) {
+  const tooltip = useTooltipText();
   return (
     <>
       <div className={c("sectionActions")}>
-        <button
-          className={c("primaryButton")}
-          onClick={() => onEdit({ title: "", content: "", tags: "" })}
-        >
-          + {vi ? "Tài liệu" : "Document"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.document_create")}>
+          <button
+            className={c("primaryButton")}
+            onClick={() => onEdit({ title: "", content: "", tags: "" })}
+          >
+            + {vi ? "Tài liệu" : "Document"}
+          </button>
+        </Tooltip>
       </div>
       <div className={c("documentList")}>
         {docs.map((doc) => (
@@ -759,12 +798,22 @@ function Knowledge({
               <small>{doc.tags || "—"}</small>
               <p>{(doc.content || "").slice(0, 300)}</p>
             </div>
-            <button onClick={() => onEdit(doc)}>
-              <Icon name="edit" />
-            </button>
-            <button onClick={() => void onDelete(doc)}>
-              <Icon name="trash" />
-            </button>
+            <Tooltip label={tooltip("tooltip.projects.document_edit", doc.title)}>
+              <button
+                aria-label={tooltip("tooltip.projects.document_edit", doc.title)}
+                onClick={() => onEdit(doc)}
+              >
+                <Icon name="edit" />
+              </button>
+            </Tooltip>
+            <Tooltip label={tooltip("tooltip.projects.document_delete", doc.title)}>
+              <button
+                aria-label={tooltip("tooltip.projects.document_delete", doc.title)}
+                onClick={() => void onDelete(doc)}
+              >
+                <Icon name="trash" />
+              </button>
+            </Tooltip>
           </article>
         ))}
       </div>
@@ -784,6 +833,7 @@ function ProjectDialog({
   onSave: () => Promise<void>;
   onClose: () => void;
 }) {
+  const tooltip = useTooltipText();
   return (
     <Dialog
       title={
@@ -816,13 +866,15 @@ function ProjectDialog({
         />
       </Field>
       <div className={c("formActions")}>
-        <button
-          data-testid="save-project"
-          className={c("primaryButton")}
-          onClick={() => void onSave()}
-        >
-          {vi ? "Lưu" : "Save"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.project_save", draft.name || "")}>
+          <button
+            data-testid="save-project"
+            className={c("primaryButton")}
+            onClick={() => void onSave()}
+          >
+            {vi ? "Lưu" : "Save"}
+          </button>
+        </Tooltip>
       </div>
     </Dialog>
   );
@@ -842,6 +894,7 @@ function WorkDialog({
   onSave: () => Promise<void>;
   onClose: () => void;
 }) {
+  const tooltip = useTooltipText();
   return (
     <Dialog title={vi ? "Công việc" : "Work item"} onClose={onClose}>
       <Field label={vi ? "Tiêu đề" : "Title"}>
@@ -910,9 +963,11 @@ function WorkDialog({
         </select>
       </Field>
       <div className={c("formActions")}>
-        <button className={c("primaryButton")} onClick={() => void onSave()}>
-          {vi ? "Lưu" : "Save"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.work_save", draft.title || "")}>
+          <button className={c("primaryButton")} onClick={() => void onSave()}>
+            {vi ? "Lưu" : "Save"}
+          </button>
+        </Tooltip>
       </div>
     </Dialog>
   );
@@ -930,6 +985,7 @@ function KnowledgeDialog({
   onSave: () => Promise<void>;
   onClose: () => void;
 }) {
+  const tooltip = useTooltipText();
   return (
     <Dialog title={vi ? "Tài liệu" : "Document"} onClose={onClose}>
       <Field label={vi ? "Tiêu đề" : "Title"}>
@@ -959,9 +1015,11 @@ function KnowledgeDialog({
         />
       </Field>
       <div className={c("formActions")}>
-        <button className={c("primaryButton")} onClick={() => void onSave()}>
-          {vi ? "Lưu" : "Save"}
-        </button>
+        <Tooltip label={tooltip("tooltip.projects.document_save", draft.title || "")}>
+          <button className={c("primaryButton")} onClick={() => void onSave()}>
+            {vi ? "Lưu" : "Save"}
+          </button>
+        </Tooltip>
       </div>
     </Dialog>
   );

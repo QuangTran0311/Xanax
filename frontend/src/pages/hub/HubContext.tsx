@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
+import { enqueueToast, setToastAnimations } from "../../components/Toast";
 import { STORAGE_KEYS } from "../../store/keys";
 import type {
   AgentRecord,
@@ -21,8 +22,6 @@ interface HubCollections {
 }
 
 interface ConfirmState { message: string; resolve: (value: boolean) => void; }
-interface ToastState { id: number; message: string; kind: ToastKind; }
-
 interface HubContextValue extends HubCollections {
   username: string;
   loading: boolean;
@@ -42,7 +41,6 @@ interface HubContextValue extends HubCollections {
   refreshAll: () => Promise<void>;
   toast: (message: string, kind?: ToastKind) => void;
   confirm: (message: string) => Promise<boolean>;
-  toastState: ToastState | null;
   confirmState: ConfirmState | null;
   answerConfirm: (value: boolean) => void;
 }
@@ -57,9 +55,7 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
   const [currentProjectSubtab, setCurrentProjectSubtab] = useState<ProjectSubtab>("overview");
   const [sidebarCompact, setSidebarCompactState] = useState(() => localStorage.getItem(STORAGE_KEYS.sidebarIconMode) === "1");
   const [animations, setAnimationsState] = useState(() => localStorage.getItem(STORAGE_KEYS.animations) !== "0");
-  const [toastState, setToastState] = useState<ToastState | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
-  const toastTimer = useRef<number | null>(null);
 
   const update = useCallback(<K extends keyof HubCollections>(key: K, value: HubCollections[K]) => {
     setCollections((current) => ({ ...current, [key]: value }));
@@ -83,13 +79,8 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, [refreshAll]);
 
-  useEffect(() => () => { if (toastTimer.current !== null) window.clearTimeout(toastTimer.current); }, []);
-
   const toast = useCallback((message: string, kind: ToastKind = "info") => {
-    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    const id = Date.now();
-    setToastState({ id, message, kind });
-    toastTimer.current = window.setTimeout(() => setToastState((current) => current?.id === id ? null : current), 3500);
+    enqueueToast(message, kind);
   }, []);
 
   const confirm = useCallback((message: string) => new Promise<boolean>((resolve) => setConfirmState({ message, resolve })), []);
@@ -100,16 +91,20 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
     setSidebarCompactState(value); localStorage.setItem(STORAGE_KEYS.sidebarIconMode, value ? "1" : "0");
   }, []);
   const setAnimations = useCallback((value: boolean) => {
-    setAnimationsState(value); localStorage.setItem(STORAGE_KEYS.animations, value ? "1" : "0");
+    setAnimationsState(value);
+    setToastAnimations(value);
+    localStorage.setItem(STORAGE_KEYS.animations, value ? "1" : "0");
   }, []);
+
+  useEffect(() => setToastAnimations(animations), [animations]);
 
   const value = useMemo<HubContextValue>(() => ({
     ...collections, username, loading, currentProjectId, setCurrentProjectId,
     currentProjectSubtab, setCurrentProjectSubtab,
     sidebarCompact, setSidebarCompact, animations, setAnimations,
     refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll,
-    toast, confirm, toastState, confirmState, answerConfirm,
-  }), [collections, username, loading, currentProjectId, currentProjectSubtab, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, toast, confirm, toastState, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
+    toast, confirm, confirmState, answerConfirm,
+  }), [collections, username, loading, currentProjectId, currentProjectSubtab, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, toast, confirm, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
 
   return <HubContext.Provider value={value}>{children}</HubContext.Provider>;
 }

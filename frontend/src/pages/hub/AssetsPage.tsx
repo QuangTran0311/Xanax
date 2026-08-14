@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
+import { Tooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { useHub } from "./HubContext";
 import { hubText } from "./i18n";
@@ -19,6 +21,7 @@ function formatBytes(value = 0): string {
 
 export function AssetsPage() {
   const { language } = useLanguage(); const { toast, confirm } = useHub();
+  const tooltip = useTooltipText();
   const [assets, setAssets] = useState<AssetRecord[]>([]); const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true); const [uploading, setUploading] = useState(false); const inputRef = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
@@ -50,16 +53,18 @@ export function AssetsPage() {
   const labels: Record<Filter, string> = { all: hubText(language, "assets.all"), upload: hubText(language, "assets.uploaded"), workflow: hubText(language, "assets.workflow"), benchmark: hubText(language, "assets.benchmark") };
   return <div className={c("page")}>
     <header className={c("pageHeader")}><div><h1>{hubText(language, "assets.title")}</h1><p>{hubText(language, "assets.subtitle")}</p></div></header>
-    <div className={c("filterBar")}>{(Object.keys(labels) as Filter[]).map((key) => <button key={key} className={filter === key ? c("activePill") : c("pill")} onClick={() => setFilter(key)}>{labels[key]} ({key === "all" ? assets.length : assets.filter((asset) => asset.source === key).length})</button>)}</div>
-    <button className={c("dropzone")} disabled={uploading} onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files.length) void upload(event.dataTransfer.files); }}>
-      <Icon name={uploading ? "sync" : "upload"} /><strong>{uploading ? hubText(language, "common.loading") : hubText(language, "assets.upload")}</strong>
-      <input ref={inputRef} type="file" multiple hidden onChange={(event) => { if (event.target.files?.length) void upload(event.target.files); event.target.value = ""; }} />
-    </button>
+    <div className={c("filterBar")}>{(Object.keys(labels) as Filter[]).map((key) => <Tooltip key={key} label={tooltip("tooltip.assets.filter", labels[key])}><button className={filter === key ? c("activePill") : c("pill")} onClick={() => setFilter(key)}>{labels[key]} ({key === "all" ? assets.length : assets.filter((asset) => asset.source === key).length})</button></Tooltip>)}</div>
+    <Tooltip label={tooltip(uploading ? "tooltip.assets.uploading" : "tooltip.assets.upload")}>
+      <button className={c("dropzone")} disabled={uploading} onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (event.dataTransfer.files.length) void upload(event.dataTransfer.files); }}>
+        <Icon name={uploading ? "sync" : "upload"} /><strong>{uploading ? hubText(language, "common.loading") : hubText(language, "assets.upload")}</strong>
+        <input ref={inputRef} type="file" multiple hidden onChange={(event) => { if (event.target.files?.length) void upload(event.target.files); event.target.value = ""; }} />
+      </button>
+    </Tooltip>
     {loading ? <div className={c("loading")}><Icon name="sync" />{hubText(language, "common.loading")}</div> : filtered.length ? <section className={c("assetGrid")}>{filtered.map((asset) => <article className={c("assetCard")} key={asset.id}>
       <div className={c("assetTop")}><span className={c("assetIcon")}><Icon name={asset.source === "benchmark" ? "flask" : asset.source === "workflow" ? "workflow" : "document"} /></span><span className={c("tag")}>{labels[asset.source as Filter] || asset.source}</span></div>
       <h2>{asset.name}</h2><p>{asset.label ? `${asset.label} · ` : ""}{asset.files.length} file · {(asset.created_at || "").slice(0, 16)}</p>
       <div className={c("assetFiles")}>{asset.files.map((file) => <a key={`${asset.id}-${file.name}`} href={file.download_url} target="_blank" rel="noreferrer"><span>{file.name}</span><small>{formatBytes(file.size_bytes)}</small><Icon name="download" /></a>)}</div>
-      {asset.deletable ? <button className={c("dangerLink")} onClick={() => void remove(asset)}><Icon name="trash" />{hubText(language, "common.delete")}</button> : null}
+      {asset.deletable ? <Tooltip label={tooltip("tooltip.assets.delete", asset.name || "")}><button className={c("dangerLink")} onClick={() => void remove(asset)}><Icon name="trash" />{hubText(language, "common.delete")}</button></Tooltip> : null}
     </article>)}</section> : <div className={c("empty")}><Icon name="assets" /><span>{hubText(language, "assets.empty")}</span></div>}
   </div>;
 }

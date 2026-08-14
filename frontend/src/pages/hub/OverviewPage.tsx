@@ -12,6 +12,8 @@ import {
 
 import { apiClient } from "../../api/client";
 import { Icon, type IconName } from "../../components/Icon";
+import { Tooltip as UiTooltip } from "../../components/Tooltip";
+import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
 import { useTheme } from "../../store/theme";
 import { avatarColor } from "./avatarColors";
@@ -424,6 +426,7 @@ function PanelHeader({
   action?: { label: string; to: string };
 }) {
   const navigate = useNavigate();
+  const tooltip = useTooltipText();
 
   return (
     <header className={c("overviewPanelHeader")}>
@@ -433,9 +436,11 @@ function PanelHeader({
         {subtitle ? <small>{subtitle}</small> : null}
       </div>
       {action ? (
-        <button type="button" onClick={() => navigate(action.to)}>
-          {action.label}<Icon name="arrowRight" />
-        </button>
+        <UiTooltip label={tooltip("tooltip.overview.open_section", title)}>
+          <button className={c("overviewPanelAction")} type="button" onClick={() => navigate(action.to)}>
+            {action.label}<Icon name="arrowRight" />
+          </button>
+        </UiTooltip>
       ) : null}
     </header>
   );

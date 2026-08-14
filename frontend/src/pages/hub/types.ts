@@ -46,8 +46,21 @@ export interface ModelRecord extends HubRecord {
   provider?: string;
   api_style?: string;
   model_id?: string;
+  base_url?: string;
+  cli_config_dir?: string;
   category?: string;
-  usage_today?: Record<string, number>;
+  max_requests_per_day?: number;
+  max_tokens_per_day?: number;
+  price_input_per_1m?: number;
+  price_cache_per_1m?: number;
+  price_output_per_1m?: number;
+  currency?: string;
+  usage_today?: {
+    request_count?: number;
+    tokens_input?: number;
+    tokens_cache?: number;
+    tokens_output?: number;
+  };
 }
 
 export type ToastKind = "success" | "error" | "info";
