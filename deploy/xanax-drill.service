@@ -37,6 +37,10 @@ ExecStart=/opt/xanax/.venv/bin/python /opt/xanax-drill/backend/main.py
 # không chạy được. Hỏng là phải hỏng cho thấy.
 Restart=no
 
+# Bản drill chỉ cần khởi động và trả lời health check; không cho một bản diễn tập
+# lỗi chiếm phần RAM đã chừa cho production và hệ thống.
+MemoryMax=1.5G
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

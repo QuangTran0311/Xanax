@@ -222,7 +222,7 @@ class TestClaudeCommandShape:
     def captured(self, monkeypatch):
         seen = {}
 
-        async def fake_stream_proc(cmd, cwd=None, stdin_data=None, env=None):
+        async def fake_stream_proc(cmd, cwd=None, stdin_data=None, env=None, timeout=None):
             seen.update(cmd=cmd, stdin=(stdin_data or b"").decode("utf-8"), env=env)
             yield "exit", "0"
 

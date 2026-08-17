@@ -24,7 +24,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from core.hermes_bridge import hermes
 from hub.database import (
     add_benchmark_result, get_benchmark, get_benchmark_results,
-    update_benchmark,
+    connect, update_benchmark,
 )
 
 logger = logging.getLogger("xanax.ws.benchmark")
@@ -194,9 +194,7 @@ async def benchmark_ws(ws: WebSocket):
         for r in results_db:
             scores = json.loads(r["scores_json"])
             if scores.get("total") == best["scores"]["total"]:
-                from hub.database import DB_PATH
-                import aiosqlite
-                async with aiosqlite.connect(DB_PATH) as db:
+                async with connect() as db:
                     await db.execute(
                         "UPDATE benchmark_results SET recommendation = ? WHERE id = ?",
                         ("Recommended for this role", r["id"]),

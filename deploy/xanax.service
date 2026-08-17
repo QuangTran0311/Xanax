@@ -31,6 +31,24 @@ ExecStart=/opt/xanax/.venv/bin/python /opt/xanax/backend/main.py
 Restart=always
 RestartSec=5s
 
+# Toàn bộ claude/codex CLI do app sinh ra nằm cùng cgroup với service này.
+# MemoryHigh kìm trước (throttle và đẩy trang ít dùng ra swap); MemoryMax mới là
+# trần cứng có thể giết tiến trình. Đặt hai mức cách nhau để máy còn cơ hội hồi
+# phục bằng cách chạy chậm lại, thay vì vừa chạm ngưỡng đã giết ngay.
+#
+# VPS có 6 GB RAM: Xanax được dùng tối đa 4.5 GB, chừa khoảng 1.5 GB cho OS,
+# Caddy và journald. Lợi ích chính không phải tiết kiệm RAM: nếu Xanax vượt trần,
+# OOM chỉ chọn nạn nhân trong cgroup này, không bắn nhầm Caddy hay sshd và làm mất
+# đường vào máy. Nếu journal cho thấy service bị OOM trong cgroup, nâng MemoryMax
+# sau khi đo thực tế; đừng xóa giới hạn và đừng hạ nó xuống dưới 4G.
+MemoryHigh=3.5G
+MemoryMax=4.5G
+
+# subprocess_util.py dùng 1 process CLI và 2 thread đọc pipe cho mỗi lần chạy.
+# Nếu process/thread bị rò, biến nó thành lỗi nhìn thấy được thay vì để cả máy
+# cạn task rồi chết.
+TasksMax=512
+
 NoNewPrivileges=true
 PrivateTmp=true
 # full chỉ khóa ghi /usr, /boot, /efi và /etc; /opt/xanax/backend/data vẫn ghi được.

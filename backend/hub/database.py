@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import secrets
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -38,10 +39,25 @@ SESSION_TTL_HOURS = 8  # 8 hours — force re-login after one work session
 COOKIE_NAME = "xanax_session"
 
 
+@asynccontextmanager
+async def connect(path: Path | str | None = None):
+    """Mở kết nối SQLite và chờ tối đa 5 giây khi database đang bị khóa."""
+    async with aiosqlite.connect(path or DB_PATH) as db:
+        # Hai pragma này thuộc về từng kết nối, nên phải đặt lại mỗi lần mở.
+        await db.execute("PRAGMA busy_timeout = 5000")
+        await db.execute("PRAGMA synchronous = NORMAL")
+        yield db
+
+
 # ── Schema ─────────────────────────────────────────────────────────────────
 
 async def init_db() -> None:
+    # Khởi tạo dùng kết nối thô: WAL là thuộc tính bền vững của file database,
+    # chỉ cần đặt một lần tại đây thay vì lặp lại ở mọi connect().
     async with aiosqlite.connect(DB_PATH) as db:
+        if DB_PATH != ":memory:":
+            await db.execute("PRAGMA journal_mode = WAL")
+        await db.execute("PRAGMA synchronous = NORMAL")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,14 +169,14 @@ def _verify_password(password: str, stored: str) -> bool:
 # ── Users ───────────────────────────────────────────────────────────────────
 
 async def user_count() -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         async with db.execute("SELECT COUNT(*) FROM users") as cur:
             row = await cur.fetchone()
             return row[0] if row else 0
 
 
 async def create_user(username: str, password: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             (username, _hash_password(password)),
@@ -170,7 +186,7 @@ async def create_user(username: str, password: str) -> int:
 
 
 async def get_user_by_username(username: str) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, username, password_hash FROM users WHERE username = ?",
@@ -199,7 +215,7 @@ async def create_session(user_id: int) -> str:
     # Use SQLite-compatible format (space separator, no timezone suffix)
     # so that comparison with datetime('now') works correctly as string compare
     expires_at = (_now_utc() + timedelta(hours=SESSION_TTL_HOURS)).strftime('%Y-%m-%d %H:%M:%S')
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
             (token, user_id, expires_at),
@@ -210,7 +226,7 @@ async def create_session(user_id: int) -> str:
 
 async def validate_session(token: str) -> dict | None:
     """Return {id, username} if valid and not expired, else None."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -227,20 +243,20 @@ async def validate_session(token: str) -> dict | None:
 
 
 async def delete_session(token: str) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM sessions WHERE token = ?", (token,))
         await db.commit()
 
 
 async def purge_expired_sessions() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM sessions WHERE expires_at <= datetime('now')")
         await db.commit()
 
 
 async def clear_all_sessions() -> None:
     """Invalidate all auth sessions — called on server startup to force re-login."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM sessions")
         await db.commit()
     logger.info("All auth sessions cleared on startup")
@@ -257,7 +273,7 @@ async def create_training_session(title: str, task_description: str = "",
     project_id = dự án của buổi dạy; quyết định bài học phạm vi "dự án" đi về soul
     dự án nào. None = buổi dạy không gắn dự án, chỉ ghi được vào nhân viên/kỹ năng.
     """
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO training_sessions (title, task_description, agent_id, project_id) "
             "VALUES (?, ?, ?, ?)",
@@ -268,7 +284,7 @@ async def create_training_session(title: str, task_description: str = "",
 
 
 async def list_training_sessions() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
@@ -286,7 +302,7 @@ async def list_training_sessions() -> list[dict]:
 
 
 async def get_training_session(session_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT s.id, s.title, s.task_description, s.status, s.result_notes, "
@@ -336,7 +352,7 @@ async def update_training_session(
         return False
     fields.append("updated_at = datetime('now')")
     values.append(session_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE training_sessions SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -345,7 +361,7 @@ async def update_training_session(
 
 
 async def delete_training_session(session_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM training_sessions WHERE id = ?", (session_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -354,7 +370,7 @@ async def delete_training_session(session_id: int) -> bool:
 # ── Training messages ────────────────────────────────────────────────────────
 
 async def add_training_message(session_id: int, role: str, content: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO training_messages (session_id, role, content) VALUES (?, ?, ?)",
             (session_id, role, content),
@@ -364,7 +380,7 @@ async def add_training_message(session_id: int, role: str, content: str) -> int:
 
 
 async def get_training_messages(session_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, session_id, role, content, created_at "
@@ -378,7 +394,7 @@ async def get_training_messages(session_id: int) -> list[dict]:
 # ── Task sessions ────────────────────────────────────────────────────────────
 
 async def create_task_session(title: str, task_description: str, workdir: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO task_sessions (title, task_description, workdir) VALUES (?, ?, ?)",
             (title, task_description, workdir),
@@ -388,7 +404,7 @@ async def create_task_session(title: str, task_description: str, workdir: str) -
 
 
 async def list_task_sessions() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, title, task_description, workdir, status, result_notes, failure_notes, created_at, updated_at "
@@ -399,7 +415,7 @@ async def list_task_sessions() -> list[dict]:
 
 
 async def get_task_session(session_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, title, task_description, workdir, status, xanax_output, xanax_plan_json, "
@@ -444,7 +460,7 @@ async def update_task_session(
         return False
     fields.append("updated_at = datetime('now')")
     values.append(session_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE task_sessions SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -453,7 +469,7 @@ async def update_task_session(
 
 
 async def add_pipeline_log(task_session_id: int, agent: str, type_: str, content: str, seq: int = 0) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             "INSERT INTO pipeline_logs (task_session_id, agent, type, content, seq) VALUES (?, ?, ?, ?, ?)",
             (task_session_id, agent, type_, content, seq),
@@ -462,7 +478,7 @@ async def add_pipeline_log(task_session_id: int, agent: str, type_: str, content
 
 
 async def get_pipeline_logs(task_session_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT agent, type, content FROM pipeline_logs "
@@ -474,7 +490,7 @@ async def get_pipeline_logs(task_session_id: int) -> list[dict]:
 
 
 async def delete_agent_pipeline_logs(task_session_id: int, agent: str) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             "DELETE FROM pipeline_logs WHERE task_session_id = ? AND agent = ?",
             (task_session_id, agent),
@@ -483,7 +499,7 @@ async def delete_agent_pipeline_logs(task_session_id: int, agent: str) -> None:
 
 
 async def delete_task_session(session_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM task_sessions WHERE id = ?", (session_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -1027,7 +1043,7 @@ async def _unique_slug(db, table: str, base_slug: str) -> str:
 # ── Departments (phòng ban) ───────────────────────────────────────────────────
 
 async def list_departments() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT d.*, COUNT(a.id) AS agent_count,
@@ -1042,7 +1058,7 @@ async def list_departments() -> list[dict]:
 
 
 async def get_department(department_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT d.*, h.name AS head_agent_name, h.avatar_color AS head_agent_color
@@ -1058,7 +1074,7 @@ async def get_department(department_id: int) -> dict | None:
 async def create_department(
     name: str, description: str = "", color: str = "#9366ff", head_agent_id: int | None = None,
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO departments (name,description,color,head_agent_id) VALUES (?,?,?,?)",
             (name, description, color, head_agent_id),
@@ -1082,7 +1098,7 @@ async def update_department(department_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(department_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE departments SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1091,7 +1107,7 @@ async def update_department(department_id: int, **kwargs) -> bool:
 
 
 async def delete_department(department_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             "UPDATE agent_configs SET department_id = NULL WHERE department_id = ?", (department_id,)
         )
@@ -1101,7 +1117,7 @@ async def delete_department(department_id: int) -> bool:
 
 
 async def list_agent_configs() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT a.*, mp.model_id AS pool_model_id, mp.name AS pool_name,
@@ -1137,7 +1153,7 @@ def _migrate_model_pool_ids_row(row: dict) -> dict:
 
 
 async def get_agent_config(agent_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT a.*, d.name AS department_name, d.color AS department_color
@@ -1154,7 +1170,7 @@ async def get_agent_configs_by_ids(ids: list[int]) -> list[dict]:
     if not ids:
         return []
     placeholders = ",".join("?" * len(ids))
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""SELECT a.*, mp.model_id AS pool_model_id, mp.name AS pool_name,
@@ -1184,7 +1200,7 @@ async def create_agent_config(
     model_pool_id: int | None = None, model_pool_ids_json: str = "[]",
     department_id: int | None = None, skill_tools_json: str = "{}",
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """INSERT INTO agent_configs
                (name,role,model,system_prompt,avatar_color,avatar_icon,skills_json,model_pool_id,model_pool_ids_json,department_id,skill_tools_json)
@@ -1212,7 +1228,7 @@ async def update_agent_config(agent_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(agent_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE agent_configs SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1221,7 +1237,7 @@ async def update_agent_config(agent_id: int, **kwargs) -> bool:
 
 
 async def delete_agent_config(agent_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         # head_agent_id được thêm bằng ALTER TABLE nên không có FK ON DELETE SET NULL —
         # phải tự gỡ chỉ định trưởng phòng ở đây, nếu không phòng ban vẫn trỏ tới 1 agent_id
         # đã xoá, khiến UI tưởng phòng đã có trưởng phòng (ẩn mất mục "Đặt làm Trưởng phòng").
@@ -1234,14 +1250,14 @@ async def delete_agent_config(agent_id: int) -> bool:
 # ── Skills ───────────────────────────────────────────────────────────────────
 
 async def list_skills() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM skills ORDER BY name ASC") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_skill(skill_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)) as cur:
             row = await cur.fetchone()
@@ -1250,7 +1266,7 @@ async def get_skill(skill_id: int) -> dict | None:
 
 async def create_skill(name: str, description: str = "", type_: str = "builtin",
                        config_json: str = "{}") -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO skills (name,description,type,config_json) VALUES (?,?,?,?)",
             (name, description, type_, config_json),
@@ -1269,7 +1285,7 @@ async def update_skill(skill_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(skill_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE skills SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1278,7 +1294,7 @@ async def update_skill(skill_id: int, **kwargs) -> bool:
 
 
 async def delete_skill(skill_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM skills WHERE id = ?", (skill_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -1287,14 +1303,14 @@ async def delete_skill(skill_id: int) -> bool:
 # ── Projects ─────────────────────────────────────────────────────────────────
 
 async def list_projects() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM projects ORDER BY created_at DESC") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_project(project_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM projects WHERE id = ?", (project_id,)) as cur:
             row = await cur.fetchone()
@@ -1304,7 +1320,7 @@ async def get_project(project_id: int) -> dict | None:
 async def create_project(name: str, description: str = "") -> int:
     from core.slugify import slugify
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         slug = await _unique_slug(db, "projects", slugify(name, fallback="du-an"))
         cur = await db.execute(
             "INSERT INTO projects (name,description,slug) VALUES (?,?,?)", (name, description, slug)
@@ -1324,7 +1340,7 @@ async def update_project(project_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(project_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE projects SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1333,7 +1349,7 @@ async def update_project(project_id: int, **kwargs) -> bool:
 
 
 async def delete_project(project_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -1342,7 +1358,7 @@ async def delete_project(project_id: int) -> bool:
 # ── Work Items ───────────────────────────────────────────────────────────────
 
 async def list_work_items(project_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT w.*, a.name as agent_name, a.avatar_color as agent_color "
@@ -1354,7 +1370,7 @@ async def list_work_items(project_id: int) -> list[dict]:
 
 
 async def get_work_item(item_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT w.*, a.name as agent_name, a.avatar_color as agent_color "
@@ -1369,7 +1385,7 @@ async def get_work_item(item_id: int) -> dict | None:
 async def create_work_item(project_id: int, title: str, description: str = "",
                            status: str = "backlog", priority: str = "medium",
                            assigned_agent_id: int | None = None) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO work_items (project_id,title,description,status,priority,assigned_agent_id) VALUES (?,?,?,?,?,?)",
             (project_id, title, description, status, priority, assigned_agent_id),
@@ -1389,7 +1405,7 @@ async def update_work_item(item_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(item_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE work_items SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1398,7 +1414,7 @@ async def update_work_item(item_id: int, **kwargs) -> bool:
 
 
 async def delete_work_item(item_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM work_items WHERE id = ?", (item_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -1414,7 +1430,7 @@ async def list_meetings() -> list[dict]:
     đã đánh 'failed' cho mọi lần chạy đứt giữa chừng — hàng còn 'running' là còn
     thật sự chờ (xem list_pending_approvals).
     """
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT m.*, ("
@@ -1429,7 +1445,7 @@ async def list_meetings() -> list[dict]:
 
 
 async def list_finalized_meetings(limit: int = 5) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM meetings WHERE status='finalized' ORDER BY decided_at DESC LIMIT ?",
@@ -1439,7 +1455,7 @@ async def list_finalized_meetings(limit: int = 5) -> list[dict]:
 
 
 async def get_meeting(meeting_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,)) as cur:
             row = await cur.fetchone()
@@ -1447,7 +1463,7 @@ async def get_meeting(meeting_id: int) -> dict | None:
 
 
 async def create_meeting(title: str, topic: str = "", participants_json: str = "[]", project_id: int | None = None) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO meetings (title,topic,participants_json,project_id) VALUES (?,?,?,?)",
             (title, topic, participants_json, project_id),
@@ -1459,7 +1475,7 @@ async def create_meeting(title: str, topic: str = "", participants_json: str = "
 async def finalize_meeting(meeting_id: int, decision_text: str) -> bool:
     """Chốt kế hoạch: lưu quyết định cuối cùng, cho phép Xanax ra lệnh dựa theo đó."""
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "UPDATE meetings SET status='finalized', decision_text=?, decided_at=?, ended_at=? WHERE id=?",
             (decision_text, now, now, meeting_id),
@@ -1481,7 +1497,7 @@ async def update_meeting(meeting_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(meeting_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1490,14 +1506,14 @@ async def update_meeting(meeting_id: int, **kwargs) -> bool:
 
 
 async def delete_meeting(meeting_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         await db.commit()
         return cur.rowcount > 0
 
 
 async def add_meeting_message(meeting_id: int, sender: str, sender_type: str, content: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO meeting_messages (meeting_id,sender,sender_type,content) VALUES (?,?,?,?)",
             (meeting_id, sender, sender_type, content),
@@ -1507,7 +1523,7 @@ async def add_meeting_message(meeting_id: int, sender: str, sender_type: str, co
 
 
 async def get_meeting_messages(meeting_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM meeting_messages WHERE meeting_id = ? ORDER BY created_at ASC",
@@ -1518,7 +1534,7 @@ async def get_meeting_messages(meeting_id: int) -> list[dict]:
 
 async def get_recent_meeting_messages(limit: int = 8) -> list[dict]:
     """Return one row per recently active meeting, with its latest message."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """WITH ranked AS (
@@ -1550,14 +1566,14 @@ async def get_recent_meeting_messages(limit: int = 8) -> list[dict]:
 # ── Benchmarks ───────────────────────────────────────────────────────────────
 
 async def list_benchmarks() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM benchmarks ORDER BY created_at DESC") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_benchmark(benchmark_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM benchmarks WHERE id = ?", (benchmark_id,)) as cur:
             row = await cur.fetchone()
@@ -1566,7 +1582,7 @@ async def get_benchmark(benchmark_id: int) -> dict | None:
 
 async def create_benchmark(name: str, role_description: str = "",
                            test_cases_json: str = "[]", models_json: str = "[]") -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO benchmarks (name,role_description,test_cases_json,models_json) VALUES (?,?,?,?)",
             (name, role_description, test_cases_json, models_json),
@@ -1585,7 +1601,7 @@ async def update_benchmark(benchmark_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(benchmark_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE benchmarks SET {', '.join(fields)} WHERE id = ?", values
         )
@@ -1594,7 +1610,7 @@ async def update_benchmark(benchmark_id: int, **kwargs) -> bool:
 
 
 async def delete_benchmark(benchmark_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM benchmarks WHERE id = ?", (benchmark_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -1602,7 +1618,7 @@ async def delete_benchmark(benchmark_id: int) -> bool:
 
 async def add_benchmark_result(benchmark_id: int, model: str, scores_json: str,
                                 responses_json: str, recommendation: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO benchmark_results (benchmark_id,model,scores_json,responses_json,recommendation) VALUES (?,?,?,?,?)",
             (benchmark_id, model, scores_json, responses_json, recommendation),
@@ -1612,7 +1628,7 @@ async def add_benchmark_result(benchmark_id: int, model: str, scores_json: str,
 
 
 async def get_benchmark_result(result_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM benchmark_results WHERE id=?", (result_id,)) as cur:
             row = await cur.fetchone()
@@ -1620,7 +1636,7 @@ async def get_benchmark_result(result_id: int) -> dict | None:
 
 
 async def get_benchmark_results(benchmark_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM benchmark_results WHERE benchmark_id = ? ORDER BY created_at ASC",
@@ -1641,7 +1657,7 @@ async def create_experiment(
     repetitions: int = 3,
     warnings_json: str = "[]",
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """INSERT INTO experiments
                (name,agent_id,project_id,benchmark_id,measured_model_pool_id,
@@ -1655,7 +1671,7 @@ async def create_experiment(
 
 
 async def list_experiments() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT e.*, a.name AS agent_name, p.name AS project_name,
@@ -1673,7 +1689,7 @@ async def list_experiments() -> list[dict]:
 
 
 async def get_experiment(experiment_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT e.*, a.name AS agent_name, p.name AS project_name,
@@ -1709,7 +1725,7 @@ async def update_experiment(experiment_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at=datetime('now')")
     values.append(experiment_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE experiments SET {','.join(fields)} WHERE id=?", values
         )
@@ -1726,7 +1742,7 @@ async def claim_experiment_run(
     warnings_json: str,
 ) -> bool:
     """Chuyển pending→running nguyên tử để hai client không chạy trùng."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """UPDATE experiments SET status='running', total_trials=?,
                       completed_trials=0, scored_trials=0,
@@ -1747,7 +1763,7 @@ async def create_experiment_trials(experiment_id: int, trials: list[dict]) -> No
         experiment_id, item["condition"], item["case_index"], item["repetition"],
         item["execution_order"], item["prompt"], item.get("criteria", ""),
     ) for item in trials]
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.executemany(
             """INSERT INTO experiment_trials
                (experiment_id,condition,case_index,repetition,execution_order,prompt,criteria)
@@ -1758,7 +1774,7 @@ async def create_experiment_trials(experiment_id: int, trials: list[dict]) -> No
 
 
 async def list_experiment_trials(experiment_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM experiment_trials WHERE experiment_id=? ORDER BY execution_order,id",
@@ -1768,7 +1784,7 @@ async def list_experiment_trials(experiment_id: int) -> list[dict]:
 
 
 async def get_experiment_trial(trial_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM experiment_trials WHERE id=?", (trial_id,)) as cur:
             row = await cur.fetchone()
@@ -1790,7 +1806,7 @@ async def update_experiment_trial(trial_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(trial_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE experiment_trials SET {','.join(fields)} WHERE id=?", values
         )
@@ -1805,7 +1821,7 @@ async def create_experiment_judgement(
     item_map_json: str,
     judge_prompt: str,
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             """INSERT INTO experiment_judgements
                (experiment_id,case_index,judge_model_pool_id,item_map_json,judge_prompt,status)
@@ -1830,7 +1846,7 @@ async def update_experiment_judgement(judgement_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(judgement_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE experiment_judgements SET {','.join(fields)} WHERE id=?", values
         )
@@ -1839,7 +1855,7 @@ async def update_experiment_judgement(judgement_id: int, **kwargs) -> bool:
 
 
 async def list_experiment_judgements(experiment_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM experiment_judgements WHERE experiment_id=? ORDER BY case_index,id",
@@ -1849,7 +1865,7 @@ async def list_experiment_judgements(experiment_id: int) -> list[dict]:
 
 
 async def refresh_experiment_progress(experiment_id: int) -> dict:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         async with db.execute(
             """SELECT COUNT(*),
                       COALESCE(SUM(CASE WHEN status NOT IN ('pending','running','cancelled') THEN 1 ELSE 0 END),0),
@@ -1868,7 +1884,7 @@ async def refresh_experiment_progress(experiment_id: int) -> dict:
 
 
 async def cancel_unfinished_experiment_trials(experiment_id: int) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """UPDATE experiment_trials SET status='cancelled',completed_at=datetime('now')
                WHERE experiment_id=? AND status IN ('pending','running','generated')""",
@@ -1885,7 +1901,7 @@ async def cancel_unfinished_experiment_trials(experiment_id: int) -> None:
 
 async def recover_interrupted_experiments() -> int:
     """Đánh dấu lượt đang chạy khi server cũ đã chết; không xoá dữ liệu dở dang."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """UPDATE experiment_trials SET status='interrupted',completed_at=datetime('now')
                WHERE status='running'"""
@@ -1906,7 +1922,7 @@ async def create_task_alert(
     reason: str = "no_matching_agent", suggestions_json: str = "[]"
 ) -> int:
     """Create or replace an open alert for a work item."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         # Remove any existing open alert for this item
         await db.execute(
             "DELETE FROM task_alerts WHERE work_item_id = ? AND status = 'open'",
@@ -1921,7 +1937,7 @@ async def create_task_alert(
 
 
 async def list_task_alerts(status: str = "open") -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT ta.*, p.name as project_name "
@@ -1933,7 +1949,7 @@ async def list_task_alerts(status: str = "open") -> list[dict]:
 
 
 async def resolve_task_alert(work_item_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "UPDATE task_alerts SET status='resolved', resolved_at=datetime('now') "
             "WHERE work_item_id = ? AND status = 'open'",
@@ -1944,13 +1960,13 @@ async def resolve_task_alert(work_item_id: int) -> bool:
 
 
 async def delete_task_alert_for_item(work_item_id: int) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM task_alerts WHERE work_item_id = ?", (work_item_id,))
         await db.commit()
 
 
 async def get_open_alert_count() -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM task_alerts WHERE status = 'open'"
         ) as cur:
@@ -1968,7 +1984,7 @@ async def create_workflow_task(
 ) -> int:
     from core.slugify import slugify
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         slug = await _unique_slug(db, "workflow_tasks", slugify(name, fallback="quy-trinh"))
         cur = await db.execute(
             """INSERT INTO workflow_tasks
@@ -1983,7 +1999,7 @@ async def create_workflow_task(
 
 
 async def list_workflow_tasks_by_trigger(trigger_type: str) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM workflow_tasks WHERE status='active'",
@@ -2005,7 +2021,7 @@ async def list_workflow_tasks_by_trigger(trigger_type: str) -> list[dict]:
 
 
 async def list_workflow_tasks(project_id: int | None = None, kind: str | None = None) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         clauses = ["status!='archived'"]
         params_list: list = []
@@ -2022,7 +2038,7 @@ async def list_workflow_tasks(project_id: int | None = None, kind: str | None = 
 
 
 async def get_workflow_task(task_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM workflow_tasks WHERE id=?", (task_id,)) as cur:
             row = await cur.fetchone()
@@ -2041,14 +2057,14 @@ async def update_workflow_task(task_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(task_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(f"UPDATE workflow_tasks SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
         return cur.rowcount > 0
 
 
 async def delete_workflow_task(task_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM workflow_tasks WHERE id=?", (task_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -2067,7 +2083,7 @@ async def create_workflow_run(
     một lần qua WebSocket, nên đóng phòng họp rồi mở lại là mất thẻ duyệt. Có cột
     này mới tìm ngược được "cuộc họp đang có bao nhiêu việc chờ tôi duyệt".
     """
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO workflow_runs (task_id,project_id,task_name,triggered_by,meeting_id) "
             "VALUES (?,?,?,?,?)",
@@ -2099,7 +2115,7 @@ async def list_pending_approvals(meeting_id: int | None = None) -> list[dict]:
         sql += " AND r.meeting_id = ?"
         params = (meeting_id,)
     sql += " ORDER BY o.id ASC"
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         rows = await (await db.execute(sql, params)).fetchall()
         return [dict(r) for r in rows]
@@ -2117,7 +2133,7 @@ async def list_workflow_runs(
         params.append(project_id)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.append(limit)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"SELECT * FROM workflow_runs {where} ORDER BY created_at DESC LIMIT ?", params
@@ -2126,7 +2142,7 @@ async def list_workflow_runs(
 
 
 async def list_workflow_runs_by_status(status: str) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM workflow_runs WHERE status = ? ORDER BY created_at DESC", (status,),
@@ -2135,7 +2151,7 @@ async def list_workflow_runs_by_status(status: str) -> list[dict]:
 
 
 async def get_workflow_run(run_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM workflow_runs WHERE id=?", (run_id,)) as cur:
             row = await cur.fetchone()
@@ -2155,13 +2171,13 @@ async def update_workflow_run_status(
         fields.append("completed_at = ?")
         values.append(now)
     values.append(run_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(f"UPDATE workflow_runs SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
 
 
 async def delete_workflow_run(run_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM workflow_runs WHERE id=?", (run_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -2180,7 +2196,7 @@ async def update_workflow_run_review(run_id: int, **kwargs) -> None:
     if not fields:
         return
     values.append(run_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(f"UPDATE workflow_runs SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
 
@@ -2190,7 +2206,7 @@ async def update_workflow_run_review(run_id: int, **kwargs) -> None:
 async def create_workflow_output(
     run_id: int, task_id: int, agent_id: int | None, agent_name: str, step_order: int
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO workflow_outputs (run_id,task_id,agent_id,agent_name,step_order) VALUES (?,?,?,?,?)",
             (run_id, task_id, agent_id, agent_name, step_order),
@@ -2200,7 +2216,7 @@ async def create_workflow_output(
 
 
 async def list_workflow_outputs(run_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM workflow_outputs WHERE run_id=? ORDER BY step_order ASC", (run_id,)
@@ -2213,7 +2229,7 @@ async def list_agent_run_history(agent_id: int, limit: int = 15) -> list[dict]:
     trước — dùng để trưởng phòng (và chính nhân viên qua soul.md) biết được công việc đã
     làm trước đây, không chỉ work_items đang active. Xem api/websocket_meeting.py
     _department_head_context — trước đây chỉ có Xanax mới truy xuất được dữ liệu này."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT wo.*, wr.task_name, wr.completed_at
@@ -2227,7 +2243,7 @@ async def list_agent_run_history(agent_id: int, limit: int = 15) -> list[dict]:
 
 
 async def get_workflow_output(output_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT wo.*, wr.task_name
@@ -2254,7 +2270,7 @@ async def update_workflow_output(output_id: int, **kwargs) -> None:
     if not fields:
         return
     values.append(output_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(f"UPDATE workflow_outputs SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
 
@@ -2352,7 +2368,7 @@ def _shape_ops_run_rows(rows: list[dict]) -> list[dict]:
 
 
 async def list_ops_items(project_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             _OPS_RUN_SELECT + " WHERE wr.project_id=? ORDER BY COALESCE(wr.started_at, wr.created_at) DESC, wo.step_order ASC, wo.created_at ASC",
@@ -2362,7 +2378,7 @@ async def list_ops_items(project_id: int) -> list[dict]:
 
 
 async def get_ops_item(run_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             _OPS_RUN_SELECT + " WHERE wr.id=? ORDER BY wo.step_order ASC, wo.created_at ASC",
@@ -2383,7 +2399,7 @@ async def create_ops_history(
     *,
     run_id: int | None = None,
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO ops_history (project_id,output_id,run_id,type,text) VALUES (?,?,?,?,?)",
             (project_id, output_id, run_id, type_, text),
@@ -2393,7 +2409,7 @@ async def create_ops_history(
 
 
 async def list_ops_history(project_id: int, limit: int = 200) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM ops_history WHERE project_id=? ORDER BY created_at DESC LIMIT ?",
@@ -2420,7 +2436,7 @@ async def create_model_pool_entry(
     currency: str = "USD",
     cli_config_dir: str = "",
 ) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO model_pool (name,provider,api_style,model_id,base_url,api_key,category,"
             "max_requests_per_day,max_tokens_per_day,price_input_per_1m,price_cache_per_1m,price_output_per_1m,currency,"
@@ -2436,7 +2452,7 @@ async def create_model_pool_entry(
 
 
 async def list_model_pool(enabled_only: bool = False) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         q = "SELECT * FROM model_pool"
         if enabled_only:
@@ -2447,7 +2463,7 @@ async def list_model_pool(enabled_only: bool = False) -> list[dict]:
 
 
 async def get_model_pool_entry(entry_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM model_pool WHERE id=?", (entry_id,)) as cur:
             row = await cur.fetchone()
@@ -2467,7 +2483,7 @@ async def update_model_pool_entry(entry_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(entry_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             f"UPDATE model_pool SET {','.join(fields)} WHERE id=?", values
         )
@@ -2476,7 +2492,7 @@ async def update_model_pool_entry(entry_id: int, **kwargs) -> bool:
 
 
 async def delete_model_pool_entry(entry_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM model_pool WHERE id=?", (entry_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -2489,7 +2505,7 @@ async def record_model_usage(
     tokens_cache: int = 0,
 ) -> None:
     today = _local_now().strftime("%Y-%m-%d")
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO model_usage (model_pool_id, date, request_count, tokens_input, tokens_cache, tokens_output)
                VALUES (?,?,1,?,?,?)
@@ -2512,7 +2528,7 @@ async def record_model_usage_hourly(
     now = _local_now()
     today = now.strftime("%Y-%m-%d")
     hour = now.hour
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO model_usage_hourly (model_pool_id, date, hour, request_count, tokens_input, tokens_cache, tokens_output)
                VALUES (?,?,?,1,?,?,?)
@@ -2530,7 +2546,7 @@ async def get_model_usage_hourly_range(date: str) -> list[dict]:
     """Trả về từng dòng (model_pool_id, hour, request_count, tokens_input,
     tokens_cache, tokens_output) trong 1 ngày (YYYY-MM-DD), kèm thông tin model
     để tầng API tính tiền theo giờ (0-23h)."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT mu.model_pool_id, mu.hour, mu.request_count,
@@ -2557,7 +2573,7 @@ async def record_model_call_log(
     là tổng theo ngày/giờ) — dùng để tra cứu chi tiết từng lượt chạy kèm thời gian
     chính xác trong tab Chi phí."""
     called_at = _local_now().strftime("%Y-%m-%d %H:%M:%S")
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO model_call_log (model_pool_id, called_at, tokens_input, tokens_cache, tokens_output)
                VALUES (?,?,?,?,?)""",
@@ -2569,7 +2585,7 @@ async def record_model_call_log(
 async def get_model_call_log_for_date(date: str) -> list[dict]:
     """Trả về từng lượt gọi (called_at, tokens_input, tokens_cache, tokens_output)
     trong 1 ngày (YYYY-MM-DD), kèm thông tin model để tính tiền từng lượt."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT mcl.model_pool_id, mcl.called_at,
@@ -2588,7 +2604,7 @@ async def get_model_call_log_for_date(date: str) -> list[dict]:
 
 async def get_model_usage_today(model_pool_id: int) -> dict:
     today = _local_now().strftime("%Y-%m-%d")
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM model_usage WHERE model_pool_id=? AND date=?",
@@ -2600,7 +2616,7 @@ async def get_model_usage_today(model_pool_id: int) -> dict:
 
 async def get_top_models_usage(limit: int = 10) -> list[dict]:
     """Returns top models by total request_count across all dates."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT mp.id, mp.name, mp.model_id, mp.category, mp.provider,
@@ -2622,7 +2638,7 @@ async def get_model_usage_range(date_from: str, date_to: str) -> list[dict]:
     inclusive cả hai đầu), kèm thông tin model (name, provider, price, currency)
     để tầng API tự nhóm theo ngày/tuần/tháng và tính tiền — nhóm theo period ở
     Python cho đơn giản, không cần SQL strftime phức tạp cho tuần ISO."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT mu.model_pool_id, mu.date, mu.request_count,
@@ -2640,21 +2656,21 @@ async def get_model_usage_range(date_from: str, date_to: str) -> list[dict]:
 
 
 async def create_xanax_note(content: str) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("INSERT INTO xanax_notes (content) VALUES (?)", (content,))
         await db.commit()
         return cur.lastrowid
 
 
 async def list_xanax_notes() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM xanax_notes ORDER BY created_at DESC") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
 async def delete_xanax_note(note_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM xanax_notes WHERE id = ?", (note_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -2664,7 +2680,7 @@ async def delete_xanax_note(note_id: int) -> bool:
 
 async def create_asset(filename: str, stored_path: str, mime_type: str = "",
                         size_bytes: int = 0, source: str = "upload", note: str = "") -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO assets (filename,stored_path,mime_type,size_bytes,source,note) VALUES (?,?,?,?,?,?)",
             (filename, stored_path, mime_type, size_bytes, source, note),
@@ -2674,14 +2690,14 @@ async def create_asset(filename: str, stored_path: str, mime_type: str = "",
 
 
 async def list_assets() -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM assets ORDER BY created_at DESC") as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_asset(asset_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM assets WHERE id=?", (asset_id,)) as cur:
             row = await cur.fetchone()
@@ -2689,7 +2705,7 @@ async def get_asset(asset_id: int) -> dict | None:
 
 
 async def delete_asset(asset_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM assets WHERE id=?", (asset_id,))
         await db.commit()
         return cur.rowcount > 0
@@ -2698,7 +2714,7 @@ async def delete_asset(asset_id: int) -> bool:
 # ── Knowledge Documents (RAG "phòng tư liệu") ────────────────────────────────
 
 async def create_knowledge_document(title: str, content: str, project_id: int | None = None, tags: str = "") -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(
             "INSERT INTO knowledge_documents (project_id,title,content,tags) VALUES (?,?,?,?)",
             (project_id, title, content, tags),
@@ -2708,7 +2724,7 @@ async def create_knowledge_document(title: str, content: str, project_id: int | 
 
 
 async def list_knowledge_documents(project_id: int | None = None) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         if project_id is not None:
             sql = "SELECT * FROM knowledge_documents WHERE project_id=? OR project_id IS NULL ORDER BY created_at DESC"
@@ -2721,7 +2737,7 @@ async def list_knowledge_documents(project_id: int | None = None) -> list[dict]:
 
 
 async def get_knowledge_document(doc_id: int) -> dict | None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM knowledge_documents WHERE id=?", (doc_id,)) as cur:
             row = await cur.fetchone()
@@ -2739,14 +2755,14 @@ async def update_knowledge_document(doc_id: int, **kwargs) -> bool:
         return False
     fields.append("updated_at = datetime('now')")
     values.append(doc_id)
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute(f"UPDATE knowledge_documents SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
         return cur.rowcount > 0
 
 
 async def delete_knowledge_document(doc_id: int) -> bool:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect() as db:
         cur = await db.execute("DELETE FROM knowledge_documents WHERE id=?", (doc_id,))
         await db.commit()
         return cur.rowcount > 0

@@ -182,8 +182,8 @@ install -d -m 0700 "$rollback_dir"
 # restore do sqlite3 `.backup` tạo ra là file hoàn chỉnh, không có WAL đi kèm;
 # để sót WAL của database CŨ nằm lại cạnh database MỚI thì lần mở tiếp theo
 # SQLite sẽ ghép nhầm hai thứ vào nhau và làm hỏng dữ liệu vừa khôi phục.
-# (Hiện app chưa bật WAL nên thường không có hai file này — dọn sẵn để ngày bật
-# WAL không phải nhớ lại chuyện này.)
+# App đang chạy WAL nên hai file này có thể tồn tại; luôn chuyển chúng sang thư
+# mục rollback cùng database cũ trước khi đặt database mới vào.
 for item in xanax.db xanax.db-wal xanax.db-shm data .env; do
     if [[ -e "$backend_dir/$item" ]]; then
         mv -- "$backend_dir/$item" "$rollback_dir/$item"

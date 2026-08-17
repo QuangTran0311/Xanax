@@ -20,6 +20,7 @@ from typing import AsyncIterator
 
 from api.agents.subprocess_util import stream_proc
 from core.cli_provider import build_clean_env
+from hub.config import settings
 
 logger = logging.getLogger("xanax.agents.claude")
 
@@ -48,7 +49,9 @@ async def run(prompt: str, cwd: str | None = None) -> AsyncIterator[dict]:
         # trên Windows. env đã xoá ANTHROPIC_*/OPENAI_* để CLI buộc phải dùng
         # đăng nhập gói, không lặng lẽ đi qua gateway nào.
         async for tag, data in stream_proc(
-            cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=build_clean_env()
+            cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=build_clean_env(),
+            # Agent có thể sửa file và gọi tool lâu, nên dùng giới hạn CLI chung.
+            timeout=settings.cli_timeout_seconds,
         ):
             if tag == "stdout":
                 try:

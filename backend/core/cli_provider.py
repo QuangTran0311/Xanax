@@ -32,6 +32,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from api.agents.subprocess_util import stream_proc
+from hub.config import settings
 
 logger = logging.getLogger("xanax.cli_provider")
 
@@ -310,8 +311,11 @@ async def stream_claude_cli(
 
     error_msg: str | None = None
 
+    # Lượt agent có thể gọi nhiều công cụ MCP qua mạng, nên dùng trọn giới hạn
+    # CLI chung thay vì một timeout ngắn dành cho truy vấn đơn lẻ.
     async for tag, data in stream_proc(
-        cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=env
+        cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=env,
+        timeout=settings.cli_timeout_seconds,
     ):
         if tag == "stdout":
             try:
@@ -439,8 +443,11 @@ async def stream_codex_cli(
     error_msg: str | None = None
     saw_text = False
 
+    # Codex trong pool vẫn có thể suy luận dài; giới hạn chung ngăn một lượt bị
+    # kẹt giữ process/thread vô thời hạn mà không cắt ngắn tác vụ bình thường.
     async for tag, data in stream_proc(
-        cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=env
+        cmd, cwd=cwd, stdin_data=prompt.encode("utf-8"), env=env,
+        timeout=settings.cli_timeout_seconds,
     ):
         if tag == "stdout":
             try:
@@ -530,7 +537,12 @@ async def generate_image_via_codex(
     thread_id = ""
     error_msg: str | None = None
 
-    async for tag, data in stream_proc(cmd, stdin_data=ask.encode("utf-8"), env=env):
+    # Tạo đúng một ảnh là truy vấn đơn mục tiêu; ba phút đủ dư cho imagegen và
+    # ngắn hơn lượt agent có thể gọi chuỗi công cụ. Cấu hình thấp hơn vẫn thắng.
+    image_timeout = min(settings.cli_timeout_seconds, 180)
+    async for tag, data in stream_proc(
+        cmd, stdin_data=ask.encode("utf-8"), env=env, timeout=image_timeout
+    ):
         if tag == "stdout":
             try:
                 obj = json.loads(data)

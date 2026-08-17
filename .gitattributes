@@ -8,3 +8,6 @@ deploy/*.conf text eol=lf
 # mang theo ký tự \r ở cuối — ví dụ OFFSITE_KEEP_DAYS thành "30\r" — và lỗi sinh
 # ra rất khó đoán.
 deploy/*.env.example text eol=lf
+# Lock Python do pip trên Linux đọc và phải được commit; không để core.autocrlf
+# đổi nó sang CRLF trên máy phát triển Windows.
+backend/requirements.lock text eol=lf

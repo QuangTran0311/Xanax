@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     task_queue_max_size: int = 1000
     task_worker_count: int = 4
 
+    # Tiến trình Claude/Codex CLI được phép chạy tối đa trước khi thu hoạch.
+    cli_timeout_seconds: int = Field(default=600, ge=1)
+
     # LLM Backend (optional)
     llm_api_base: str = "http://localhost:11434"
     llm_model: str = "hermes3"

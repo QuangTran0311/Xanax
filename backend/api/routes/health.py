@@ -5,7 +5,6 @@ import sys
 import time
 from datetime import datetime, timezone
 
-import aiosqlite
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -43,7 +42,7 @@ async def readiness():
     try:
         from hub import database
 
-        async with aiosqlite.connect(database.DB_PATH) as db:
+        async with database.connect() as db:
             async with db.execute("SELECT 1") as cursor:
                 row = await cursor.fetchone()
         checks["database"] = bool(row and row[0] == 1)

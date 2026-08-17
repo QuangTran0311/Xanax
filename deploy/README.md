@@ -52,6 +52,53 @@ sudo useradd --system --create-home --home-dir /home/xanax \
 
 Nếu user đã tồn tại, `useradd` sẽ báo lỗi; kiểm tra bằng `id xanax` rồi đi tiếp.
 
+Tạo swapfile 4 GB trước khi build hoặc chạy service. Với máy 6 GB, không có swap
+thì `MemoryHigh` gần như không có chỗ để đẩy các trang ít dùng ra; riêng
+`npm run build` của Vite lúc cập nhật cũng có thể ăn nhiều RAM. Trước hết kiểm tra
+máy chưa có swapfile trùng tên hoặc swap đã bật:
+
+```bash
+sudo swapon --show
+free -h
+sudo ls -lh /swapfile 2>/dev/null || true
+```
+
+Nếu `/swapfile` chưa tồn tại, tạo và bật nó. Khối này kiểm tra lại trước từng bước
+để có thể chạy lại mà không format một swapfile đang hoạt động:
+
+```bash
+if [ ! -e /swapfile ]; then
+  sudo fallocate -l 4G /swapfile
+  sudo chmod 0600 /swapfile
+  sudo mkswap /swapfile
+fi
+if ! sudo swapon --show=NAME --noheadings | grep -qE '^[[:space:]]*/swapfile[[:space:]]*$'; then
+  sudo swapon /swapfile
+fi
+```
+
+Chỉ ghi `/etc/fstab` nếu chưa có đúng entry; **không** bỏ `grep -q`, vì thêm
+cùng một swapfile hai lần có thể làm lần boot sau gặp lỗi:
+
+```bash
+grep -qE '^[[:space:]]*/swapfile[[:space:]]+' /etc/fstab \
+  || printf '%s\n' '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+printf '%s\n' 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-xanax-swap.conf
+sudo sysctl --system
+```
+
+`swappiness=10` nghĩa là chỉ đổi trang ra swap khi thật cần, không đổi chỗ sớm
+làm app chậm. Xác nhận cả swap lẫn giá trị kernel trước khi đi tiếp:
+
+```bash
+sudo swapon --show
+free -h
+sysctl vm.swappiness
+```
+
+Kết quả phải có `/swapfile` khoảng 4 GB và `vm.swappiness = 10`. Không tiếp tục
+nếu `swapon --show` hoặc `free -h` vẫn không thấy swap.
+
 Frontend hiện dùng Vite 8, cần Node `^20.19` hoặc `>=22.12`. Ubuntu 24.04 mặc
 định không bảo đảm mức này, nên cài Node.js 22 từ repo NodeSource:
 
@@ -124,8 +171,13 @@ sudo -u xanax git clone 'THAY_BANG_URL_REPO' /opt/xanax
 
 sudo -u xanax python3.12 -m venv /opt/xanax/.venv
 sudo -u xanax /opt/xanax/.venv/bin/python -m pip install --upgrade pip
-sudo -u xanax /opt/xanax/.venv/bin/python -m pip install \
-  -r /opt/xanax/backend/requirements.txt
+if [ -s /opt/xanax/backend/requirements.lock ]; then
+  PYTHON_REQUIREMENTS=/opt/xanax/backend/requirements.lock
+else
+  # Chỉ xảy ra ở lần bootstrap đầu tiên, trước khi freeze venv production.
+  PYTHON_REQUIREMENTS=/opt/xanax/backend/requirements.txt
+fi
+sudo -u xanax /opt/xanax/.venv/bin/python -m pip install -r "$PYTHON_REQUIREMENTS"
 
 sudo -u xanax bash -lc 'cd /opt/xanax/frontend && npm ci && npm run build'
 test -f /opt/xanax/frontend/dist/index.html
@@ -423,6 +475,40 @@ sudo systemctl restart caddy
 sudo journalctl -u caddy -n 100 --no-pager
 ```
 
+### Khóa phiên bản dependency Python
+
+`backend/requirements.txt` ghi **ý định**: code cần tối thiểu phiên bản nào và
+cho phép nâng trong khoảng nào. `backend/requirements.lock` ghi **đúng môi trường
+được deploy**: mọi phiên bản đều được pin bằng `==`. Không tự đoán các pin trên
+máy dev Windows; sinh lock từ venv production Linux sau khi đã cài và kiểm thử.
+
+Trên VPS, chạy lệnh sau từ shell có quyền ghi vào repo:
+
+```bash
+sudo -u xanax /opt/xanax/.venv/bin/python -m pip freeze > /opt/xanax/backend/requirements.lock
+```
+
+`pip freeze` đưa cả dependency gián tiếp vào file; đó là điều mong muốn, vì một
+lock file phải cố định toàn bộ cây dependency chứ không chỉ 17 gói khai báo trực
+tiếp. File này **phải được commit vào Git**. Sau lần sinh đầu tiên, copy nội dung
+về máy dev, commit rồi pull lại trên VPS; đừng để nó chỉ tồn tại cục bộ trên máy
+production.
+
+Khi chủ động nâng dependency, sửa khoảng phiên bản trong `requirements.txt`, rồi
+trên VPS chạy:
+
+```bash
+sudo -u xanax /opt/xanax/.venv/bin/python -m pip install \
+  -r /opt/xanax/backend/requirements.txt --upgrade
+sudo -u xanax bash -lc \
+  'cd /opt/xanax && .venv/bin/python -m pytest backend/tests -x -q'
+sudo -u xanax /opt/xanax/.venv/bin/python -m pip freeze > /opt/xanax/backend/requirements.lock
+```
+
+Copy lock mới về máy dev và commit cùng thay đổi `requirements.txt`. Việc nâng
+phiên bản kết thúc ở bước kiểm thử và sinh lock này; deploy bình thường không tự
+nâng FastAPI, pydantic, mcp hay dependency gián tiếp.
+
 ### Cập nhật phiên bản
 
 Backup trước, rồi pull fast-forward, cập nhật dependency, build lại frontend và
@@ -431,16 +517,46 @@ restart đúng một service:
 ```bash
 sudo /usr/local/sbin/xanax-backup
 sudo -u xanax git -C /opt/xanax pull --ff-only
+test -s /opt/xanax/backend/requirements.lock
 sudo -u xanax /opt/xanax/.venv/bin/python -m pip install \
-  -r /opt/xanax/backend/requirements.txt
+  -r /opt/xanax/backend/requirements.lock
 sudo -u xanax bash -lc 'cd /opt/xanax/frontend && npm ci && npm run build'
 sudo systemctl restart xanax.service
 curl -fsS --retry 15 --retry-delay 2 --retry-connrefused \
   http://127.0.0.1:8000/api/health/ready | python3.12 -m json.tool
 ```
 
+Deploy dùng `requirements.lock` để cùng một commit luôn cài đúng cùng một cây
+dependency. Dòng `test -s` cố ý dừng sớm nếu repo chưa có lock, thay vì âm thầm
+quay lại `requirements.txt` và tự nâng package ngay trên production. Ngoại lệ duy
+nhất là lần bootstrap đầu tiên ở mục 2; sinh và commit lock ngay sau lần đó.
+
 Nếu đợt cập nhật có thay đổi file trong `deploy/`, cài lại unit/script tương ứng,
 chạy `systemctl daemon-reload`, validate Caddyfile rồi mới reload Caddy.
+
+### Áp dụng thay đổi unit và xem giới hạn tài nguyên
+
+Sửa file trong repo chưa làm unit đang chạy thay đổi. Sau mỗi lần sửa
+`deploy/xanax.service`, cài lại bản root-owned, nạp lại systemd rồi restart:
+
+```bash
+sudo install -m 0644 /opt/xanax/deploy/xanax.service \
+  /etc/systemd/system/xanax.service
+sudo systemctl daemon-reload
+sudo systemctl restart xanax.service
+```
+
+Xác nhận systemd đã đọc đúng giới hạn và xem lượng RAM hiện tại:
+
+```bash
+systemctl show xanax.service -p MemoryHigh -p MemoryMax -p TasksMax
+systemctl status xanax.service --no-pager | grep -i memory
+```
+
+`MemoryHigh=3.5G` là ngưỡng kìm, `MemoryMax=4.5G` mới là trần cứng;
+`TasksMax=512` chặn rò process/thread từ các CLI agent. Các số này dành cho VPS
+6 GB, chừa khoảng 1.5 GB cho OS, Caddy và journald. Nếu journal xác nhận Xanax bị
+OOM trong cgroup khi tải hợp lệ, đo lại rồi nâng `MemoryMax`; không xóa giới hạn.
 
 ### Backup và restore
 
@@ -663,6 +779,19 @@ sudo stat /opt/xanax/backend/.env
 sudo systemctl restart xanax.service
 ```
 
+### Log báo `database is locked`
+
+SQLite đã chạy ở chế độ WAL để reader không bị writer chặn, và mọi kết nối của
+app chờ khóa tối đa 5 giây qua `busy_timeout` thay vì báo lỗi ngay. Kiểm tra mode
+thực tế trên production:
+
+```bash
+sudo -u xanax sqlite3 /opt/xanax/backend/xanax.db 'PRAGMA journal_mode;'
+```
+
+Kết quả phải là `wal`. Nếu không phải, restart `xanax.service` để `init_db()` đặt
+lại mode rồi kiểm tra log và quyền ghi của file database cùng thư mục chứa nó.
+
 ### Đăng nhập xong lại mất phiên
 
 Production phải dùng `HUB_COOKIE_SECURE=true` và truy cập bằng
@@ -769,3 +898,8 @@ hoặc không đủ chỗ trống trên ổ (script kiểm tra trước và dừ
 - Không chạy `restore.sh` để diễn tập mà quên `XANAX_RESTORE_MODE=drill`; dùng
   `xanax-drill-restore` thay vì gọi tay.
 - Không enable `xanax-drill.service`: nó chỉ được sống trong lúc diễn tập.
+- Không deploy Python trực tiếp từ `requirements.txt` sau giai đoạn bootstrap;
+  nâng có kiểm soát, chạy test rồi commit `requirements.lock` sinh từ VPS.
+- Không bỏ `MemoryMax` khi Xanax chạm trần, không thêm `CPUQuota` và không đặt
+  `MemorySwapMax=0`: cần giữ OOM trong cgroup, workload chủ yếu chờ I/O và
+  `MemoryHigh` cần swap để có tác dụng.

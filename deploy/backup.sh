@@ -100,7 +100,10 @@ STAGING_DIR="$(mktemp -d "$BACKUP_DIR/.xanax-backup.XXXXXX")" \
     || fail 73 "Không tạo được thư mục tạm trong $BACKUP_DIR"
 install -d -m 0700 "$STAGING_DIR/backend"
 
-# .backup dùng SQLite API để tạo snapshot nhất quán dù app vẫn đang ghi database.
+# `.backup` dùng SQLite backup API để tạo snapshot nhất quán dù app vẫn đang ghi.
+# Khi WAL đang bật, API tự gộp cả dữ liệu trong xanax.db-wal vào xanax.db của bản
+# sao. Vì vậy archive chỉ cần file database này; không thêm -wal/-shm và không đổi
+# lệnh dưới đây thành `cp`.
 sqlite3 -cmd '.timeout 10000' "$DB_PATH" \
     ".backup '$STAGING_DIR/backend/xanax.db'" \
     || fail 74 "SQLite backup thất bại."
