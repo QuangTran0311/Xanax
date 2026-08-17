@@ -16,6 +16,9 @@ _WINDOWS_DEFAULT = Path(
     r"C:\Users\Quang\.claude\mcp-servers\rembg-mcp\.venv\Scripts\python.exe"
 )
 _SERVER_PATH = Path(__file__).with_name("image_cut.py")
+# FastMCP dò .env theo cwd; cwd không đọc được làm nó chết bằng PermissionError.
+# backend/.env không có khóa FASTMCP_, nên Settings (prefix FASTMCP_) bỏ qua nó.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 def _default_python(os_name: str) -> Path | None:
@@ -62,8 +65,9 @@ def launch(interpreter: Path, *, os_name: str | None = None) -> int:
     if os_name == "nt":
         # Không dùng execv trên Windows: giữ launcher sống và cho tiến trình con
         # kế thừa nguyên stdin/stdout để phiên MCP không bị đứt giữa chừng.
-        return subprocess.call(argv)
+        return subprocess.call(argv, cwd=_BACKEND_DIR)
 
+    os.chdir(_BACKEND_DIR)
     os.execv(str(interpreter), argv)
     raise RuntimeError("os.execv trả về ngoài dự kiến")  # pragma: no cover
 

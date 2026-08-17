@@ -238,6 +238,9 @@ sudo -u xanax -H env \
   /opt/xanax/backend/mcp_servers/image_cut_launcher.py </dev/null
 ```
 
+Launcher tự đặt thư mục làm việc về `/opt/xanax/backend`, nên có thể chạy lệnh
+kiểm tra này từ thư mục bất kỳ mà không cần `cd` trước.
+
 Target lưu trong database từ nay là `xanax://image-cut`. Alias này được đổi
 thành Python của venv chính và đường dẫn tuyệt đối tới launcher; launcher ưu
 tiên `XANAX_REMBG_PYTHON`, sau đó dùng mặc định

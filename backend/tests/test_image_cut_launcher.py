@@ -81,6 +81,7 @@ def test_posix_exec_dung_python_va_image_cut(monkeypatch):
         calls.append((command, argv))
         raise RuntimeError("đã chặn exec trong test")
 
+    monkeypatch.setattr(launcher.os, "chdir", lambda path: None)
     monkeypatch.setattr(launcher.os, "execv", fake_execv)
     with pytest.raises(RuntimeError, match="đã chặn"):
         launcher.launch(Path(sys.executable), os_name="posix")
@@ -88,6 +89,23 @@ def test_posix_exec_dung_python_va_image_cut(monkeypatch):
     command, argv = calls[0]
     assert command == sys.executable
     assert argv == [sys.executable, str(launcher._SERVER_PATH)]
+
+
+def test_posix_dat_cwd_backend_truoc_khi_exec(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(launcher.os, "chdir", lambda path: events.append(("chdir", path)))
+
+    def fake_execv(command, argv):
+        events.append(("execv", command, argv))
+        raise RuntimeError("đã chặn exec trong test")
+
+    monkeypatch.setattr(launcher.os, "execv", fake_execv)
+    with pytest.raises(RuntimeError, match="đã chặn"):
+        launcher.launch(Path(sys.executable), os_name="posix")
+
+    assert events[0] == ("chdir", launcher._BACKEND_DIR)
+    assert events[1][0] == "execv"
 
 
 def test_main_nhan_python_bat_ky_tu_bien_moi_truong(monkeypatch):
@@ -101,10 +119,16 @@ def test_main_nhan_python_bat_ky_tu_bien_moi_truong(monkeypatch):
 
 def test_windows_khong_dung_execv_va_giu_stdio_cho_tien_trinh_con(monkeypatch):
     calls = []
-    monkeypatch.setattr(launcher.subprocess, "call", lambda argv: calls.append(argv) or 7)
+    monkeypatch.setattr(
+        launcher.subprocess, "call",
+        lambda argv, **kwargs: calls.append((argv, kwargs)) or 7,
+    )
 
     assert launcher.launch(Path(sys.executable), os_name="nt") == 7
-    assert calls == [[sys.executable, str(launcher._SERVER_PATH)]]
+    assert calls == [(
+        [sys.executable, str(launcher._SERVER_PATH)],
+        {"cwd": launcher._BACKEND_DIR},
+    )]
 
 
 def test_target_noi_bo_doi_thanh_python_venv_chinh_va_launcher_tuyet_doi():
