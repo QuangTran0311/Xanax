@@ -1,6 +1,7 @@
 """Launcher cắt ảnh phải kiểm tra được mà không cài rembg trên máy dev."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,36 @@ def test_uu_tien_python_tu_bien_moi_truong(tmp_path):
 
     assert launcher.resolve_rembg_python(
         environ={launcher.REMBG_PYTHON_ENV: str(configured)}, os_name="posix",
-    ) == configured.resolve()
+    ) == Path(os.path.abspath(configured))
+
+
+def test_giu_symlink_cua_python_venv(tmp_path):
+    python_thuc = tmp_path / "python-thuc"
+    python_thuc.touch()
+    python_venv = tmp_path / "python-venv"
+    try:
+        python_venv.symlink_to(python_thuc)
+    except OSError as exc:
+        pytest.skip(f"Môi trường không cho phép tạo symlink: {exc}")
+
+    resolved = launcher.resolve_rembg_python(
+        environ={launcher.REMBG_PYTHON_ENV: str(python_venv)}, os_name="posix",
+    )
+
+    assert resolved == Path(os.path.abspath(python_venv))
+    assert resolved != Path(os.path.abspath(python_thuc))
+
+
+def test_chuan_hoa_dot_dot_ma_khong_resolve(tmp_path):
+    thu_muc = tmp_path / "venv" / "bin"
+    thu_muc.mkdir(parents=True)
+    python_venv = tmp_path / "venv" / "python"
+    python_venv.touch()
+    configured = thu_muc / ".." / "python"
+
+    assert launcher.resolve_rembg_python(
+        environ={launcher.REMBG_PYTHON_ENV: str(configured)}, os_name="posix",
+    ) == python_venv
 
 
 def test_fallback_theo_he_dieu_hanh(monkeypatch, tmp_path):
@@ -27,7 +57,9 @@ def test_fallback_theo_he_dieu_hanh(monkeypatch, tmp_path):
     linux_python.touch()
     monkeypatch.setattr(launcher, "_LINUX_DEFAULT", linux_python)
 
-    assert launcher.resolve_rembg_python(environ={}, os_name="posix") == linux_python.resolve()
+    assert launcher.resolve_rembg_python(
+        environ={}, os_name="posix",
+    ) == Path(os.path.abspath(linux_python))
 
 
 def test_bao_loi_co_huong_dan_khi_khong_tim_thay(tmp_path):
@@ -64,7 +96,7 @@ def test_main_nhan_python_bat_ky_tu_bien_moi_truong(monkeypatch):
     monkeypatch.setattr(launcher, "launch", lambda interpreter: calls.append(interpreter) or 0)
 
     assert launcher.main() == 0
-    assert calls == [Path(sys.executable).resolve()]
+    assert calls == [Path(os.path.abspath(sys.executable))]
 
 
 def test_windows_khong_dung_execv_va_giu_stdio_cho_tien_trinh_con(monkeypatch):

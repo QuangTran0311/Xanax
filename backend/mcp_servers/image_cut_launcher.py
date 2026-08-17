@@ -43,7 +43,9 @@ def resolve_rembg_python(
 
     for candidate in candidates:
         if candidate.is_file():
-            return candidate.resolve()
+            # Không dùng resolve(): python của venv thường là symlink; đi theo nó sẽ
+            # khiến execv chạy Python hệ thống và mất pyvenv.cfg/site-packages của venv.
+            return Path(os.path.abspath(candidate))
 
     tried = ", ".join(str(path) for path in candidates) or "không có đường dẫn mặc định"
     raise FileNotFoundError(

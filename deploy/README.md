@@ -217,7 +217,7 @@ from rembg import new_session
 
 session = new_session("birefnet-general-lite")
 print("Model OK:", type(session).__name__)
-print("Cache:", *Path("/home/xanax/.u2net").glob("*birefnet*"), sep="\n  ")
+print("Cache:", *Path("/home/xanax/.u2net").rglob("*birefnet*"), sep="\n  ")
 PY
 ```
 
