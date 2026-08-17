@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup Xanax
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xanax-backup
+
+# CỐ Ý không đặt OnFailure: backup.sh tự gửi cảnh báo Telegram và phân biệt được
+# "backup hỏng hoàn toàn" với "đã backup nhưng chưa đẩy ra ngoài" (mã thoát 75).
+# Trường hợp script bị SIGKILL nên trap không kịp chạy thì
+# xanax-backup-freshness.timer sẽ bắt trong vòng một ngày.

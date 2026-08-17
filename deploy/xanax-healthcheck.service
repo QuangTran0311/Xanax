@@ -1,0 +1,11 @@
+[Unit]
+Description=Kiểm tra sức khỏe Xanax và cảnh báo qua Telegram
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xanax-healthcheck
+
+# CỐ Ý không đặt OnFailure: script tự gửi cảnh báo với nội dung chi tiết hơn
+# nhiều so với một tin nhắn "unit failed". Thêm OnFailure ở đây chỉ tạo tin trùng.
+# Unit chuyển sang failed khi dịch vụ hỏng là có chủ ý — nhìn `systemctl status`
+# là biết ngay tình trạng lần kiểm tra gần nhất.

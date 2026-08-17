@@ -1,0 +1,6 @@
+[Unit]
+Description=Kiểm tra dung lượng ổ cho Xanax
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xanax-disk-check

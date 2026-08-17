@@ -1,0 +1,13 @@
+[Unit]
+# Unit mẫu gửi cảnh báo Telegram khi một unit khác chết.
+# Được kích hoạt bởi OnFailure=xanax-alert@%n.service ở unit cần theo dõi;
+# %n truyền sang đây thành tên instance, ví dụ xanax-alert@xanax.service.service
+Description=Báo Telegram khi %I chết
+
+[Service]
+Type=oneshot
+# %I là tên instance đã bỏ escape — chính là tên unit gặp sự cố.
+ExecStart=/usr/local/sbin/xanax-alert-unit-failed %I
+
+# CỐ Ý không đặt OnFailure ở đây: unit cảnh báo mà tự gọi cảnh báo cho chính nó
+# thì một sự cố mạng sẽ thành vòng lặp gửi tin nhắn.

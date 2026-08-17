@@ -1,0 +1,12 @@
+[Unit]
+Description=Kiểm tra dung lượng ổ hằng ngày
+
+[Timer]
+OnCalendar=*-*-* 08:30:00
+RandomizedDelaySec=10m
+# Máy tắt qua giờ hẹn thì chạy bù khi bật lại, thay vì bỏ luôn ngày hôm đó.
+Persistent=true
+Unit=xanax-diskcheck.service
+
+[Install]
+WantedBy=timers.target

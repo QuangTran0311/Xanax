@@ -1,0 +1,13 @@
+[Unit]
+Description=Chạy kiểm tra sức khỏe Xanax mỗi 5 phút
+
+[Timer]
+# Chờ máy khởi động xong hẳn rồi mới kiểm tra lần đầu, nếu không sẽ báo động
+# oan trong lúc app còn đang lên.
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=xanax-healthcheck.service
+
+[Install]
+WantedBy=timers.target

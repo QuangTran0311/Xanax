@@ -1,0 +1,11 @@
+[Unit]
+Description=Chạy backup Xanax hằng ngày
+
+[Timer]
+OnCalendar=*-*-* 02:17:00
+RandomizedDelaySec=5m
+Persistent=true
+Unit=xanax-backup.service
+
+[Install]
+WantedBy=timers.target

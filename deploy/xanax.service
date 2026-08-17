@@ -3,6 +3,18 @@ Description=Xanax FastAPI service
 Wants=network-online.target
 After=network-online.target
 
+# Mặc định của systemd là 5 lần khởi động trong 10 giây; vượt ngưỡng thì unit bị
+# bỏ mặc ở trạng thái failed VĨNH VIỄN, không thử lại nữa. Với Restart=always
+# bên dưới (RestartSec=5s), một sự cố tạm thời như database bận hay mạng chưa
+# lên có thể đốt hết hạn mức đó rồi để web chết luôn tới khi có người vào xem.
+# Nới thành 10 lần trong 5 phút: vẫn chặn được vòng lặp khởi động vô tận, nhưng
+# không đầu hàng vì vài lần chết liên tiếp.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+# Hết hạn mức trên là im lặng chết. Bắn Telegram ngay tại thời điểm đó.
+OnFailure=xanax-alert@%n.service
+
 [Service]
 Type=simple
 User=xanax

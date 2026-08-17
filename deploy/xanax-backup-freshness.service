@@ -1,0 +1,6 @@
+[Unit]
+Description=Kiểm tra backup Xanax có còn mới không
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xanax-backup-freshness

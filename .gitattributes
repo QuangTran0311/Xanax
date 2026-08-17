@@ -4,3 +4,7 @@
 Caddyfile text eol=lf
 *.timer text eol=lf
 deploy/*.conf text eol=lf
+# Các file này được `source` bằng bash trên VPS. Dính CRLF thì giá trị biến sẽ
+# mang theo ký tự \r ở cuối — ví dụ OFFSITE_KEEP_DAYS thành "30\r" — và lỗi sinh
+# ra rất khó đoán.
+deploy/*.env.example text eol=lf

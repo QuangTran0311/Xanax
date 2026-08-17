@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiểm tra độ mới của backup Xanax hằng ngày
+
+[Timer]
+# Chạy sau giờ backup (02:17 + RandomizedDelaySec) một khoảng đủ rộng để không
+# bắt gặp lúc backup đang chạy dở và báo động oan.
+OnCalendar=*-*-* 09:00:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=xanax-backup-freshness.service
+
+[Install]
+WantedBy=timers.target

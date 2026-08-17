@@ -1,0 +1,61 @@
+[Unit]
+# Bản diễn tập restore. KHÔNG BAO GIỜ enable unit này — nó chỉ sống vài phút
+# trong lúc drill-restore.sh chạy, rồi bị teardown.
+Description=Xanax (bản diễn tập restore, KHÔNG phải production)
+
+[Service]
+Type=simple
+User=xanax
+Group=xanax
+
+WorkingDirectory=/opt/xanax-drill/backend
+
+# `-` ở đầu: lần diễn tập đầu tiên chưa có .env (restore.sh mới là thứ đặt nó
+# vào chỗ), unit vẫn phải nạp được thay vì chết vì thiếu file.
+EnvironmentFile=-/opt/xanax-drill/backend/.env
+
+# Các Environment= dưới đây nằm SAU EnvironmentFile nên đè lên giá trị trong đó.
+# Đây là cách duy nhất áp cấu hình riêng cho drill mà không phải sửa file .env —
+# file đó bị restore.sh ghi đè mỗi lần chạy.
+Environment="PYTHONUNBUFFERED=1"
+# Cổng riêng: 8000 là của production, đụng vào là drill chết ngay (và đó là mong
+# muốn — thà chết còn hơn giành cổng).
+Environment="HUB_HOST=127.0.0.1"
+Environment="HUB_PORT=8001"
+Environment="HUB_DEBUG=false"
+# Truy cập qua http loopback nên cookie Secure sẽ không hoạt động.
+Environment="HUB_COOKIE_SECURE=false"
+Environment="HUB_TRUST_PROXY_HEADERS=false"
+Environment="HUB_TASK_WORKER_COUNT=1"
+# Ép database về đúng thư mục drill, phòng khi .env được restore có khai
+# HUB_DATABASE_URL trỏ thẳng vào production.
+Environment="HUB_DATABASE_URL=sqlite+aiosqlite:////opt/xanax-drill/backend/xanax.db"
+# Thư mục Hermes riêng: sync_soul_md() ghi vào SOUL.md trong HERMES_HOME. Để
+# nguyên là bản diễn tập ghi đè SOUL.md của production.
+Environment="HERMES_HOME=/var/tmp/xanax-drill/hermes"
+Environment="XANAX_NO_BROWSER=1"
+
+# PATH CỐ Ý không có /home/xanax/.local/bin và /home/xanax/.npm-global/bin:
+# bản diễn tập không được phép tìm thấy claude/codex. Nếu có gì đó vẫn cố gọi
+# CLI, nó sẽ báo "không tìm thấy lệnh" thay vì thật sự chạy và đốt token.
+Environment="PATH=/opt/xanax/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Dùng chung interpreter của production: chỉ ĐỌC, không ghi gì vào /opt/xanax,
+# và tránh phải dựng venv mới (mất vài phút và cần mạng) cho mỗi lần diễn tập.
+ExecStart=/opt/xanax/.venv/bin/python /opt/xanax-drill/backend/main.py
+
+# Diễn tập mà tự khởi động lại thì che mất đúng thứ cần phát hiện: bản restore
+# không chạy được. Hỏng là phải hỏng cho thấy.
+Restart=no
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+UMask=0027
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xanax-drill
+
+# CỐ Ý không có [Install]: unit này không được phép tự chạy lúc boot.

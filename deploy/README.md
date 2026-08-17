@@ -274,7 +274,132 @@ Yêu cầu đạt:
 Không nghiệm thu bằng `http://IP:8000`; đường đó không được public và cookie
 `Secure` sẽ không hoạt động qua HTTP.
 
-## 6. Vận hành
+## 6. Cảnh báo và giám sát
+
+`Restart=always` chỉ cứu được crash lẻ. Nó không cứu được app sống mà database
+hỏng, worker pool chết, Caddy tắt, chứng chỉ hết hạn, ổ đầy, hay backup lặng lẽ
+ngừng chạy. Phần này dựng lớp phát hiện cho những thứ đó. **Làm trước mục backup
+off-site**, vì backup dùng chính kênh cảnh báo này khi thất bại.
+
+### 6.1. Bot Telegram
+
+Nhắn `@BotFather` → `/newbot` → lấy token. Nhắn cho bot mới một câu bất kỳ, rồi
+lấy `chat_id`:
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3.12 -m json.tool
+```
+
+Đọc `result[].message.chat.id`. Cất token vào trình quản lý mật khẩu, rồi:
+
+```bash
+sudo install -d -m 0750 -o root -g root /etc/xanax
+sudo install -m 0600 -o root -g root /opt/xanax/deploy/alert.env.example \
+  /etc/xanax/alert.env
+sudo nano /etc/xanax/alert.env
+sudo install -m 0644 -o root -g root /opt/xanax/deploy/monitor.env.example \
+  /etc/xanax/monitor.env
+sudo sed -i 's/xanax\.example\.com/domain-that.example/' /etc/xanax/monitor.env
+```
+
+`alert.env` chứa bot token nên bắt buộc `0600` owner root. `monitor.env` không
+có secret nên `0644`.
+
+### 6.2. Cài script và timer
+
+```bash
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/notify.sh \
+  /usr/local/sbin/xanax-notify
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/alert-unit-failed.sh \
+  /usr/local/sbin/xanax-alert-unit-failed
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/healthcheck.sh \
+  /usr/local/sbin/xanax-healthcheck
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/disk-check.sh \
+  /usr/local/sbin/xanax-disk-check
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/backup-freshness.sh \
+  /usr/local/sbin/xanax-backup-freshness
+
+sudo install -d -m 0750 -o root -g root /var/lib/xanax
+
+for unit in xanax-alert@.service \
+            xanax-healthcheck.service xanax-healthcheck.timer \
+            xanax-diskcheck.service xanax-diskcheck.timer \
+            xanax-backup-freshness.service xanax-backup-freshness.timer; do
+  sudo install -m 0644 "/opt/xanax/deploy/$unit" "/etc/systemd/system/$unit"
+done
+sudo systemctl daemon-reload
+```
+
+Thử kênh cảnh báo **trước** khi bật timer — không có tin nhắn nào tới thì mọi
+thứ phía sau chỉ là trang trí:
+
+```bash
+sudo /usr/local/sbin/xanax-notify info 'Thử kênh cảnh báo' 'Nếu đọc được dòng này thì Telegram đã thông.'
+```
+
+Chạy tay từng script một lần rồi mới bật timer:
+
+```bash
+sudo /usr/local/sbin/xanax-healthcheck
+sudo /usr/local/sbin/xanax-disk-check
+
+sudo systemctl enable --now xanax-healthcheck.timer
+sudo systemctl enable --now xanax-diskcheck.timer
+sudo systemctl enable --now xanax-backup-freshness.timer
+systemctl list-timers 'xanax*'
+```
+
+### 6.3. Cảnh báo khi service chết
+
+`deploy/xanax.service` đã có sẵn `OnFailure=xanax-alert@%n.service` và nới
+`StartLimitIntervalSec=300` / `StartLimitBurst=10`. Mặc định của systemd là 5
+lần khởi động trong 10 giây — vượt ngưỡng thì unit **nằm chết vĩnh viễn**, và
+với `RestartSec=5s` thì một trục trặc tạm thời cũng đủ đốt hết hạn mức đó. Cài
+lại unit sau khi cập nhật mã nguồn:
+
+```bash
+sudo install -m 0644 /opt/xanax/deploy/xanax.service /etc/systemd/system/xanax.service
+sudo systemctl daemon-reload
+sudo systemctl restart xanax.service
+```
+
+Kiểm tra đường cảnh báo hoạt động thật, bằng cách ép service chết:
+
+```bash
+sudo systemctl kill --signal=SIGKILL xanax.service
+```
+
+`Restart=always` sẽ dựng lại ngay nên web chỉ gián đoạn vài giây; muốn thấy tin
+nhắn `OnFailure` thì dùng `systemctl stop` rồi sửa tạm `ExecStart` thành đường
+dẫn sai — nhớ trả lại như cũ.
+
+### 6.4. Giới hạn dung lượng journald
+
+Mặc định journald được phép ăn 10% filesystem — trên ổ 60 GB là khoảng 6 GB, và
+nó phình dần một cách âm thầm vì Xanax ghi toàn bộ output của CLI vào journal:
+
+```bash
+sudo install -d -m 0755 /etc/systemd/journald.conf.d
+sudo install -m 0644 /opt/xanax/deploy/journald-xanax.conf \
+  /etc/systemd/journald.conf.d/99-xanax.conf
+sudo systemctl restart systemd-journald
+journalctl --disk-usage
+```
+
+### 6.5. Cảnh báo im lặng lúc nào
+
+Cả ba script đều có máy trạng thái chống spam trong `/var/lib/xanax`:
+
+- healthcheck chỉ báo sau **2 lần hỏng liên tiếp**, im lặng suốt thời gian hỏng,
+  và báo **đúng một lần** khi phục hồi.
+- disk-check chỉ báo khi **mức độ thay đổi** (ok → warn → crit), nên ổ nằm ở 82%
+  cả tuần chỉ sinh một tin nhắn.
+- backup-freshness chỉ báo lần đầu phát hiện backup cũ.
+
+Đây là chủ đích: cảnh báo mỗi 5 phút thì trong hai ngày bạn sẽ tắt thông báo —
+đúng lúc chúng trở nên vô dụng. Muốn buộc gửi lại thì xóa file state tương ứng.
+
+## 7. Vận hành
 
 Cài script root-owned ở mục **Backup và restore** ngay sau lần deploy đầu tiên,
 trước lần cập nhật đầu tiên.
@@ -339,32 +464,18 @@ SQLite `.backup`, không copy file đang ghi. Archive còn chứa toàn bộ
 Gắn lịch hằng ngày bằng systemd timer:
 
 ```bash
-sudo tee /etc/systemd/system/xanax-backup.service >/dev/null <<'EOF'
-[Unit]
-Description=Backup Xanax
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/xanax-backup
-EOF
-
-sudo tee /etc/systemd/system/xanax-backup.timer >/dev/null <<'EOF'
-[Unit]
-Description=Chạy backup Xanax hằng ngày
-
-[Timer]
-OnCalendar=*-*-* 02:17:00
-RandomizedDelaySec=5m
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
+sudo install -m 0644 /opt/xanax/deploy/xanax-backup.service \
+  /etc/systemd/system/xanax-backup.service
+sudo install -m 0644 /opt/xanax/deploy/xanax-backup.timer \
+  /etc/systemd/system/xanax-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now xanax-backup.timer
 systemctl list-timers xanax-backup.timer
 ```
+
+Hai unit này trước đây được tạo bằng heredoc ngay trong runbook; giờ chúng là
+file trong `deploy/` để cài lại được và để sửa đổi đi qua Git. Nội dung giữ
+nguyên lịch cũ (02:17 + `RandomizedDelaySec=5m`).
 
 Restore bắt buộc hỏi xác nhận, tự dừng/start service, đặt lại owner/quyền và gọi
 `/api/health`:
@@ -375,9 +486,119 @@ sudo /usr/local/sbin/xanax-restore \
 ```
 
 Dữ liệu trước restore được giữ trong
-`/var/backups/xanax/pre-restore-<timestamp>`; chỉ xóa sau khi nghiệm thu. Ít nhất
-mỗi quý phải restore thử một archive lên máy tách biệt. Backup chưa từng restore
-thử thì chưa được tính là backup.
+`/var/backups/xanax/pre-restore-<timestamp>`; chỉ xóa sau khi nghiệm thu.
+
+> **Rào chắn chống restore nhầm.** `restore.sh` mặc định trỏ vào production, nên
+> quên đặt biến lúc diễn tập là ghi đè thẳng lên dữ liệu thật. Script yêu cầu
+> `XANAX_RESTORE_MODE` là `production` hoặc `drill`, và bắt `APP_ROOT` với
+> `SERVICE_NAME` phải khớp cặp: chế độ `drill` từ chối chạy nếu một trong hai
+> trỏ vào production, chế độ `production` từ chối chạy nếu chúng lệch nhau.
+> Chuỗi xác nhận cũng khác nhau (`KHOI PHUC` với production, `DIEN TAP` với diễn
+> tập) để việc gõ không thành phản xạ.
+
+### Đẩy backup ra ngoài VPS
+
+Backup nằm cùng ổ với dữ liệu gốc không chống được hỏng ổ hay mất VPS. Bước này
+đẩy mỗi bản lên object storage ngay sau khi tạo.
+
+**Trước hết, mã hóa.** Archive chứa `backend/.env`, tức là chứa
+`XANAX_SECRET_KEY`. Đẩy nguyên bản lên cloud là mang khóa giải mã toàn bộ token
+skill ra khỏi tầm kiểm soát. Vì vậy cấu hình **hai** remote và chỉ dùng cái thứ
+hai:
+
+```bash
+sudo apt install -y rclone
+sudo rclone config     # tạo remote `r2` kiểu s3 (provider Cloudflare)
+sudo rclone config     # tạo remote `r2crypt` kiểu crypt, remote = r2:xanax-backup
+```
+
+> **Passphrase của remote crypt phải vào trình quản lý mật khẩu ngay lúc tạo.**
+> Nó chỉ nằm trong `/root/.config/rclone/rclone.conf` trên VPS — mà mất VPS
+> chính là kịch bản backup off-site sinh ra để phòng. Mất passphrase thì toàn bộ
+> bản trên cloud thành rác không giải mã được. Cất nó cạnh `XANAX_SECRET_KEY`.
+
+```bash
+sudo install -m 0600 -o root -g root /opt/xanax/deploy/backup.env.example \
+  /etc/xanax/backup.env
+sudo nano /etc/xanax/backup.env
+sudo /usr/local/sbin/xanax-backup
+sudo rclone --config /root/.config/rclone/rclone.conf ls r2crypt:
+```
+
+Không có `/etc/xanax/backup.env` thì `backup.sh` chạy y như cũ và chỉ bỏ qua
+bước off-site — máy dev không bị gãy vì thiếu rclone.
+
+Mã thoát của `xanax-backup` có ý nghĩa riêng:
+
+| Mã | Nghĩa |
+|----|-------|
+| 0 | Backup local xong, off-site xong (hoặc chưa cấu hình off-site) |
+| 75 | Backup local **vẫn tốt**, nhưng chưa đẩy ra ngoài được |
+| khác | Backup thất bại, không có bản mới |
+
+Cả hai trường hợp lỗi đều gửi Telegram, và mỗi trường hợp chỉ gửi **một** tin.
+Local giữ theo **số lượng** (`KEEP_BACKUPS`), cloud giữ theo **tuổi**
+(`OFFSITE_KEEP_DAYS`).
+
+Backup chạy nhưng bị SIGKILL giữa chừng thì `trap` không kịp gửi cảnh báo, và
+timer bị disable thì chẳng có gì "thất bại" để mà báo. `xanax-backup-freshness`
+ở mục 6 bắt đúng hai lỗ hổng đó bằng cách hỏi một câu khác hẳn: bản mới nhất —
+cả local lẫn trên cloud — có còn mới hơn 36 giờ không.
+
+### Diễn tập khôi phục
+
+**Backup chưa từng khôi phục thử thì chưa được tính là backup.** `drill-restore.sh`
+biến câu đó thành việc chạy được lặp lại: nó tải bản mới nhất **từ cloud** về,
+dựng một bản Xanax thứ hai ở `/opt/xanax-drill` chạy trên cổng 8001, restore vào
+đó, rồi nghiệm thu tự động.
+
+Nhờ lấy từ cloud, mỗi lần diễn tập kiểm chứng luôn cả đường off-site lẫn
+passphrase của remote crypt — không chỉ kiểm tra file tar.
+
+```bash
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/drill-restore.sh \
+  /usr/local/sbin/xanax-drill-restore
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/drill-pre-start.sh \
+  /usr/local/sbin/xanax-drill-pre-start
+
+sudo /usr/local/sbin/xanax-drill-restore            # lấy bản mới nhất trên cloud
+sudo /usr/local/sbin/xanax-drill-restore --local    # hoặc bản trong /var/backups
+sudo /usr/local/sbin/xanax-drill-restore --keep     # xong không dọn, để vào xem
+sudo /usr/local/sbin/xanax-drill-restore --teardown # dọn bản diễn tập
+```
+
+Diễn tập **không bao giờ ghi vào production**. Cụ thể:
+
+- Chỉ đọc `/opt/xanax`: interpreter `.venv/bin/python` dùng chung ở chế độ đọc,
+  và database production mở bằng `sqlite3 -readonly` để đối chiếu số bản ghi.
+- Không đụng `xanax.service`. Script kiểm tra service vẫn `active` ở đầu và cuối,
+  và báo lỗi nghiêm trọng nếu trạng thái đổi.
+- `restore.sh` được gọi ở chế độ `drill`, nên rào chắn của nó sẽ chặn ngay nếu có
+  gì đó trỏ nhầm về production.
+- Archive gốc không bị động tới; script luôn làm việc trên bản sao.
+- Bản diễn tập chạy với `PATH` **không có** `claude`/`codex`, và
+  `drill-pre-start.sh` tắt toàn bộ lịch workflow trong bản sao trước khi service
+  khởi động.
+
+Điểm cuối quan trọng hơn vẻ ngoài của nó: lúc khởi động,
+`api/routes/workflow.py::restore_schedules()` đọc database và đăng ký lại mọi cron
+workflow đang bật. Bản diễn tập dùng đúng database của production, nên để nguyên
+là nó sẽ tự chạy workflow thật — gọi CLI, đốt token, ghi ra ngoài. Diễn tập phải
+là quan sát viên, không được hành động.
+
+Script tự nghiệm thu bốn thứ và gửi kết quả qua Telegram:
+
+1. `/api/health/ready` trên cổng 8001 trả `ready: true` với đủ bốn check.
+2. `PRAGMA integrity_check` trên database vừa khôi phục trả `ok`.
+3. Số bản ghi của 10 bảng quan trọng, đặt cạnh production để so.
+4. Production vẫn `active` sau khi diễn tập xong.
+
+Số bản ghi **lệch là bình thường** — backup chụp lúc 2 giờ sáng còn production
+chạy tiếp cả ngày. Chỉ đáng lo khi bản diễn tập lệch rất nhiều, hoặc bằng 0 ở
+bảng đáng ra phải có dữ liệu.
+
+Chạy diễn tập ngay sau khi dựng xong off-site, rồi **ít nhất mỗi quý một lần**.
+Nên chạy lại sau mỗi lần đổi schema database hoặc đổi nội dung archive.
 
 ### Log và dung lượng
 
@@ -389,9 +610,34 @@ df -h /opt/xanax /var/backups/xanax
 du -sh /opt/xanax/backend/data /var/backups/xanax
 ```
 
-Với ổ 60 GB, đặt cảnh báo khi filesystem đạt 80%; từ 90% coi là khẩn cấp. Kiểm
-tra cả `backend/data`, backup, journald và access log. Caddy xoay access log ở
-20 MiB, giữ tối đa 10 file/30 ngày; backup giữ theo số lượng ở đầu script.
+Với ổ 60 GB, cảnh báo ở 80% và coi 90% là khẩn cấp — `xanax-diskcheck.timer` ở
+mục 6 làm việc này tự động và gửi kèm `du` của những thư mục ăn chỗ nhiều nhất.
+Caddy xoay access log ở 20 MiB, giữ tối đa 10 file/30 ngày; journald bị chặn ở
+500 MB bởi drop-in ở mục 6.4; backup giữ theo số lượng ở đầu script.
+
+### Các timer đang chạy
+
+```bash
+systemctl list-timers 'xanax*'
+```
+
+| Timer | Lịch | Việc | Báo Telegram khi |
+|-------|------|------|------------------|
+| `xanax-backup` | 02:17 hằng ngày | Backup local + đẩy lên cloud | Backup hỏng, hoặc không ra khỏi VPS được |
+| `xanax-healthcheck` | mỗi 5 phút | Gọi `/api/health/ready` (loopback) và `/api/health` (công khai) | Hỏng 2 lần liên tiếp; và một lần khi phục hồi |
+| `xanax-backup-freshness` | 09:00 hằng ngày | Bản backup mới nhất còn mới hơn 36h không, cả local lẫn cloud | Backup cũ quá ngưỡng, hoặc file cụt |
+| `xanax-diskcheck` | 08:30 hằng ngày | Dung lượng các filesystem | Vượt 80%, vượt 90%, hoặc trở lại bình thường |
+
+Ngoài timer còn có `OnFailure=xanax-alert@%n.service` gắn trên `xanax.service`,
+bắn ngay khi service rơi vào trạng thái failed.
+
+Kiểm tra nhanh trạng thái toàn bộ lớp giám sát:
+
+```bash
+systemctl list-timers 'xanax*' --no-pager
+cat /var/lib/xanax/health.state /var/lib/xanax/disk.state \
+    /var/lib/xanax/backup-freshness.state
+```
 
 ## Hỏng thì xem đây trước
 
@@ -471,6 +717,45 @@ curl -v http://127.0.0.1:8000/api/health
 TLS thường hỏng vì DNS chưa trỏ đúng hoặc 80/443 bị chặn; 502 thường là service
 Xanax chưa chạy hoặc nghe sai host/port.
 
+### Không nhận được cảnh báo nào
+
+Thử thẳng kênh gửi trước, rồi mới nghi tới script gọi nó:
+
+```bash
+sudo /usr/local/sbin/xanax-notify info 'Thử' 'kiểm tra kênh'
+sudo stat -c '%a %U' /etc/xanax/alert.env      # phải là 600 root
+sudo journalctl -u xanax-healthcheck.service -n 30 --no-pager
+```
+
+`notify.sh` cố ý **luôn thoát 0** và chỉ ghi lý do ra stderr — cảnh báo không
+được phép biến một backup thành công thành backup thất bại. Vì vậy lỗi cấu hình
+Telegram chỉ hiện trong journal của unit gọi nó, không làm gì đổ vỡ.
+
+### Nhận quá nhiều cảnh báo trùng nhau
+
+Xem file state; nếu nó không tồn tại hoặc không ghi được thì máy trạng thái
+chống spam mất tác dụng và mỗi lần chạy sẽ báo lại:
+
+```bash
+sudo ls -l /var/lib/xanax/
+sudo install -d -m 0750 -o root -g root /var/lib/xanax
+```
+
+### Diễn tập restore thất bại
+
+```bash
+sudo journalctl -u xanax-drill.service -n 100 --no-pager
+sudo systemctl is-active xanax.service     # production phải vẫn active
+sudo /usr/local/sbin/xanax-drill-restore --teardown
+```
+
+Bản diễn tập được giữ nguyên khi thất bại để còn xem xét; `--teardown` dọn nó
+đi. Production không bị ảnh hưởng trong mọi trường hợp — diễn tập không ghi vào
+`/opt/xanax`.
+
+Lỗi hay gặp: cổng 8001 còn bị bản diễn tập lần trước chiếm (chạy `--teardown`),
+hoặc không đủ chỗ trống trên ổ (script kiểm tra trước và dừng sớm).
+
 ## Không làm
 
 - Không chạy nhiều uvicorn worker/process: SQLite, scheduler và hàng đợi nội bộ
@@ -478,3 +763,9 @@ Xanax chưa chạy hoặc nghe sai host/port.
 - Không chạy Xanax bằng root.
 - Không mở/public cổng 8000; chỉ Caddy được nghe Internet trên 80/443.
 - Không đổi hoặc làm mất `XANAX_SECRET_KEY` sau khi đã lưu token skill.
+- Không đẩy backup lên cloud mà không mã hóa: archive chứa `backend/.env`.
+- Không làm mất passphrase của remote crypt — cất cùng chỗ với
+  `XANAX_SECRET_KEY`.
+- Không chạy `restore.sh` để diễn tập mà quên `XANAX_RESTORE_MODE=drill`; dùng
+  `xanax-drill-restore` thay vì gọi tay.
+- Không enable `xanax-drill.service`: nó chỉ được sống trong lúc diễn tập.
