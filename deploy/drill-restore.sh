@@ -127,7 +127,7 @@ fi
 # ── Tiền kiểm ──────────────────────────────────────────────────────────────
 say 'Tiền kiểm'
 
-for command_name in systemctl curl sqlite3 tar git install readlink df awk ss du find; do
+for command_name in systemctl curl sqlite3 tar git install readlink df awk ss du find sudo; do
     command -v "$command_name" >/dev/null 2>&1 \
         || fail 69 "Thiếu lệnh phụ thuộc: $command_name"
 done
@@ -163,8 +163,13 @@ if [[ -e "$DRILL_ROOT" ]]; then
     teardown
 fi
 
-mkdir -p "$DRILL_WORK/incoming" "$DRILL_WORK/hermes"
-chmod 0700 "$DRILL_WORK"
+# Quyền ở đây phải tính theo hai user khác nhau cùng dùng thư mục này:
+#   - archive tải về CHỨA backend/.env, nên `incoming` chỉ root đọc được;
+#   - còn bản diễn tập chạy bằng user `xanax` và ghi vào HERMES_HOME, nên `hermes`
+#     phải thuộc xanax, và thư mục cha phải cho phép đi xuyên qua (0755).
+install -d -m 0755 -o root -g root "$DRILL_WORK"
+install -d -m 0700 -o root -g root "$DRILL_WORK/incoming"
+install -d -m 0700 -o xanax -g xanax "$DRILL_WORK/hermes"
 
 # ── Lấy archive ────────────────────────────────────────────────────────────
 say "Lấy bản backup (nguồn: $SOURCE)"
@@ -212,13 +217,22 @@ printf 'Archive giải nén thử được.\n'
 # ── Dựng bản diễn tập ──────────────────────────────────────────────────────
 say 'Dựng bản diễn tập'
 
-prod_commit="$(git -C "$PROD_ROOT" rev-parse HEAD 2>/dev/null || echo '')"
+# Mọi lệnh git ở đây chạy dưới user `xanax`, KHÔNG phải root. Lý do: /opt/xanax
+# thuộc user xanax, và git từ chối làm việc với repo của người khác
+# ("detected dubious ownership") — chạy bằng root sẽ gãy, hoặc tệ hơn là gãy âm
+# thầm khi stderr bị chặn. Chạy đúng chủ sở hữu vừa hết lỗi, vừa khỏi phải thêm
+# ngoại lệ safe.directory vào cấu hình toàn máy.
+prod_commit="$(sudo -u xanax git -C "$PROD_ROOT" rev-parse HEAD 2>/dev/null || echo '')"
+
 # Clone từ chính bản production trên máy: không cần mạng, không cần deploy key,
-# và chắc chắn cùng commit với thứ đang chạy thật.
-git clone --quiet --no-hardlinks "$PROD_ROOT" "$DRILL_ROOT" \
+# và chắc chắn cùng commit với thứ đang chạy thật. Thư mục đích được tạo trước
+# và thuộc xanax để user đó ghi được vào /opt.
+install -d -m 0755 -o xanax -g xanax "$DRILL_ROOT" \
+    || fail 73 "Không tạo được $DRILL_ROOT"
+sudo -u xanax git clone --quiet --no-hardlinks "$PROD_ROOT" "$DRILL_ROOT" \
     || fail 74 "Không clone được mã nguồn sang $DRILL_ROOT"
 if [[ -n "$prod_commit" ]]; then
-    git -C "$DRILL_ROOT" checkout --quiet "$prod_commit" 2>/dev/null || true
+    sudo -u xanax git -C "$DRILL_ROOT" checkout --quiet "$prod_commit" 2>/dev/null || true
 fi
 chown -R xanax:xanax "$DRILL_ROOT"
 printf 'Đã dựng %s tại commit %s\n' "$DRILL_ROOT" "${prod_commit:0:8}"
