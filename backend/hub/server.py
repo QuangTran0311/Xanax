@@ -275,6 +275,24 @@ def create_app() -> FastAPI:
         if path == "api" or path.startswith("api/") or path == "ws" or path.startswith("ws/"):
             raise HTTPException(status_code=404)
 
+        segments = path.split("/")
+        if any(segment.startswith(".") and segment != ".well-known" for segment in segments):
+            raise HTTPException(status_code=404)
+
+        # Yêu cầu trông như file chỉ được phục vụ khi đích đã phân giải vẫn nằm
+        # trong dist. Kiểm tra trên đường dẫn resolve() cũng chặn symlink thoát ra ngoài.
+        if Path(segments[-1]).suffix:
+            try:
+                dist = _frontend_dist_path.resolve()
+                static_file = (dist / path).resolve()
+                static_file.relative_to(dist)
+            except (OSError, RuntimeError, ValueError):
+                raise HTTPException(status_code=404)
+
+            if static_file.is_file():
+                return FileResponse(static_file)
+            raise HTTPException(status_code=404)
+
         index = _frontend_dist_path / "index.html"
         if index.is_file():
             return FileResponse(index, media_type="text/html", headers=_NO_CACHE_HEADERS)
