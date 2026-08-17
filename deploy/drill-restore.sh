@@ -163,13 +163,12 @@ if [[ -e "$DRILL_ROOT" ]]; then
     teardown
 fi
 
-# Quyền ở đây phải tính theo hai user khác nhau cùng dùng thư mục này:
-#   - archive tải về CHỨA backend/.env, nên `incoming` chỉ root đọc được;
-#   - còn bản diễn tập chạy bằng user `xanax` và ghi vào HERMES_HOME, nên `hermes`
-#     phải thuộc xanax, và thư mục cha phải cho phép đi xuyên qua (0755).
+# Archive tải về CHỨA backend/.env nên `incoming` chỉ root đọc được.
+# HERMES_HOME của bản diễn tập KHÔNG nằm ở đây mà trong /opt/xanax-drill: unit có
+# PrivateTmp=true, nghĩa là service nhìn thấy một /tmp và /var/tmp riêng biệt và
+# mọi thứ ta tạo dưới /var/tmp đều vô hình với nó.
 install -d -m 0755 -o root -g root "$DRILL_WORK"
 install -d -m 0700 -o root -g root "$DRILL_WORK/incoming"
-install -d -m 0700 -o xanax -g xanax "$DRILL_WORK/hermes"
 
 # ── Lấy archive ────────────────────────────────────────────────────────────
 say "Lấy bản backup (nguồn: $SOURCE)"
@@ -240,6 +239,34 @@ printf 'Đã dựng %s tại commit %s\n' "$DRILL_ROOT" "${prod_commit:0:8}"
 install -m 0644 "$PROD_ROOT/deploy/xanax-drill.service" \
     /etc/systemd/system/"$DRILL_SERVICE" \
     || fail 73 "Không cài được unit diễn tập."
+
+# File đè cấu hình. Unit nạp nó SAU backend/.env nên các giá trị dưới đây thắng.
+# Không thể dùng `Environment=` trong unit cho việc này: EnvironmentFile luôn đè
+# lên Environment=, nên .env được khôi phục sẽ kéo drill về cổng 8000 và
+# database của production.
+#
+# HERMES_HOME nằm trong /opt/xanax-drill chứ không phải /var/tmp: unit có
+# PrivateTmp=true nên mọi đường dẫn dưới /var/tmp là vô hình đối với service.
+install -d -m 0700 -o xanax -g xanax "$DRILL_ROOT/hermes"
+cat > "$DRILL_ROOT/drill-overrides.env" <<EOF
+HUB_HOST=127.0.0.1
+HUB_PORT=$DRILL_PORT
+HUB_DEBUG=false
+HUB_COOKIE_SECURE=false
+HUB_TRUST_PROXY_HEADERS=false
+HUB_TASK_WORKER_COUNT=1
+HUB_DATABASE_URL=sqlite+aiosqlite:///$DRILL_ROOT/backend/xanax.db
+HERMES_HOME=$DRILL_ROOT/hermes
+XANAX_NO_BROWSER=1
+PATH=$PROD_ROOT/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EOF
+chmod 0644 "$DRILL_ROOT/drill-overrides.env"
+
+# Bảo hiểm: nếu file đè không có HUB_PORT đúng thì dừng ngay, đừng để service
+# khởi động rồi mới phát hiện nó đang nhắm vào cổng của production.
+grep -qx "HUB_PORT=$DRILL_PORT" "$DRILL_ROOT/drill-overrides.env" \
+    || fail 73 "File đè cấu hình không đặt được HUB_PORT=$DRILL_PORT."
+
 systemctl daemon-reload
 
 # ── Chạy restore thật ──────────────────────────────────────────────────────

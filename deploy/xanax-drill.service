@@ -14,31 +14,20 @@ WorkingDirectory=/opt/xanax-drill/backend
 # vào chỗ), unit vẫn phải nạp được thay vì chết vì thiếu file.
 EnvironmentFile=-/opt/xanax-drill/backend/.env
 
-# Các Environment= dưới đây nằm SAU EnvironmentFile nên đè lên giá trị trong đó.
-# Đây là cách duy nhất áp cấu hình riêng cho drill mà không phải sửa file .env —
-# file đó bị restore.sh ghi đè mỗi lần chạy.
-Environment="PYTHONUNBUFFERED=1"
-# Cổng riêng: 8000 là của production, đụng vào là drill chết ngay (và đó là mong
-# muốn — thà chết còn hơn giành cổng).
-Environment="HUB_HOST=127.0.0.1"
-Environment="HUB_PORT=8001"
-Environment="HUB_DEBUG=false"
-# Truy cập qua http loopback nên cookie Secure sẽ không hoạt động.
-Environment="HUB_COOKIE_SECURE=false"
-Environment="HUB_TRUST_PROXY_HEADERS=false"
-Environment="HUB_TASK_WORKER_COUNT=1"
-# Ép database về đúng thư mục drill, phòng khi .env được restore có khai
-# HUB_DATABASE_URL trỏ thẳng vào production.
-Environment="HUB_DATABASE_URL=sqlite+aiosqlite:////opt/xanax-drill/backend/xanax.db"
-# Thư mục Hermes riêng: sync_soul_md() ghi vào SOUL.md trong HERMES_HOME. Để
-# nguyên là bản diễn tập ghi đè SOUL.md của production.
-Environment="HERMES_HOME=/var/tmp/xanax-drill/hermes"
-Environment="XANAX_NO_BROWSER=1"
+# File đè, do drill-restore.sh sinh ra trước khi khởi động. KHÔNG có dấu `-`:
+# thiếu nó thì unit phải chết ngay, vì chạy với .env nguyên bản nghĩa là drill
+# lấy cổng 8000 và database của production.
+#
+# TẠI SAO KHÔNG DÙNG `Environment=`: systemd đọc EnvironmentFile SAU và nó ĐÈ LÊN
+# Environment=, bất kể thứ tự viết trong file unit. Bản trước của unit này dùng
+# Environment="HUB_PORT=8001" và bị .env đè lại thành 8000, khiến drill lao vào
+# đúng cổng của production rồi chết vì "address already in use".
+#
+# Nhiều EnvironmentFile thì đọc theo thứ tự liệt kê, file sau đè file trước — nên
+# đây mới là cách đúng để áp cấu hình riêng cho drill.
+EnvironmentFile=/opt/xanax-drill/drill-overrides.env
 
-# PATH CỐ Ý không có /home/xanax/.local/bin và /home/xanax/.npm-global/bin:
-# bản diễn tập không được phép tìm thấy claude/codex. Nếu có gì đó vẫn cố gọi
-# CLI, nó sẽ báo "không tìm thấy lệnh" thay vì thật sự chạy và đốt token.
-Environment="PATH=/opt/xanax/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONUNBUFFERED=1"
 
 # Dùng chung interpreter của production: chỉ ĐỌC, không ghi gì vào /opt/xanax,
 # và tránh phải dựng venv mới (mất vài phút và cần mạng) cho mỗi lần diễn tập.
