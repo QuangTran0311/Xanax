@@ -68,6 +68,12 @@ class TestAuthGuard:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
+    async def test_provider_health_requires_auth(self, anon_client):
+        # Route này gọi CLI thật và tốn token, tuyệt đối không nằm trong
+        # allowlist công khai của health/readiness.
+        assert (await anon_client.post("/api/health/providers")).status_code == 401
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("path", ["/api/health", "/api/health/ready"])
     async def test_health_stays_public(self, anon_client, path):
         """Probe của reverse proxy/uptime monitor không có cookie phiên."""
@@ -136,6 +142,72 @@ class TestHealthRoutes:
             "scheduler": True,
             "task_queue": True,
         }
+
+    @pytest.mark.asyncio
+    async def test_provider_health_ignores_non_cli_pool(self, client, monkeypatch):
+        from api.routes import health
+        from hub.database import create_model_pool_entry
+
+        await create_model_pool_entry(
+            name="HTTP không thuộc probe",
+            provider="9router",
+            api_style="openai_compat",
+            model_id="some-http-model",
+        )
+
+        calls = []
+
+        async def fake_test(entry_id):
+            calls.append(entry_id)
+            return {"ok": True}
+
+        monkeypatch.setattr(health, "test_model_connection", fake_test)
+        resp = await client.post("/api/health/providers")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "ok": True,
+            "total": 0,
+            "failures": [],
+            "results": [],
+        }
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_provider_health_returns_503_for_failed_cli(self, client, monkeypatch):
+        from api.routes import health
+        from hub.database import create_model_pool_entry
+
+        entry_id = await create_model_pool_entry(
+            name="Claude chính",
+            provider="claude",
+            api_style="claude_cli",
+            model_id="claude-sonnet",
+            cli_config_dir="/home/xanax/.claude-papa",
+        )
+
+        calls = []
+
+        async def fake_test(called_id):
+            calls.append(called_id)
+            return {
+                "ok": False,
+                "error": "OPENAI_API_KEY=rat-bi-mat /home/xanax/.claude-papa/credentials.json hết hạn",
+            }
+
+        monkeypatch.setattr(health, "test_model_connection", fake_test)
+        resp = await client.post("/api/health/providers")
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["ok"] is False
+        assert data["total"] == 1
+        assert len(data["failures"]) == 1
+        assert data["failures"][0]["id"] == entry_id
+        assert data["failures"][0]["api_style"] == "claude_cli"
+        assert "rat-bi-mat" not in resp.text
+        assert "/home/xanax" not in resp.text
+        assert calls == [entry_id]
 
     @pytest.mark.asyncio
     async def test_root(self, anon_client):

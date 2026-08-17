@@ -1,0 +1,8 @@
+[Unit]
+Description=Kiểm tra credential Claude/Codex CLI cho Xanax
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xanax-provider-check
+
+# CỐ Ý không đặt OnFailure: script tự gửi cảnh báo kèm cách đăng nhập lại.

@@ -246,11 +246,22 @@ def _mcp_skill_to_server(skill: dict) -> dict | None:
             entry["headers"] = {"Authorization": f"Bearer {config['token']}"}
         return entry
 
-    # stdio: target là dòng lệnh có dấu nháy quanh đường dẫn chứa khoảng trắng.
-    parts = shlex.split(target, posix=False)
-    if not parts:
-        return None
-    return {"command": parts[0].strip('"'), "args": [p.strip('"') for p in parts[1:]]}
+    # Target nội bộ được đổi thành interpreter/path tuyệt đối để CLI không phải
+    # biết cwd hay layout venv rembg. Các target MCP khác giữ nguyên cách tách cũ.
+    from core.mcp_client import resolve_builtin_stdio_target
+
+    resolved = resolve_builtin_stdio_target(target)
+    if resolved is None:
+        parts = shlex.split(target, posix=False)
+        if not parts:
+            return None
+        command, args = parts[0].strip('"'), [p.strip('"') for p in parts[1:]]
+    else:
+        command, args = resolved
+    entry = {"command": command, "args": args}
+    if isinstance(config.get("env"), dict):
+        entry["env"] = {str(key): str(value) for key, value in config["env"].items()}
+    return entry
 
 
 async def stream_claude_cli(

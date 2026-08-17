@@ -5,11 +5,11 @@ nguyên khung ảnh gốc), không cắt sát sản phẩm. Server này gộp c�
 
     tách nền → cắt sát viền sản phẩm → chừa lề → đưa về tỉ lệ khung bài đăng
 
-Chạy bằng Python của venv rembg (đã có rembg + Pillow + mcp), không phải venv
-của xanax:
-
-    C:\\Users\\Quang\\.claude\\mcp-servers\\rembg-mcp\\.venv\\Scripts\\python.exe
-    d:\\xanax\\mcp_servers\\image_cut.py
+Server được gọi qua target ổn định ``xanax://image-cut``. Xanax dùng Python của
+venv chính để chạy ``image_cut_launcher.py``; launcher ưu tiên biến môi trường
+``XANAX_REMBG_PYTHON``, rồi tìm Python ở vị trí venv rembg mặc định của từng hệ
+điều hành và mới chạy file này. Venv rembg phải có rembg + Pillow + mcp và tách
+riêng khỏi venv chính; xem deploy/README.md.
 
 Model mặc định là birefnet-general-lite. Đo trên hai ảnh chụp thật (móc khoá đà
 điểu len, một tấm treo trên ba lô tối màu, một tấm đặt trên bàn gỗ sáng), nó là

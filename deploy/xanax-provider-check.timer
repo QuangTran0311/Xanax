@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiểm tra credential Claude/Codex CLI hằng ngày
+
+[Timer]
+# Mỗi probe gọi CLI thật và tốn token. Chạy đúng một lần mỗi ngày,
+# sau disk-check (08:30) và backup-freshness (09:00), cách xa backup 02:17.
+OnCalendar=*-*-* 10:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=xanax-provider-check.service
+
+[Install]
+WantedBy=timers.target

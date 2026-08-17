@@ -24,6 +24,10 @@ Group=xanax
 WorkingDirectory=/opt/xanax/backend
 EnvironmentFile=/opt/xanax/backend/.env
 Environment="PYTHONUNBUFFERED=1"
+# MCP SDK không tự kế thừa HOME trên Linux. Khai báo tường minh để rembg dùng
+# đúng cache model của user xanax, không tải lại hoặc thử ghi vào nơi khác.
+Environment="HOME=/home/xanax"
+Environment="U2NET_HOME=/home/xanax/.u2net"
 # systemd không đọc PATH từ shell đăng nhập. Giữ các thư mục CLI của user xanax ở đây.
 Environment="PATH=/opt/xanax/.venv/bin:/home/xanax/.local/bin:/home/xanax/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/opt/xanax/.venv/bin/python /opt/xanax/backend/main.py

@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import shlex
+import sys
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -32,6 +33,17 @@ from core.slugify import slugify
 logger = logging.getLogger("xanax.tools.skill_mcp")
 
 MCP_SKILL_PREFIX = "skill_mcp_"
+IMAGE_CUT_MCP_TARGET = "xanax://image-cut"
+_IMAGE_CUT_LAUNCHER = (
+    Path(__file__).resolve().parent.parent / "mcp_servers" / "image_cut_launcher.py"
+)
+
+# SDK MCP chỉ tự truyền một whitelist biến môi trường và whitelist đó không có
+# HOME trên Linux. Thiếu HOME thì rembg không tìm đúng ~/.u2net; các biến riêng
+# bên dưới cũng phải đi qua tường minh vì launcher cần đọc chúng.
+_STDIO_INHERITED_ENV = (
+    "HOME", "XANAX_REMBG_PYTHON", "U2NET_HOME", "XDG_DATA_HOME", "OMP_NUM_THREADS",
+)
 
 # Thời gian chờ tối đa cho từng giai đoạn. MCP server bên thứ ba có thể treo hoặc
 # tải model hàng chục MB lúc khởi động; không đặt trần thì cả app đứng theo.
@@ -137,6 +149,20 @@ def _split_command(target: str) -> tuple[str, list[str]]:
     return parts[0], parts[1:]
 
 
+def resolve_builtin_stdio_target(target: str) -> tuple[str, list[str]] | None:
+    """Phân giải target do Xanax quản lý; target MCP bình thường trả về None."""
+    if target.strip() == IMAGE_CUT_MCP_TARGET:
+        return sys.executable, [str(_IMAGE_CUT_LAUNCHER)]
+    return None
+
+
+def _stdio_subprocess_env(config_env: dict[str, str]) -> dict[str, str] | None:
+    """Bổ sung các biến SDK MCP không tự kế thừa, rồi cho config ghi đè."""
+    env = {key: os.environ[key] for key in _STDIO_INHERITED_ENV if key in os.environ}
+    env.update(config_env)
+    return env or None
+
+
 class MCPConnection:
     """Giữ một phiên MCP mở trong suốt vòng đời tiến trình.
 
@@ -173,8 +199,10 @@ class MCPConnection:
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else None
 
         if self.transport == "stdio":
-            command, args = _split_command(self.target)
-            params = StdioServerParameters(command=command, args=args, env=self.env or None)
+            command, args = resolve_builtin_stdio_target(self.target) or _split_command(self.target)
+            params = StdioServerParameters(
+                command=command, args=args, env=_stdio_subprocess_env(self.env),
+            )
             async with stdio_client(params) as (read, write):
                 async with ClientSession(read, write) as session:
                     yield session

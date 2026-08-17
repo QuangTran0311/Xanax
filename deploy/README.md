@@ -186,6 +186,147 @@ test -f /opt/xanax/frontend/dist/index.html
 Không chạy `npm run dev` trên server. FastAPI phục vụ trực tiếp
 `frontend/dist/` sau khi build.
 
+### Venv riêng cho skill cắt ảnh sản phẩm
+
+Skill này **không dùng venv chính** `/opt/xanax/.venv`. `rembg` kéo theo
+`onnxruntime` và một cây xử lý ảnh nặng, nên dựng và bảo trì nó riêng:
+
+```bash
+sudo -u xanax -H python3.12 -m venv /opt/xanax/.venv-rembg
+sudo -u xanax -H /opt/xanax/.venv-rembg/bin/python -m pip install --upgrade pip
+sudo -u xanax -H /opt/xanax/.venv-rembg/bin/python -m pip install \
+  'rembg[cpu]' pillow 'mcp>=1.9,<2'
+sudo -u xanax -H /opt/xanax/.venv-rembg/bin/python -c \
+  'import onnxruntime, PIL, mcp, rembg; print("venv rembg OK:", onnxruntime.__version__)'
+```
+
+Extra `[cpu]` là bắt buộc với rembg hiện tại: nó cài backend `onnxruntime` CPU.
+PyPI có wheel CPython 3.12 cho Linux x86_64 (`manylinux`, glibc 2.27+), nên trên
+Ubuntu 24.04 lệnh trên phải lấy wheel, không build `onnxruntime` từ source. Nếu
+log hiện bước compile gói này thì dừng lại và kiểm tra đúng kiến trúc/Python.
+
+Model `birefnet-general-lite` khoảng 214 MB. Tải và nạp thử **trước khi bật
+service** để lần gọi đầu không vừa tải model vừa đụng timeout 300 giây:
+
+```bash
+sudo install -d -m 0700 -o xanax -g xanax /home/xanax/.u2net
+sudo -u xanax -H env U2NET_HOME=/home/xanax/.u2net \
+  /opt/xanax/.venv-rembg/bin/python - <<'PY'
+from pathlib import Path
+from rembg import new_session
+
+session = new_session("birefnet-general-lite")
+print("Model OK:", type(session).__name__)
+print("Cache:", *Path("/home/xanax/.u2net").glob("*birefnet*"), sep="\n  ")
+PY
+```
+
+Rembg dùng `U2NET_HOME`; nếu biến này không có thì mới rơi về
+`$XDG_DATA_HOME/.u2net` hoặc `$HOME/.u2net`. Unit đặt cố định `HOME=/home/xanax`
+và `U2NET_HOME=/home/xanax/.u2net`; `core/mcp_client.py` cũng truyền hai biến đó
+qua whitelist rút gọn của MCP SDK. Vì vậy tiến trình con đọc đúng model đã tải
+dưới user `xanax`, không tải lại sau mỗi lần khởi động.
+
+Kiểm tra launcher bằng venv chính nhưng server thật chạy trong venv rembg. EOF
+làm MCP server thoát sạch sau khi import xong:
+
+```bash
+sudo -u xanax -H env \
+  HOME=/home/xanax U2NET_HOME=/home/xanax/.u2net \
+  XANAX_REMBG_PYTHON=/opt/xanax/.venv-rembg/bin/python \
+  /opt/xanax/.venv/bin/python \
+  /opt/xanax/backend/mcp_servers/image_cut_launcher.py </dev/null
+```
+
+Target lưu trong database từ nay là `xanax://image-cut`. Alias này được đổi
+thành Python của venv chính và đường dẫn tuyệt đối tới launcher; launcher ưu
+tiên `XANAX_REMBG_PYTHON`, sau đó dùng mặc định
+`/opt/xanax/.venv-rembg/bin/python`. Không lưu đường dẫn Windows/Linux vào
+`skills.config_json` nữa.
+
+Inference `birefnet-general-lite` ăn thêm khoảng 1–2 GB và tiến trình MCP nằm
+cùng cgroup với `xanax.service`. Nếu journal báo OOM trong cgroup khi cắt ảnh,
+đo RAM thực tế rồi nâng `MemoryMax` khỏi mức 4.5G (và chỉnh `MemoryHigh`) cho phù
+hợp; không chỉ restart vì lần sau vẫn chết. VPS 3 vCPU cũng sẽ chậm hơn mốc 13,5 giây/ảnh đo ở
+máy dev. Đường MCP hiện chờ 90 giây để kết nối và tối đa 300 giây cho **toàn bộ
+một lần gọi tool**; `HUB_CLI_TIMEOUT_SECONDS` không áp dụng ở đây. Một batch lớn
+có thể vượt 300 giây và bị hủy, nên chia batch nhỏ; tài liệu này không tự nâng
+timeout vì tăng trần sẽ làm mọi MCP tool treo lâu hơn khi có sự cố.
+
+### Chuyển bản ghi skill đang có trên production
+
+Deploy code và dựng venv rembg trước. Sau đó tìm đúng hàng cũ; câu lệnh chỉ đọc
+này không sửa database:
+
+```bash
+sudo -u xanax sqlite3 -readonly /opt/xanax/backend/xanax.db \
+  "SELECT id,name,type,json_extract(config_json,'$.target') FROM skills WHERE type='mcp' AND (json_extract(config_json,'$.target') LIKE '%image_cut.py%' OR json_extract(config_json,'$.target')='xanax://image-cut');"
+```
+
+Kết quả phải có đúng skill cắt ảnh sản phẩm. Nếu target đã là
+`xanax://image-cut` thì không chạy migration lần nữa. Nếu còn đường dẫn cũ, gán
+**ID vừa xem** vào `SKILL_ID`, backup trước, dừng app để không có người sửa skill
+đồng thời, rồi chạy migration tham số hóa dưới đây. Script giữ nguyên mọi khóa
+khác trong `config_json`, chỉ đổi `target`, và tự từ chối nếu ID không phải skill
+MCP trỏ tới `image_cut.py`:
+
+```bash
+set -euo pipefail
+SKILL_ID=THAY_BANG_ID_VUA_XEM
+sudo /usr/local/sbin/xanax-backup
+sudo systemctl stop xanax.service
+sudo -u xanax -H env SKILL_ID="$SKILL_ID" \
+  /opt/xanax/.venv/bin/python - <<'PY'
+import json
+import os
+import sqlite3
+
+db_path = "/opt/xanax/backend/xanax.db"
+skill_id = int(os.environ["SKILL_ID"])
+new_target = "xanax://image-cut"
+
+with sqlite3.connect(db_path) as db:
+    row = db.execute(
+        "SELECT id,name,type,config_json FROM skills WHERE id=?", (skill_id,),
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"Không có skill id={skill_id}; database chưa bị sửa")
+    config = json.loads(row[3] or "{}")
+    old_target = str(config.get("target") or "")
+    if row[2] != "mcp" or "image_cut.py" not in old_target.replace("\\", "/"):
+        raise SystemExit(
+            f"Từ chối sửa #{row[0]} {row[1]!r}: không phải MCP image_cut.py"
+        )
+    config["target"] = new_target
+    updated = json.dumps(config, ensure_ascii=False)
+    db.execute("BEGIN IMMEDIATE")
+    cursor = db.execute(
+        "UPDATE skills SET config_json=? WHERE id=? AND config_json=?",
+        (updated, skill_id, row[3]),
+    )
+    if cursor.rowcount != 1:
+        db.rollback()
+        raise SystemExit("Bản ghi đã đổi đồng thời; rollback, chưa sửa gì")
+    db.commit()
+    print(f"Đã đổi đúng skill #{row[0]} {row[1]!r}: {old_target!r} -> {new_target!r}")
+PY
+```
+
+Xác minh trước khi khởi động lại:
+
+```bash
+sudo -u xanax sqlite3 -readonly /opt/xanax/backend/xanax.db \
+  "SELECT id,name,json_extract(config_json,'$.target') FROM skills WHERE id=$SKILL_ID;"
+sudo systemctl start xanax.service
+sudo journalctl -u xanax.service -n 100 --no-pager
+```
+
+Trên database mới hiện **không có seed** cho skill này. `sync_api_skill_tools()`
+và `sync_mcp_skill_tools()` chỉ đọc các hàng đã tồn tại rồi đăng ký tool, không
+tạo hàng mới. Nếu câu `SELECT` đầu tiên không có kết quả, tạo skill loại MCP qua
+giao diện với cấu hình `{"transport":"stdio","target":"xanax://image-cut"}`;
+không chạy migration và không chèn seed ngầm.
+
 ## 3. Tạo cấu hình production
 
 Sinh từng secret trên VPS rồi lưu ngay trong trình quản lý mật khẩu. Hai lệnh
@@ -366,6 +507,8 @@ sudo install -m 0750 -o root -g root /opt/xanax/deploy/alert-unit-failed.sh \
   /usr/local/sbin/xanax-alert-unit-failed
 sudo install -m 0750 -o root -g root /opt/xanax/deploy/healthcheck.sh \
   /usr/local/sbin/xanax-healthcheck
+sudo install -m 0750 -o root -g root /opt/xanax/deploy/provider-check.sh \
+  /usr/local/sbin/xanax-provider-check
 sudo install -m 0750 -o root -g root /opt/xanax/deploy/disk-check.sh \
   /usr/local/sbin/xanax-disk-check
 sudo install -m 0750 -o root -g root /opt/xanax/deploy/backup-freshness.sh \
@@ -375,6 +518,7 @@ sudo install -d -m 0750 -o root -g root /var/lib/xanax
 
 for unit in xanax-alert@.service \
             xanax-healthcheck.service xanax-healthcheck.timer \
+            xanax-provider-check.service xanax-provider-check.timer \
             xanax-diskcheck.service xanax-diskcheck.timer \
             xanax-backup-freshness.service xanax-backup-freshness.timer; do
   sudo install -m 0644 "/opt/xanax/deploy/$unit" "/etc/systemd/system/$unit"
@@ -393,9 +537,11 @@ Chạy tay từng script một lần rồi mới bật timer:
 
 ```bash
 sudo /usr/local/sbin/xanax-healthcheck
+sudo /usr/local/sbin/xanax-provider-check
 sudo /usr/local/sbin/xanax-disk-check
 
 sudo systemctl enable --now xanax-healthcheck.timer
+sudo systemctl enable --now xanax-provider-check.timer
 sudo systemctl enable --now xanax-diskcheck.timer
 sudo systemctl enable --now xanax-backup-freshness.timer
 systemctl list-timers 'xanax*'
@@ -440,10 +586,12 @@ journalctl --disk-usage
 
 ### 6.5. Cảnh báo im lặng lúc nào
 
-Cả ba script đều có máy trạng thái chống spam trong `/var/lib/xanax`:
+Cả bốn script đều có máy trạng thái chống spam trong `/var/lib/xanax`:
 
 - healthcheck chỉ báo sau **2 lần hỏng liên tiếp**, im lặng suốt thời gian hỏng,
   và báo **đúng một lần** khi phục hồi.
+- provider-check báo ngay khi credential CLI chuyển sang hỏng, im lặng khi
+  vẫn hỏng, và báo đúng một lần khi phục hồi.
 - disk-check chỉ báo khi **mức độ thay đổi** (ok → warn → crit), nên ổ nằm ở 82%
   cả tuần chỉ sinh một tin nhắn.
 - backup-freshness chỉ báo lần đầu phát hiện backup cũ.
@@ -494,6 +642,14 @@ tiếp. File này **phải được commit vào Git**. Sau lần sinh đầu ti�
 về máy dev, commit rồi pull lại trên VPS; đừng để nó chỉ tồn tại cục bộ trên máy
 production.
 
+Venv `/opt/xanax/.venv-rembg` là ngoại lệ có chủ ý: nó không nằm trong
+`backend/requirements.txt` hay `backend/requirements.lock`. Vì vậy lệnh cài từ
+`requirements.lock` và `pip freeze` của venv chính không cài, nâng hay ghi lại
+`rembg`, `onnxruntime`, Pillow hoặc MCP trong venv riêng. Khi cần nâng skill cắt
+ảnh, phải chạy pip và kiểm tra model bằng chính
+`/opt/xanax/.venv-rembg/bin/python` theo mục **Venv riêng cho skill cắt ảnh sản
+phẩm**, rồi theo dõi RAM/thời gian inference sau khi nâng.
+
 Khi chủ động nâng dependency, sửa khoảng phiên bản trong `requirements.txt`, rồi
 trên VPS chạy:
 
@@ -530,6 +686,12 @@ Deploy dùng `requirements.lock` để cùng một commit luôn cài đúng cùn
 dependency. Dòng `test -s` cố ý dừng sớm nếu repo chưa có lock, thay vì âm thầm
 quay lại `requirements.txt` và tự nâng package ngay trên production. Ngoại lệ duy
 nhất là lần bootstrap đầu tiên ở mục 2; sinh và commit lock ngay sau lần đó.
+
+Các lệnh cập nhật trên chỉ chạm venv chính. Chúng **không** bảo trì
+`/opt/xanax/.venv-rembg`; không xóa hoặc dựng lại venv này trong mỗi lần deploy,
+và không đưa dependency nặng của rembg vào `requirements.lock`. Nếu release có
+đổi yêu cầu của skill cắt ảnh, cập nhật venv rembg bằng lệnh riêng ở mục 2, tải
+trước model dưới user `xanax`, chạy kiểm tra launcher rồi mới restart service.
 
 Nếu đợt cập nhật có thay đổi file trong `deploy/`, cài lại unit/script tương ứng,
 chạy `systemctl daemon-reload`, validate Caddyfile rồi mới reload Caddy.
@@ -741,6 +903,7 @@ systemctl list-timers 'xanax*'
 |-------|------|------|------------------|
 | `xanax-backup` | 02:17 hằng ngày | Backup local + đẩy lên cloud | Backup hỏng, hoặc không ra khỏi VPS được |
 | `xanax-healthcheck` | mỗi 5 phút | Gọi `/api/health/ready` (loopback) và `/api/health` (công khai) | Hỏng 2 lần liên tiếp; và một lần khi phục hồi |
+| `xanax-provider-check` | 10:15 hằng ngày | Gọi thật các entry `claude_cli`/`codex_cli` qua loopback | Credential/provider CLI hỏng; và một lần khi phục hồi |
 | `xanax-backup-freshness` | 09:00 hằng ngày | Bản backup mới nhất còn mới hơn 36h không, cả local lẫn cloud | Backup cũ quá ngưỡng, hoặc file cụt |
 | `xanax-diskcheck` | 08:30 hằng ngày | Dung lượng các filesystem | Vượt 80%, vượt 90%, hoặc trở lại bình thường |
 
@@ -751,7 +914,8 @@ Kiểm tra nhanh trạng thái toàn bộ lớp giám sát:
 
 ```bash
 systemctl list-timers 'xanax*' --no-pager
-cat /var/lib/xanax/health.state /var/lib/xanax/disk.state \
+cat /var/lib/xanax/health.state /var/lib/xanax/provider.state \
+    /var/lib/xanax/disk.state \
     /var/lib/xanax/backup-freshness.state
 ```
 
@@ -804,6 +968,34 @@ trên Internet.
 Đặt `HUB_TRUST_PROXY_HEADERS=true` khi và chỉ khi Caddy đứng trước app. Caddy v2
 tự tạo `X-Forwarded-For` an toàn khi nó là proxy Internet đầu tiên; không cần
 `header_up`. Đồng thời xác nhận UFW không public 8000 và `HUB_HOST=127.0.0.1`.
+
+### Agent gãy nhưng health vẫn xanh
+
+Nếu nhiều agent cùng không gọi được model trong khi `/api/health/ready`
+vẫn trả `ready: true`, nghi credential của `claude`/`codex` CLI đã hết hạn
+hoặc bị thu hồi. Readiness không gọi model thật nên không thể thấy lỗi này.
+
+Chạy probe bằng tay; script tự đọc `HUB_API_KEY` và gọi endpoint qua
+loopback, không cần đưa secret lên command line:
+
+```bash
+sudo /usr/local/sbin/xanax-provider-check
+sudo journalctl -u xanax-provider-check.service -n 50 --no-pager
+```
+
+Đăng nhập lại dưới chính user chạy app. Trong shell mới, chạy lệnh
+tương ứng với provider hỏng (`claude` mở luồng đăng nhập của Claude;
+`codex login` đăng nhập lại Codex):
+
+```bash
+sudo -u xanax -H bash
+claude
+codex login
+```
+
+Thoát shell `xanax`, chạy lại `sudo /usr/local/sbin/xanax-provider-check`.
+Probe thành công sẽ chuyển `/var/lib/xanax/provider.state` về `ok` và gửi
+đúng một tin phục hồi nếu trước đó đã cảnh báo.
 
 ### App không tìm thấy `claude` hoặc `codex`
 

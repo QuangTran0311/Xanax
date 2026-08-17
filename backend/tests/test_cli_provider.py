@@ -7,6 +7,7 @@ việc dựng prompt từ danh sách messages.
 """
 import json
 import os
+import sys
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -412,6 +413,17 @@ class TestMcpConfigShape:
         })})
         assert entry["type"] == "http" and entry["url"] == "https://x.example/mcp"
         assert entry["headers"]["Authorization"] == "Bearer t1"
+
+    def test_mcp_skill_image_cut_target_noi_bo(self):
+        from core.cli_provider import _mcp_skill_to_server
+        from core.mcp_client import IMAGE_CUT_MCP_TARGET
+        entry = _mcp_skill_to_server({"config_json": json.dumps({
+            "transport": "stdio", "target": IMAGE_CUT_MCP_TARGET,
+            "env": {"U2NET_HOME": "/home/xanax/.u2net"},
+        })})
+        assert entry["command"] == sys.executable
+        assert entry["args"][0].endswith("image_cut_launcher.py")
+        assert entry["env"] == {"U2NET_HOME": "/home/xanax/.u2net"}
 
     def test_mcp_skill_without_target_is_skipped(self):
         from core.cli_provider import _mcp_skill_to_server
