@@ -95,6 +95,7 @@ Trình duyệt tự mở tới `http://localhost:8000`. Tắt tự mở bằng `
 | `http://localhost:8000` | Giao diện — vào là ra trang đăng nhập |
 | `http://localhost:8000/api/docs` | Tài liệu API tự sinh |
 | `http://localhost:8000/api/health` | Kiểm tra server sống |
+| `http://localhost:8000/api/version` | Phiên bản đang chạy — công khai chỉ trả `version`; `commit` chỉ trả khi đã xác thực |
 
 **Đăng nhập lần đầu:** chưa có user nào thì lúc khởi động server tự tạo `admin` / `xanax` và in ra màn hình. Đổi bằng `XANAX_ADMIN_USER` / `XANAX_ADMIN_PASS` trong `.env`.
 
@@ -287,7 +288,8 @@ ASGI middleware thuần **mặc định ĐÓNG**: mọi `/api/*` và `/ws/*` đ�
 
 ```python
 _PUBLIC_EXACT   = {"/api/auth/login", "/api/auth/logout", "/api/auth/me",
-                   "/api/health", "/api/health/ready"}
+                   "/api/health", "/api/health/ready", "/api/version"}
+_OPTIONAL_AUTH_EXACT = {"/api/version"}  # có xác thực mới trả thêm commit
 _PUBLIC_PREFIXES = ("/api/workflow/hooks/",)   # webhook có token riêng trong URL
 _GUARDED_PREFIXES = ("/api/", "/ws/")
 ```
@@ -668,7 +670,7 @@ thứ bên ngoài phụ thuộc vào — không phải giao diện.
 | **PATCH** | Chỉ sửa lỗi và tài liệu | Sửa lỗi hiển thị, sửa tương phản màu, sửa chú thích, thêm phụ thuộc còn thiếu |
 
 **Nguồn duy nhất là `Settings.version` trong `backend/hub/config.py`.** Nó chảy ra
-banner lúc khởi động, `GET /api/health` và `/api/docs`. `backend/pyproject.toml`
+banner lúc khởi động, `GET /api/health`, `GET /api/version` và `/api/docs`. `backend/pyproject.toml`
 phải khai cùng số — đó chỉ là metadata đóng gói, không phải nguồn.
 
 Đừng khai `HUB_VERSION` trong `.env`: `.env` **đè lên** giá trị trong code, nên
@@ -691,6 +693,7 @@ sửa `config.py` sẽ không có tác dụng gì mà cũng không báo lỗi.
 | `2.6.2` | Launcher MCP cắt ảnh không còn `resolve()` đường dẫn Python của venv `rembg`: `bin/python` là symlink tới interpreter hệ thống, đi theo nó làm `execv` chạy Python hệ thống và mất `pyvenv.cfg`/site-packages, khiến `image_cut.py` chết với `ModuleNotFoundError: mcp` dù cả hai venv đều có gói · Sửa khối kiểm tra model trong runbook: glob sai tầng từng in `Cache` rỗng dù model đã tải đúng |
 | `2.6.3` | Launcher MCP cắt ảnh tự đặt thư mục làm việc về `backend/` trước khi exec: `FastMCP()` dò `.env` theo cwd, nên chạy từ thư mục không đọc được như `/root` dưới `sudo -u xanax` làm pydantic-settings chết bằng `PermissionError` thay vì bỏ qua · Chọn `backend/` vì `core/image_gen.py` còn hướng dẫn model lưu vào đường dẫn tương đối `data/assets`, cố định cwd giữ đúng ngữ nghĩa production |
 | `2.7.0` | Giới hạn cgroup được ghi cố định vào `deploy/xanax.service` (`MemoryHigh=4.5G`/`MemoryMax=5G`) thay vì chỉ dùng `systemctl set-property --runtime`: cấu hình trong `/run` mất sau reboot, trả máy về 3.5G và tái diễn sự cố đứng máy; thêm `MALLOC_ARENA_MAX=2` để hạn chế allocator giữ RAM · Skill cắt ảnh tắt CPU memory arena của onnxruntime qua `sess_opts`, gọi `gc.collect()` + `malloc_trim(0)` sau mỗi lần cắt và xoá cache session sau 600 giây nhàn rỗi, vì `MCPConnection` sống suốt vòng đời app nên tiến trình không bao giờ tự thoát; trên production, RSS sau 30 giây nghỉ giảm từ khoảng 4,5 GB xuống 127–138 MiB · Chốt kiểm tra RAM trước inference lấy giá trị nhỏ hơn giữa `MemAvailable` và phần cgroup v2 còn lại, từ chối kèm thông báo hữu ích thay vì để kernel OOM-kill tiến trình web; đo được `birefnet-general-lite` đạt đỉnh 5.562–5.628 MiB còn `u2netp` chỉ 518 MiB · ONNX của birefnet có input cố định `[1, 3, 1024, 1024]`, nên thu nhỏ ảnh đầu vào không hạ được đỉnh RAM—ghi lại đường cụt này để không lặp lại chi phí thử nghiệm · `backend/requirements.lock` được sinh từ venv production với 54 gói, gỡ nút thắt `test -s` từng chặn mọi lần deploy |
+| `2.8.0` | Tiêu đề tab trình duyệt đổi theo route thay vì kẹt ở chuỗi “Xanax — Đăng nhập” ghi cứng trong `index.html`; tab `/hub` dùng lại chính nhãn i18n của sidebar để hai nơi không trôi khỏi nhau · Năm trong footer lấy từ `getFullYear()` qua placeholder i18n thay vì ghi cứng `© 2025`, để sang năm không phải sửa lại · Thêm `GET /api/version` để trang đăng nhập đọc số phiên bản lúc chạy thay cho chuỗi `v1.0` ghi cứng đã lạc hậu nhiều bản; cố ý không nhúng lúc build vì quy trình deploy chỉ build lại frontend khi có động vào `frontend/src`, nên bản chỉ đổi backend sẽ để số hiển thị lạc hậu; mã commit chỉ trả cho request đã xác thực để không phơi dấu vân tay triển khai ra Internet — đây là khả năng mới tương thích ngược nên tăng MINOR thay vì PATCH |
 
 ---
 
