@@ -803,7 +803,7 @@ async def _maybe_generate_image(
         return full_output
 
     from core.image_gen import (
-        extract_image_prompt, extract_image_ratio, extract_product_image,
+        extract_image_prompt, extract_image_ratio, extract_poster, extract_product_image,
         extract_product_placement, generate_with_agent_models, safe_product_path,
     )
     from core.project_storage import get_or_create_run_dir
@@ -838,10 +838,17 @@ async def _maybe_generate_image(
         await send({"type": "agent_chunk", "run_id": run_id, "step": step_num,
                     "content": f"\n\n{text}"})
 
+    generate_kwargs = {}
+    poster = extract_poster(full_output)
+    # Chỉ truyền keyword mới khi thật sự có POSTER: output cũ và các adapter cũ
+    # giữ nguyên contract, còn chế độ A không có ảnh thật cũng không bị vẽ chồng.
+    if overlay and poster:
+        generate_kwargs["poster"] = poster
     err = await generate_with_agent_models(
         prompt=img_prompt, ratio=ratio, model_pool_ids=model_pool_ids or [],
         save_path=save_path, notify=_notice, product_overlay=overlay,
         placement=extract_product_placement(full_output),
+        **generate_kwargs,
     )
     if err:
         await _notice(f"❌ {err}")

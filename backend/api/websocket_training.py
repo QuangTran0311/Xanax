@@ -349,7 +349,7 @@ async def _maybe_draw_in_class(ws, agent: dict, session_id: int, full: str,
         return full
 
     from core.image_gen import (
-        extract_image_prompt, extract_image_ratio, extract_product_image,
+        extract_image_prompt, extract_image_ratio, extract_poster, extract_product_image,
         extract_product_placement, generate_with_agent_models, safe_product_path,
     )
 
@@ -368,10 +368,15 @@ async def _maybe_draw_in_class(ws, agent: dict, session_id: int, full: str,
     async def _notice(text: str) -> None:
         await _send(ws, {"type": "chunk", "content": f"\n\n{text}"})
 
+    generate_kwargs = {}
+    poster = extract_poster(full)
+    if overlay and poster:
+        generate_kwargs["poster"] = poster
     err = await generate_with_agent_models(
         prompt=prompt, ratio=extract_image_ratio(full),
         model_pool_ids=model_pool_ids or [], save_path=save_dir / name, notify=_notice,
         product_overlay=overlay, placement=placement,
+        **generate_kwargs,
     )
     if err:
         note = f"\n\n❌ Vẽ thử không thành: {err}"
