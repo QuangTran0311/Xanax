@@ -211,8 +211,9 @@ cùng một phép toán, không tách rời được.
 Bốn hướng, xếp theo chi phí:
 
 1. **Đổi sang model mạnh hơn.** Rẻ nhất về công sức, và đã làm: birefnet giải
-   được cả bóng đổ lẫn con mắt bị bạc. Trả bằng tốc độ (1s → 13,5s) và dung
-   lượng (4,4MB → 214MB). Trần của hướng này là danh sách model rembg có sẵn.
+   được cả bóng đổ lẫn con mắt bị bạc. Trên production, trả bằng tốc độ
+   (u2netp 0,7–2,3 giây → birefnet 24–46 giây) và dung lượng model
+   (4,4MB → 214MB). Trần của hướng này là danh sách model rembg có sẵn.
 2. **Sửa đầu vào, không sửa thuật toán.** Chụp trên nền sáng tương phản, ánh sáng
    toả đều để không đổ bóng gắt, tháo phụ kiện kim loại. Không tốn gì và phá được
    cả (a) lẫn (b) — nhưng đòi người chụp đổi thói quen.
@@ -236,10 +237,9 @@ cut_product(input_path, output_path,
             alpha_matting_erode_size=10)               # ĐỪNG nâng quá 10
 ```
 
-Giá phải trả: **1s → 13,5s mỗi ảnh**, và 214MB tải về lần đầu. Với ảnh đăng bán
-thì đáng. Cần nhanh (thư mục vài trăm ảnh) thì `model="u2netp",
-alpha_matting=True` — khoảng 5s/ảnh, đổi lại chấp nhận bóng đổ còn sót và chi
-tiết tối sát biên có thể bị bạc.
+Giá phải trả trên production: **0,7–2,3 giây → 24–46 giây mỗi ảnh**, và 214MB
+tải về lần đầu. Với ảnh đăng bán thì đáng. Cần nhanh (thư mục vài trăm ảnh) thì
+`model="u2netp"` — RSS đỉnh đo được 518 MiB, đổi lại chấp nhận bóng đổ còn sót.
 
 Phía ghép nền, `core/image_compose.py` có thêm một chốt an toàn: matting đã khử
 nhiễm màu sẵn rồi, chạy thêm bước chia ngược alpha nữa là khử hai lần, len trắng
@@ -270,54 +270,86 @@ hoàn toàn khác.
 
 ---
 
-## 6. RAM trên production: vì sao lên 4,5 GB rồi không xuống
+## 6. RAM trên production: số đo ngày 18/08/2026
 
-Sự cố thật trên VPS có MemTotal khoảng 5,8 GB không đến từ một chỗ riêng lẻ mà
-là ba lớp cộng dồn:
+Đây là số đo trực tiếp trên VPS production, không phải suy ra từ dung lượng file
+model:
 
-1. `MCPConnection` giữ tiến trình stdio sống suốt vòng đời app, nên tiến trình
-   rembg không có lần thoát tự nhiên để kernel thu hồi toàn bộ bộ nhớ.
-2. Arena allocator của onnxruntime giữ vùng đã xin để tái dùng. Sau inference,
-   object Python có thể đã hết nhưng RSS vẫn không trả về hệ điều hành.
-3. `remove()` từng nhận nguyên ảnh điện thoại 4000×3000. Model birefnet vẫn thu
-   về 1024×1024 bên trong, nhưng rembg/alpha matting đã dựng các buffer trung
-   gian khổng lồ ở kích thước ảnh gốc trước và sau bước model.
+| model / phép thử | RSS đỉnh | thời gian mỗi ảnh |
+|---|---:|---:|
+| `birefnet-general-lite`, ảnh test 485x711 | **5.562–5.628 MiB (~5,5 GiB)** | **24–46 giây** |
+| `birefnet-general-lite`, ép đầu vào xuống 800px | **5.562 MiB** | — |
+| `u2netp` | **518 MiB** | **0,7–2,3 giây** |
 
-Bản vá xử lý đủ cả ba lớp. Session onnxruntime được tạo với CPU arena tắt; sau
-mỗi ảnh, Python chạy GC rồi gọi `malloc_trim(0)` trên glibc Linux. Ảnh có cạnh
-dài vượt ngưỡng được thu nhỏ bằng LANCZOS chỉ để inference; alpha từ kết quả RGBA
-đầy đủ (vẫn giữ alpha matting) được phóng về kích thước gốc và gắn lên pixel ảnh
-gốc trước khi tính bbox/crop/padding/canvas. Vì vậy ảnh dùng đăng bán không bị
-resize theo bản inference. Session còn được xóa sau một quãng nhàn rỗi; lần cắt
-kế tiếp phải trả thêm khoảng 4 giây nạp model, đổi lại máy không giữ vài GB suốt
-đêm.
+Sau khi nghỉ 30 giây, RSS còn **127–138 MiB**. Bản vá xóa session khi nhàn rỗi,
+GC và `malloc_trim(0)` đang trả RAM tốt; không bỏ hay sửa đường dọn này.
 
-Hai chốt có thể chỉnh bằng môi trường:
+### Thu nhỏ đầu vào không hạ được đỉnh của birefnet
+
+Ảnh test vốn chỉ 485x711, và thử ép cạnh xuống 800px vẫn chạm đúng đỉnh 5.562
+MiB. Nguyên nhân đã xác nhận từ file ONNX: `birefnet-general-lite` có input shape
+cố định **`[1, 3, 1024, 1024]`**, không có trục động. Model luôn dựng và chạy
+tensor 1024x1024 bất kể kích thước ảnh đưa vào. Vì vậy **không được tiếp tục coi
+thu nhỏ ảnh là hướng để kéo RSS đỉnh birefnet xuống**.
+
+Bước thu nhỏ vẫn được giữ. Với ảnh điện thoại thật 4000x3000, nó giảm các buffer
+PIL/rembg trước và sau inference; alpha sau đó vẫn được phóng về kích thước gốc
+và gắn lên pixel ảnh gốc. Lợi ích này giảm phần buffer phụ của ảnh lớn, nhưng
+không chạm được đỉnh nền 1024x1024 cố định của chính birefnet.
+
+### Chốt RAM trước inference
+
+`image_cut.py` lấy lượng RAM thật sự dùng được là giá trị **nhỏ hơn** giữa
+`MemAvailable` và `memory.max - memory.current` của cgroup v2 hiện tại. Vế cgroup
+là quan trọng nhất vì tiến trình rembg nằm cùng cgroup với `xanax.service`: máy
+có thể còn RAM nhưng cgroup vẫn đã sát trần. File thiếu, không đọc được hoặc
+`memory.max` là `max` được coi là nguồn không giới hạn để máy dev Windows và
+cgroup v1 không lỗi.
+
+| nhóm model | ngưỡng trước inference | hành vi |
+|---|---:|---|
+| `birefnet-general-lite` và mọi model tên bắt đầu bằng `birefnet` | **6 GiB** | từ chối nếu thấp hơn |
+| `u2netp`, `u2net`, `isnet-general-use`, `u2net_cloth_seg`, `u2net_human_seg` | **1 GiB** | từ chối nếu thấp hơn |
+| tên model lạ, chưa đo | ngưỡng tham chiếu 1 GiB | không chặn, vì chưa được phép đoán là nặng |
+
+Thông báo từ chối ghi model, ngưỡng, RAM còn lại, nguồn đang nghẽn và gợi ý
+`model='u2netp'`. Batch kiểm tra trước vòng lặp và dừng ngay nếu RAM tụt xuống
+dưới ngưỡng, không lặp cùng một lỗi cho hàng trăm ảnh.
+
+VPS hiện có MemTotal khoảng 5,8 GB và `MemoryMax=5G`; birefnet vì vậy vượt trần
+cgroup và có thể khiến kernel OOM-kill bất kỳ tiến trình nào trong service, kể cả
+web. Chủ máy đã chọn giữ birefnet mặc định và nâng RAM, nhưng việc nâng chưa diễn
+ra. Chốt mới sẽ từ chối birefnet cho tới khi cgroup thực sự còn ít nhất 6 GiB.
+
+Ba biến môi trường liên quan:
 
 - `XANAX_IMAGE_CUT_MAX_SIDE` mặc định `2000`: cạnh dài tối đa đưa vào rembg;
   `0` hoặc số âm tắt bước thu nhỏ. Giá trị không phải số quay về `2000`.
 - `XANAX_IMAGE_CUT_IDLE_SECONDS` mặc định `600`: số giây nhàn rỗi trước khi xóa
   toàn bộ session; `0` hoặc số âm tắt việc xóa. Giá trị không phải số quay về
   `600`.
+- `XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1`: bỏ qua chốt RAM khi đo đạc hoặc khi chủ
+  máy chủ động chấp nhận rủi ro. Không đặt `1` thì chốt vẫn bật.
 
-Con số 4,5 GB là RSS đã thấy trước bản vá, không phải ước lượng. Máy dev Windows
-không có rembg nên chưa thể khẳng định RSS sau vá; phải đo trên đúng VPS bằng:
+Đo lại trên đúng VPS bằng:
 
 ```bash
-sudo -u xanax /opt/xanax/.venv-rembg/bin/python \
+sudo -u xanax env XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1 \
+  /opt/xanax/.venv-rembg/bin/python \
   /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
 
 # Đo gần baseline: không thu nhỏ ảnh và không xóa session khi idle.
-sudo -u xanax env XANAX_IMAGE_CUT_MAX_SIDE=0 XANAX_IMAGE_CUT_IDLE_SECONDS=0 \
+sudo -u xanax env XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1 \
+  XANAX_IMAGE_CUT_MAX_SIDE=0 XANAX_IMAGE_CUT_IDLE_SECONDS=0 \
   /opt/xanax/.venv-rembg/bin/python \
   /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
 ```
 
 Script in RSS hiện tại sau từng lượt, RSS đỉnh của tiến trình và RSS sau thời
-gian nghỉ mà không cần `psutil`. Biến thể gần baseline tắt cả bước thu nhỏ lẫn
-việc xóa session khi idle để đo mức giữ bộ nhớ của đường xử lý gốc. Dùng số đó rồi
-mới siết lại `MemoryHigh` và `MemoryMax`; không lấy mức mặc định 2000 px làm bằng
-chứng rằng đỉnh chắc chắn đã lọt dưới một trần cụ thể.
+gian nghỉ mà không cần `psutil`. Khi chủ động đo trên cấu hình chưa đủ RAM, thêm
+`XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1`. Biến thể gần baseline tắt cả bước thu nhỏ
+lẫn việc xóa session khi idle để đo mức giữ bộ nhớ của đường xử lý gốc. Không lấy
+việc thu nhỏ ảnh làm bằng chứng rằng đỉnh birefnet đã lọt dưới một trần cụ thể.
 
 ---
 

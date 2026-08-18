@@ -249,25 +249,37 @@ tiên `XANAX_REMBG_PYTHON`, sau đó dùng mặc định
 `/opt/xanax/.venv-rembg/bin/python`. Không lưu đường dẫn Windows/Linux vào
 `skills.config_json` nữa.
 
-Skill có hai biến môi trường riêng; không đặt thì đã dùng mặc định an toàn:
+Skill có ba biến môi trường riêng; không đặt thì đã dùng mặc định an toàn:
 
 | Biến | Mặc định | Ý nghĩa |
 |------|----------|---------|
 | `XANAX_IMAGE_CUT_MAX_SIDE` | `2000` | Cạnh dài tối đa của bản đưa vào inference; kết quả vẫn lấy pixel ảnh gốc. `0` hoặc số âm tắt thu nhỏ. |
 | `XANAX_IMAGE_CUT_IDLE_SECONDS` | `600` | Xóa session model sau từng ấy giây không cắt ảnh. `0` hoặc số âm giữ session mãi. |
+| `XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK` | không đặt | Đặt đúng `1` để bỏ qua chốt RAM trước inference khi đo đạc hoặc chủ động chấp nhận rủi ro. |
 
 Giá trị sai định dạng quay về mặc định. Nếu cần ghi đè, đặt chúng bằng
 `Environment=` trong unit/drop-in của `xanax.service`; `core/mcp_client.py` truyền
 tường minh sang launcher và tiến trình trong venv rembg. Sau khi đổi unit phải
 `daemon-reload` và restart như mục 7.
 
-Inference `birefnet-general-lite` ăn thêm khoảng 1–2 GB và tiến trình MCP nằm
-cùng cgroup với `xanax.service`. Mức tạm `MemoryHigh=4.5G`/`MemoryMax=5G` dùng để
-sống sót qua lỗi rembg giữ khoảng 4,5 GB không trả lại; sau khi vá lỗi, chỉ siết
-về khoảng 3.5G/4.5G khi đã đo RSS đỉnh và RSS-sau-nghỉ của tiến trình cắt ảnh trên
-VPS. Không chỉ restart vì lần sau vẫn gặp lại. VPS 3 vCPU cũng sẽ chậm hơn mốc
-13,5 giây/ảnh đo ở máy dev. Đường MCP hiện chờ 90 giây để kết nối và tối đa 300
-giây cho **toàn bộ
+Đo thật trên production ngày 18/08/2026: `birefnet-general-lite` đạt RSS đỉnh
+5.562–5.628 MiB (~5,5 GiB) và mất 24–46 giây/ảnh; `u2netp` đạt 518 MiB và
+0,7–2,3 giây/ảnh. Sau 30 giây nhàn rỗi RSS còn 127–138 MiB, nên phần xóa session
+và `malloc_trim` đang làm việc đúng. Ảnh test chỉ 485x711; ép đầu vào xuống 800px
+vẫn đạt 5.562 MiB vì ONNX của birefnet có input cố định `[1, 3, 1024, 1024]`.
+Thu nhỏ ảnh vẫn giữ để giảm buffer PIL của ảnh điện thoại thật, nhưng không hạ
+được đỉnh của birefnet.
+
+**Cảnh báo cgroup:** trước khi chạy bất kỳ model birefnet nào, cgroup phải còn ít
+nhất **6 GiB khả dụng**. Vì tiến trình rembg dùng chung cgroup với web,
+`MemoryMax` phải cao hơn hẳn **6 GiB cộng với phần RAM tiến trình web và các tiến
+trình con đang dùng**; đặt đúng 6G vẫn không đủ. VPS hiện có MemTotal khoảng 5,8
+GB và `MemoryMax=5G`, nên chốt trong `image_cut.py` sẽ từ chối birefnet thay vì để
+kernel OOM-kill một nạn nhân bất kỳ trong `xanax.service`. Chủ máy đã quyết định
+nâng RAM để giữ model mặc định nhưng việc nâng chưa xảy ra. Chỉ dùng
+`XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1` khi đo đạc hoặc đã chủ động nhận rủi ro.
+
+Đường MCP hiện chờ 90 giây để kết nối và tối đa 300 giây cho **toàn bộ
 một lần gọi tool**; `HUB_CLI_TIMEOUT_SECONDS` không áp dụng ở đây. Một batch lớn
 có thể vượt 300 giây và bị hủy, nên chia batch nhỏ; tài liệu này không tự nâng
 timeout vì tăng trần sẽ làm mọi MCP tool treo lâu hơn khi có sự cố.
@@ -751,8 +763,10 @@ systemctl status xanax.service --no-pager | grep -i memory
 `TasksMax=512` chặn rò process/thread từ các CLI agent. MemTotal thật khoảng 5,8 GB,
 nên chỉ còn khoảng 0,8 GB cho OS, Caddy và journald: mức tạm rất mỏng, chỉ đứng
 vững nhờ swap 4 GB với `swappiness=10` đã tạo ngày 17/08/2026. **Không được xóa
-swap đó.** Sau khi vá rembg giữ khoảng 4,5 GB không trả lại, đo RSS đỉnh và
-RSS-sau-nghỉ của tiến trình cắt ảnh trên VPS rồi mới siết về khoảng 3.5G/4.5G.
+swap đó.** Số đo 18/08/2026 cho thấy birefnet đạt đỉnh 5.562–5.628 MiB; cấu hình
+5G hiện tại không chạy an toàn và chốt RAM sẽ từ chối. Sau khi nâng VPS, đặt
+`MemoryMax` cao hơn hẳn 6 GiB cộng với mức RAM web đang dùng, rồi xác nhận lại
+bằng `systemctl show` trước khi thử inference.
 
 ### Backup và restore
 

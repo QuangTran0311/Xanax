@@ -146,6 +146,7 @@ def test_env_stdio_giu_home_va_cho_config_ghi_de(monkeypatch):
     monkeypatch.setenv("XANAX_REMBG_PYTHON", "/opt/rembg/python")
     monkeypatch.setenv("XANAX_IMAGE_CUT_MAX_SIDE", "1800")
     monkeypatch.setenv("XANAX_IMAGE_CUT_IDLE_SECONDS", "300")
+    monkeypatch.setenv("XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK", "1")
 
     env = _stdio_subprocess_env({"HOME": "/srv/custom-home", "RIENG": "1"})
 
@@ -153,4 +154,5 @@ def test_env_stdio_giu_home_va_cho_config_ghi_de(monkeypatch):
     assert env["XANAX_REMBG_PYTHON"] == "/opt/rembg/python"
     assert env["XANAX_IMAGE_CUT_MAX_SIDE"] == "1800"
     assert env["XANAX_IMAGE_CUT_IDLE_SECONDS"] == "300"
+    assert env["XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK"] == "1"
     assert env["RIENG"] == "1"
