@@ -54,16 +54,78 @@ def test_san_pham_vua_khit_vung_giu_ty_le_canh_ngang_va_canh_day(tmp_path):
     assert top >= round(region.top * result.height)
 
 
-def test_thuoc_do_phan_biet_nen_trong_voi_vung_bi_ve_vat_the():
+def _tao_nen_lien_mach(size=(600, 750)):
+    """Gradient tường và mặt bàn đều chạy hết chiều ngang, kể cả qua vùng sản phẩm."""
+    image = Image.new("RGB", size)
+    draw = ImageDraw.Draw(image)
+    mat_ban_y = round(size[1] * 0.70)
+    for y in range(size[1]):
+        if y < mat_ban_y:
+            shade = 240 - round(10 * y / size[1])
+            color = (shade, shade - 5, shade - 12)
+        else:
+            depth = y - mat_ban_y
+            color = (218 - depth // 35, 203 - depth // 42, 181 - depth // 50)
+        draw.line((0, y, size[0], y), fill=color)
+    return image
+
+
+def _hop_pixel(region, size=(600, 750)):
+    return (
+        round(region.left * size[0]), round(region.top * size[1]),
+        round(region.right * size[0]), round(region.bottom * size[1]),
+    )
+
+
+def _ve_vien_dut_net(draw, box, color=(230, 105, 25), width=5):
+    left, top, right, bottom = box
+    for x in range(left, right, 22):
+        draw.line((x, top, min(x + 13, right), top), fill=color, width=width)
+        draw.line((x, bottom, min(x + 13, right), bottom), fill=color, width=width)
+    for y in range(top, bottom, 22):
+        draw.line((left, y, left, min(y + 13, bottom)), fill=color, width=width)
+        draw.line((right, y, right, min(y + 13, bottom)), fill=color, width=width)
+
+
+def test_thuoc_do_cho_nen_gradient_va_mat_ban_lien_mach_di_qua():
+    region = get_template("giua-khung").product_region
+    measurement = measure_empty_product_region(_tao_nen_lien_mach(), region)
+
+    assert measurement.empty, measurement.log_summary()
+    assert not measurement.boundary_violation
+    assert not measurement.flat_panel_violation
+    assert not measurement.content_violation
+
+
+def test_thuoc_do_loai_panel_phang_co_vien_dut_net_dung_vung_san_pham():
+    region = get_template("giua-khung").product_region
+    image = _tao_nen_lien_mach()
+    box = _hop_pixel(region)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(box, fill=(250, 231, 188))
+    _ve_vien_dut_net(draw, box)
+
+    measurement = measure_empty_product_region(image, region)
+
+    assert not measurement.empty, measurement.log_summary()
+    assert measurement.boundary_violation, measurement.log_summary()
+
+
+def test_thuoc_do_loai_panel_phang_khong_co_vien():
+    region = get_template("giua-khung").product_region
+    image = _tao_nen_lien_mach()
+    ImageDraw.Draw(image).rectangle(_hop_pixel(region), fill=(250, 225, 170))
+
+    measurement = measure_empty_product_region(image, region)
+
+    assert not measurement.empty, measurement.log_summary()
+    assert measurement.flat_panel_violation, measurement.log_summary()
+
+
+def test_thuoc_do_giu_hanh_vi_loai_vat_the_co_chi_tiet_trong_vung():
     template = get_template("giua-khung")
     size = (600, 750)
-    blank = Image.new("RGB", size)
-    draw = ImageDraw.Draw(blank)
-    for y in range(size[1]):
-        shade = 238 - round(10 * y / size[1])
-        draw.line((0, y, size[0], y), fill=(shade, shade - 5, shade - 12))
-
-    occupied = blank.copy()
+    occupied = _tao_nen_lien_mach(size)
     r = template.product_region
     box = (
         round((r.left + 0.05) * size[0]), round((r.top + 0.04) * size[1]),
@@ -75,12 +137,10 @@ def test_thuoc_do_phan_biet_nen_trong_voi_vung_bi_ve_vat_the():
         draw.line((box[0] + offset, box[1] + 10, box[0] + offset, box[3] - 10),
                   fill=(245, 225, 180), width=5)
 
-    clean_measure = measure_empty_product_region(blank, r)
     occupied_measure = measure_empty_product_region(occupied, r)
-    assert clean_measure.empty, clean_measure.log_summary()
+
     assert not occupied_measure.empty, occupied_measure.log_summary()
-    assert occupied_measure.edge_density > clean_measure.edge_density
-    assert occupied_measure.color_stddev > clean_measure.color_stddev
+    assert occupied_measure.content_violation, occupied_measure.log_summary()
 
 
 async def test_pipeline_sinh_lai_dung_mot_lan_khi_vung_chua_bi_chiem(tmp_path, monkeypatch):
@@ -104,11 +164,10 @@ async def test_pipeline_sinh_lai_dung_mot_lan_khi_vung_chua_bi_chiem(tmp_path, m
         canvas = Image.new("RGB", (600, 750), (238, 232, 220))
         if len(calls) == 1:
             r = get_template("giua-khung").product_region
-            ImageDraw.Draw(canvas).rectangle(
-                (round(r.left * 600), round(r.top * 750),
-                 round(r.right * 600), round(r.bottom * 750)),
-                fill=(25, 75, 180),
-            )
+            box = _hop_pixel(r)
+            draw = ImageDraw.Draw(canvas)
+            draw.rectangle(box, fill=(250, 225, 170))
+            _ve_vien_dut_net(draw, box)
         canvas.save(kwargs["save_path"])
         return kwargs["save_path"]
 
@@ -132,6 +191,10 @@ async def test_pipeline_sinh_lai_dung_mot_lan_khi_vung_chua_bi_chiem(tmp_path, m
     assert len(calls) == 2
     assert "CRITICAL RETRY CORRECTION" in calls[1]
     assert "x=30% to 70%" in calls[1]
+    assert "edges concentrated on the exact rectangular boundary" in calls[1]
+    assert "abrupt local color jump" in calls[1]
+    assert "wall/table junction" in calls[1]
+    assert "y=70%" in calls[1]
     result = Image.open(output_path).convert("RGB")
     assert any(
         result.getpixel((x, y))[0] > 170 and result.getpixel((x, y))[1] < 80

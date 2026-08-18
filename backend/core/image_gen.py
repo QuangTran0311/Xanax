@@ -559,17 +559,44 @@ async def generate_with_agent_models(
         with Image.open(path) as image:
             return measure_empty_product_region(image, selected_template.product_region)
 
-    def _strict_empty_prompt(original: str) -> str:
+    def _strict_empty_prompt(original: str, measurement) -> str:
         r = selected_template.product_region
+        grounding_y = {
+            "giua-khung": 0.70,
+            "trai-san-pham": 0.80,
+            "luoi-the-duoi": 0.54,
+        }[selected_template.code]
+        detected_corrections = []
+        if measurement.boundary_violation:
+            detected_corrections.append(
+                "The quality check detected edges concentrated on the exact rectangular "
+                "boundary. Remove the entire outline/frame, including every dashed or solid "
+                "border, rounded rectangle, divider line and photo-frame shape."
+            )
+        if measurement.flat_panel_violation:
+            detected_corrections.append(
+                "The quality check detected an abrupt local color jump around the rectangle. "
+                "Remove the flat placeholder panel or differently toned color block; do not "
+                "mark the area with a rectangular light or dark patch."
+            )
+        if measurement.content_violation:
+            detected_corrections.append(
+                "The quality check detected object-like detail inside the placement area. "
+                "Remove every product, prop, character, icon, badge, card, lettering, strong "
+                "pattern and decorative object from that area."
+            )
+        detected = " ".join(detected_corrections)
         return original.rstrip() + (
-            "\n\nCRITICAL RETRY CORRECTION: The rectangular product reservation from "
+            "\n\nCRITICAL RETRY CORRECTION: " + detected + " "
+            "The product placement coordinates are "
             f"x={r.left:.0%} to {r.right:.0%} and y={r.top:.0%} to {r.bottom:.0%} "
-            "must be genuinely empty background. A real cut-out product photograph will be "
-            "pasted over this exact rectangle. Remove every product, prop, character, icon, "
-            "badge, card, lettering, strong pattern and decorative object from inside it. "
-            "Do not draw a placeholder or silhouette there. Keep all typography and design "
-            "elements strictly outside this rectangle. Only a smooth continuous backdrop "
-            "and subtle lighting may pass through it."
+            "for a real cut-out product photograph that will be composited afterward. This is "
+            "not a blank placeholder: continue the same wall, tabletop, texture, perspective, "
+            "ambient light and environmental shadows naturally through those coordinates, "
+            "without any rectangular brightness boundary. Keep typography and designed "
+            "objects outside them. Make the wall/table junction or rear edge of the grounding "
+            f"surface cross horizontally near y={grounding_y:.0%}, so the inserted product "
+            "looks supported by the scene rather than pasted onto it."
         )
 
     ratio_str = f"{ratio[0]}:{ratio[1]}"
@@ -626,7 +653,8 @@ async def generate_with_agent_models(
                     retry_usage = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
                     try:
                         await _run_image_model(
-                            pool_entry, _strict_empty_prompt(prompt), retry_path, retry_usage)
+                            pool_entry, _strict_empty_prompt(prompt, first_measurement),
+                            retry_path, retry_usage)
                         await _record_usage(pool_entry, retry_usage, model_label)
                         retry_path.replace(save_path)
                         second_measurement = _measure_background(save_path)
