@@ -2,6 +2,8 @@
 
 File này cố ý không import ``rembg``: nó chạy bằng venv chính của Xanax, tìm
 Python của venv rembg rồi chuyển quyền thực thi sang ``image_cut.py``.
+Việc chdir về backend không đổi ``sys.path[0]`` (vẫn là thư mục chứa script),
+nên ``image_cut.py`` phải tự thêm backend trước khi import gói ``mcp_servers``.
 """
 from __future__ import annotations
 

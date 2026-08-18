@@ -44,6 +44,13 @@ import onnxruntime as ort
 from PIL import Image
 from rembg import new_session, remove
 
+# Khi chạy file này trực tiếp, Python đặt sys.path[0] là thư mục chứa script
+# (backend/mcp_servers), không phải cwd; launcher chdir về backend vẫn chưa đủ
+# để import gói mcp_servers.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
 from mcp_servers.image_cut_helpers import (
     IDLE_SECONDS_ENV,
     MAX_SIDE_ENV,
