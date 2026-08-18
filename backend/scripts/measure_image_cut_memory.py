@@ -22,6 +22,23 @@ import tempfile
 import time
 from pathlib import Path
 
+
+def _configure_utf8_output() -> None:
+    # Console Windows mặc định dùng cp1252; nếu không ép UTF-8, thông báo tiếng Việt
+    # có thể làm script chết khi print. Đừng xoá đoạn này vì tưởng là thừa.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            # Một số luồng được redirect hoặc thay trong test không cho cấu hình lại.
+            pass
+
+
+_configure_utf8_output()
+
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))

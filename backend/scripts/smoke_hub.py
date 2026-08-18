@@ -9,16 +9,27 @@ an old workflow run. Exit code 0 means the smoke checks passed.
 from __future__ import annotations
 
 import asyncio
-import io
 import os
 import pathlib
 import sys
 from urllib.parse import urlparse
 
 
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+def _configure_utf8_output() -> None:
+    # Console Windows mặc định dùng cp1252; nếu không ép UTF-8, thông báo tiếng Việt
+    # có thể làm script chết khi print. Đừng xoá đoạn này vì tưởng là thừa.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            # Một số luồng được redirect hoặc thay trong test không cho cấu hình lại.
+            pass
+
+
+_configure_utf8_output()
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

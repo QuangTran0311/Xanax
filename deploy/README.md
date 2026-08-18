@@ -752,6 +752,26 @@ dependency. Dòng `test -s` cố ý dừng sớm nếu repo chưa có lock, thay
 quay lại `requirements.txt` và tự nâng package ngay trên production. Ngoại lệ duy
 nhất là lần bootstrap đầu tiên ở mục 2; sinh và commit lock ngay sau lần đó.
 
+Nếu release sửa bất kỳ file nào trong `backend/skills/*.md`, **sau `git pull` và
+trước khi restart** phải đồng bộ từng skill tương ứng. Các file Markdown chỉ là
+bản chép để đọc/version; app nạp nội dung thật từ `skills.config_json.content`, nên
+pull code mà bỏ bước này sẽ để production chạy skill cũ. Luôn chạy lượt đầu không
+cờ để xem unified diff; chỉ khi đã đối chiếu xong mới ghi:
+
+```bash
+sudo -u xanax /opt/xanax/.venv/bin/python \
+  /opt/xanax/backend/scripts/sync_skill_content.py generate_post_image
+sudo -u xanax /opt/xanax/.venv/bin/python \
+  /opt/xanax/backend/scripts/sync_skill_content.py generate_post_image --apply
+```
+
+Thay `generate_post_image` bằng đúng `skills.name` đã sửa. Bình thường chỉ cần
+`--apply`: script cho phép ghi khi content trong DB khớp một phiên bản Git trước đây
+của file. Chỉ thêm `--force` nếu script cảnh báo content không có trong lịch sử — dấu
+hiệu có thể ai đó từng sửa skill trên giao diện — hoặc không kiểm tra được Git. Script
+chỉ đổi khoá `content`, giữ các khoá như `image_pool_id`, và trước khi ghi lưu nguyên
+`config_json` cũ vào `backend/data/`.
+
 Các lệnh cập nhật trên chỉ chạm venv chính. Chúng **không** bảo trì
 `/opt/xanax/.venv-rembg`; không xóa hoặc dựng lại venv này trong mỗi lần deploy,
 và không đưa dependency nặng của rembg vào `requirements.lock`. Nếu release có

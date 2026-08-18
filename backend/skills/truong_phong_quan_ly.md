@@ -1,3 +1,9 @@
+<!--
+CẢNH BÁO: File này chỉ là bản chép để đọc và version. Nội dung chạy thật nằm ở
+skills.config_json.content trong database. Sửa file mà không đồng bộ KHÔNG có tác dụng.
+Lệnh VPS: sudo -u xanax /opt/xanax/.venv/bin/python /opt/xanax/backend/scripts/sync_skill_content.py truong_phong_quan_ly --apply
+-->
+
 # truong_phong_quan_ly
 
 ## Mô tả
