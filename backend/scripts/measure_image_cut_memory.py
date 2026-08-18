@@ -1,13 +1,18 @@
 r"""Đo RSS của skill cắt ảnh ngay trong venv rembg trên VPS.
 
 Lệnh mẫu:
-    XANAX_IMAGE_CUT_IDLE_SECONDS=10 /opt/xanax/.venv-rembg/bin/python \
-      /opt/xanax/backend/scripts/measure_image_cut_memory.py \
-      /duong/dan/anh-4000x3000.jpg --runs 3 --rest-seconds 15
+    sudo -u xanax /opt/xanax/.venv-rembg/bin/python \
+      /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
+
+Đo gần baseline (không thu nhỏ ảnh, không xóa session khi idle):
+    sudo -u xanax env XANAX_IMAGE_CUT_MAX_SIDE=0 XANAX_IMAGE_CUT_IDLE_SECONDS=0 \
+      /opt/xanax/.venv-rembg/bin/python \
+      /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
 """
 from __future__ import annotations
 
 import argparse
+import os
 import resource
 import sys
 import tempfile
@@ -18,7 +23,18 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from mcp_servers.image_cut import _cut_one
+# FastMCP dò .env theo cwd; chạy từ /root bằng sudo -u xanax sẽ PermissionError.
+# Phải chdir như bẫy tương tự đã xử lý trong image_cut_launcher.py.
+os.chdir(_BACKEND_DIR)
+try:
+    from mcp_servers.image_cut import _cut_one
+except Exception as exc:
+    print(
+        "Không thể import bộ cắt ảnh. Hãy chạy script bằng Python của venv rembg "
+        f"và kiểm tra XANAX_REMBG_PYTHON: {exc}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from None
 
 
 def _current_rss_kib() -> int:

@@ -304,16 +304,20 @@ Con số 4,5 GB là RSS đã thấy trước bản vá, không phải ước lư
 không có rembg nên chưa thể khẳng định RSS sau vá; phải đo trên đúng VPS bằng:
 
 ```bash
-XANAX_IMAGE_CUT_IDLE_SECONDS=10 /opt/xanax/.venv-rembg/bin/python \
-  /opt/xanax/backend/scripts/measure_image_cut_memory.py \
-  /duong/dan/anh-4000x3000.jpg --runs 3 --rest-seconds 15
+sudo -u xanax /opt/xanax/.venv-rembg/bin/python \
+  /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
+
+# Đo gần baseline: không thu nhỏ ảnh và không xóa session khi idle.
+sudo -u xanax env XANAX_IMAGE_CUT_MAX_SIDE=0 XANAX_IMAGE_CUT_IDLE_SECONDS=0 \
+  /opt/xanax/.venv-rembg/bin/python \
+  /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
 ```
 
 Script in RSS hiện tại sau từng lượt, RSS đỉnh của tiến trình và RSS sau thời
-gian nghỉ mà không cần `psutil`. Lệnh mẫu rút idle còn 10 giây chỉ trong tiến
-trình đo để không phải chờ đủ 600 giây. Dùng số đó rồi mới siết lại `MemoryHigh` và
-`MemoryMax`; không lấy mức mặc định 2000 px làm bằng chứng rằng đỉnh chắc chắn đã
-lọt dưới một trần cụ thể.
+gian nghỉ mà không cần `psutil`. Biến thể gần baseline tắt cả bước thu nhỏ lẫn
+việc xóa session khi idle để đo mức giữ bộ nhớ của đường xử lý gốc. Dùng số đó rồi
+mới siết lại `MemoryHigh` và `MemoryMax`; không lấy mức mặc định 2000 px làm bằng
+chứng rằng đỉnh chắc chắn đã lọt dưới một trần cụ thể.
 
 ---
 
