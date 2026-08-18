@@ -54,9 +54,10 @@ Nếu user đã tồn tại, `useradd` sẽ báo lỗi; kiểm tra bằng `id xa
 
 Tạo swapfile 4 GiB trước khi build hoặc chạy service. Gói VPS quảng cáo 8 GB có
 MemTotal thật `8131780 kB` (khoảng 7,75 GiB); không có swap thì `MemoryHigh` gần
-như không có chỗ để đẩy các trang ít dùng ra. Với `MemoryMax=7G`, máy còn khoảng
-0,75 GiB cho OS, Caddy và journald, cộng swap 4 GiB làm đệm, vì vậy **không được
-xóa swap**; riêng
+như không có chỗ để đẩy các trang ít dùng ra. Với `MemoryHigh=7G` và
+`MemoryMax=7.5G`, trần cứng còn chừa khoảng 250 MiB RAM vật lý cho OS, Caddy và
+journald, cộng swap 4 GiB làm đệm; MemoryHigh sẽ kìm trước khi cgroup chạm trần.
+Vì vậy **không được xóa swap**; riêng
 `npm run build` của Vite lúc cập nhật cũng có thể ăn nhiều RAM. Trước hết kiểm tra
 máy chưa có swapfile trùng tên hoặc swap đã bật:
 
@@ -263,23 +264,31 @@ Giá trị sai định dạng quay về mặc định. Nếu cần ghi đè, đ�
 tường minh sang launcher và tiến trình trong venv rembg. Sau khi đổi unit phải
 `daemon-reload` và restart như mục 7.
 
-Đo thật trên production ngày 18/08/2026: `birefnet-general-lite` đạt RSS đỉnh
-5.562–5.628 MiB (~5,5 GiB) và mất 24–46 giây/ảnh; `u2netp` đạt 518 MiB và
-0,7–2,3 giây/ảnh. Sau 30 giây nhàn rỗi RSS còn 127–138 MiB, nên phần xóa session
-và `malloc_trim` đang làm việc đúng. Ảnh test chỉ 485x711; ép đầu vào xuống 800px
-vẫn đạt 5.562 MiB vì ONNX của birefnet có input cố định `[1, 3, 1024, 1024]`.
-Thu nhỏ ảnh vẫn giữ để giảm buffer PIL của ảnh điện thoại thật, nhưng không hạ
-được đỉnh của birefnet.
+Đo lại trên production ngày 18/08/2026 sau khi nâng lên MemTotal 7,75 GiB:
+`birefnet-general-lite` đạt RSS đỉnh 6.105–6.562 MiB, ổn định ở 6.562 MiB từ lượt
+thứ hai, và mất 14,5–27,6 giây/ảnh; `u2netp` đạt 518 MiB và 0,7–2,3 giây/ảnh.
+Một đợt chạy trần đạt 6.537 MiB, đợt chạy đúng `OMP_NUM_THREADS=4` +
+`MALLOC_ARENA_MAX=2` như production đạt 6.562 MiB: chênh 0,4% chỉ là nhiễu.
+
+Con số cũ 5.562–5.628 MiB được đo trên máy chỉ có khoảng 5,8 GiB RAM và đã bị
+kernel reclaim cắt cụt, không phải nhu cầu thật của model. Tương tự, RSS
+127–138 MiB sau khi nghỉ trên máy cũ thấp hơn mức **525 MiB ngay sau mỗi lượt
+cắt** của máy mới vì áp lực bộ nhớ, không phải code cũ dọn tốt hơn. Không suy
+ngược từ việc máy chạy xong thành model chỉ cần chừng đó.
+
+ONNX của birefnet có input cố định `[1, 3, 1024, 1024]`; thu nhỏ ảnh vẫn giữ để
+giảm buffer PIL của ảnh điện thoại thật, nhưng không hạ được nền RAM của model.
 
 **Cảnh báo cgroup:** trước khi chạy bất kỳ model birefnet nào, cgroup phải còn ít
-nhất **6 GiB khả dụng**. Vì tiến trình rembg dùng chung cgroup với web,
-`MemoryMax` phải cao hơn hẳn **6 GiB cộng với phần RAM tiến trình web và các tiến
-trình con đang dùng**; đặt đúng 6G vẫn không đủ. VPS sau khi nâng có MemTotal
-`8131780 kB` (khoảng 7,75 GiB), `MemoryMax=7G`, và service lúc nghỉ có
-`MemoryCurrent=301723648` byte (khoảng 288 MiB). Cgroup khi đó còn khoảng 6,7
-GiB, vượt chốt 6 GiB nên birefnet chạy được. Không hạ `MemoryMax` xuống dưới
-khoảng 6,5 GiB nếu chưa hạ cả ngưỡng trong `MODEL_MEMORY_REQUIREMENTS` hoặc đổi
-model mặc định: chốt so với phần **còn lại** của cgroup, không phải tổng RAM.
+nhất **6,5 GiB khả dụng**. Mức này nhỉnh hơn đỉnh rembg 6.562 MiB (xấp xỉ
+6,41 GiB) và vẫn có khoảng an toàn tới trần. Không đặt chốt đúng 7 GiB: với
+`MemoryMax=7.5G` và web dùng 300–800 MiB, phần còn lại của cgroup sẽ dao động
+quanh đúng ngưỡng và skill lúc chạy được lúc không. Chốt so với phần **còn lại**
+của cgroup, không phải tổng RAM.
+
+Đỉnh trong cgroup xấp xỉ 6,7 GiB (6.562 MiB rembg + khoảng 300 MiB web), dưới
+`MemoryHigh=7G` nên không bị throttle. `MemoryMax=7.5G` còn chừa khoảng 250 MiB
+RAM vật lý cộng swap 4 GiB, và MemoryHigh sẽ kìm trước khi chạm trần cứng.
 `birefnet-general-lite` là model duy nhất đã đo được xử lý sạch cả nền tối lẫn
 bóng đổ trên bàn gỗ. Chỉ dùng
 `XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1` khi đo đạc hoặc đã chủ động nhận rủi ro.
@@ -764,15 +773,16 @@ systemctl show xanax -p MemoryHigh -p MemoryMax -p TasksMax
 systemctl status xanax.service --no-pager | grep -i memory
 ```
 
-`MemoryHigh=6.5G` là ngưỡng kìm, `MemoryMax=7G` mới là trần cứng;
+`MemoryHigh=7G` là ngưỡng kìm, `MemoryMax=7.5G` mới là trần cứng;
 `TasksMax=512` chặn rò process/thread từ các CLI agent. MemTotal thật là
-`8131780 kB` (khoảng 7,75 GiB), nên trần 7G chừa khoảng 0,75 GiB cho OS, Caddy và
-journald, cộng swap 4 GiB với `swappiness=10` làm đệm. **Không được xóa swap đó.**
-Service lúc nghỉ dùng 288 MiB, nên cgroup còn khoảng 6,7 GiB, vượt chốt 6 GiB
-trước inference. Số đo 18/08/2026 cho thấy birefnet đạt đỉnh 5.562–5.628 MiB;
-cộng 288 MiB của web vẫn dưới `MemoryHigh=6.5G`, nên một lượt inference không bị
-throttle. Giữ giới hạn cgroup để OOM chỉ chọn nạn nhân trong Xanax, không bắn
-nhầm Caddy hay sshd. Xác nhận cấu hình bằng `systemctl show` trước khi inference.
+`8131780 kB` (khoảng 7,75 GiB), nên trần 7.5G chừa khoảng 250 MiB RAM vật lý cho
+OS, Caddy và journald, cộng swap 4 GiB với `swappiness=10` làm đệm.
+**Không được xóa swap đó.** Số đo 18/08/2026 cho thấy birefnet ổn định ở
+6.562 MiB; cộng khoảng 300 MiB của web thành xấp xỉ 6,7 GiB trong cgroup, vẫn
+dưới `MemoryHigh=7G`. Chốt trước inference là 6,5 GiB phần còn lại của cgroup;
+không đặt 7 GiB vì web dao động 300–800 MiB sẽ làm skill lúc chạy được lúc không.
+Giữ giới hạn cgroup để OOM chỉ chọn nạn nhân trong Xanax, không bắn nhầm Caddy
+hay sshd. Xác nhận cấu hình bằng `systemctl show` trước khi inference.
 
 ### Backup và restore
 

@@ -8,6 +8,9 @@ Lệnh mẫu:
     sudo -u xanax env XANAX_IMAGE_CUT_MAX_SIDE=0 XANAX_IMAGE_CUT_IDLE_SECONDS=0 \
       /opt/xanax/.venv-rembg/bin/python \
       /opt/xanax/backend/scripts/measure_image_cut_memory.py <ảnh>
+
+Đã kiểm chứng chạy trần đạt 6.537 MiB và chạy với OMP_NUM_THREADS=4 cùng
+MALLOC_ARENA_MAX=2 đạt 6.562 MiB (chênh 0,4%); script không cần tự đặt hai biến này.
 """
 from __future__ import annotations
 

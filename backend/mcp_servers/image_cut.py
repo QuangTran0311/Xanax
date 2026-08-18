@@ -23,7 +23,7 @@ model duy nhất xử lý được cả hai:
                        sạch cả hai ảnh, mắt đen giữ nguyên, tự loại được bóng đổ
                        và phần lớn vòng khoá kim loại
 
-Đo production ngày 18/08/2026: birefnet mất 24–46 giây/ảnh, u2netp mất
+Đo production ngày 18/08/2026: birefnet mất 14,5–27,6 giây/ảnh, u2netp mất
 0,7–2,3 giây/ảnh. Với ảnh đăng bán thì chất lượng birefnet đáng để chờ. Cần nhanh
 thì đổi model='u2netp' và chấp nhận bóng đổ còn sót.
 
@@ -355,7 +355,7 @@ def cut_product(
 
     input_path: đường dẫn tuyệt đối tới ảnh gốc.
     output_path: đường dẫn tuyệt đối tới file kết quả (.png để giữ nền trong suốt).
-    model: birefnet-general-lite (mặc định, sạch nhất, production đo 24–46s/ảnh),
+    model: birefnet-general-lite (mặc định, sạch nhất, production đo 14,5–27,6s/ảnh),
         u2netp (production đo 0,7–2,3s/ảnh nhưng để sót bóng đổ), u2net,
         isnet-general-use (đã đo: tệ hơn
         u2netp, đừng dùng), u2net_cloth_seg (quần áo), u2net_human_seg (người).
@@ -404,7 +404,7 @@ def cut_product_batch(
 
     Tham số giống cut_product. Kết quả lưu cùng tên file, đuôi .png.
 
-    Trên production, model mặc định birefnet-general-lite tốn 24–46s/ảnh. Thư
+    Trên production, model mặc định birefnet-general-lite tốn 14,5–27,6s/ảnh. Thư
     mục vài trăm ảnh thì cân nhắc model='u2netp' (0,7–2,3s/ảnh) và chấp nhận
     bóng đổ sót.
     """

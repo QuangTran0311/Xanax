@@ -43,28 +43,32 @@ RestartSec=5s
 # trần cứng có thể giết tiến trình. Đặt hai mức cách nhau để máy còn cơ hội hồi
 # phục bằng cách chạy chậm lại, thay vì vừa chạm ngưỡng đã giết ngay.
 #
-# Gói VPS quảng cáo 8 GB có MemTotal thật 8131780 kB, khoảng 7,75 GiB; available
-# sau nâng là 7,2 GiB. Service lúc nghỉ có MemoryCurrent=301723648 byte, khoảng
-# 288 MiB; với MemoryMax=7G, cgroup còn trống 7 GiB - 288 MiB, khoảng 6,7 GiB,
-# vượt ngưỡng 6 GiB mà lớp chặn RAM trong image_cut.py yêu cầu nên skill cắt ảnh
-# chạy được.
+# Bài học từ máy cũ chỉ có khoảng 5,8 GiB RAM: đỉnh 5.562-5.628 MiB từng ghi lại
+# là đỉnh BỊ MÁY CŨ CẮT CỤT. Khi không còn RAM để cấp thêm, kernel reclaim nên
+# tiến trình vẫn chạy nhưng RSS bị ép xuống; không được suy ngược từ "máy chạy
+# được" thành "model chỉ cần chừng đó".
 #
-# Đỉnh inference birefnet-general-lite đã đo là 5.562-5.628 MiB (khoảng 5,5 GiB);
-# cộng 288 MiB của web vẫn dưới MemoryHigh=6.5G nên một lượt inference không bị
-# throttle. MemoryMax=7G cũng chừa khoảng 0,75 GiB RAM vật lý cho OS, Caddy và
-# journald, cộng swap 4 GiB (swappiness=10, chưa dùng byte nào) làm đệm. KHÔNG
-# được xóa swap đó.
+# Đo lại ngày 18/08/2026 trên máy 8 GB có MemTotal thật 8131780 kB (khoảng
+# 7,75 GiB): birefnet-general-lite đạt 6.105-6.562 MiB, ổn định ở 6.562 MiB từ
+# lượt thứ hai. Chạy trần và chạy đúng OMP_NUM_THREADS=4 + MALLOC_ARENA_MAX=2
+# như production lần lượt đạt 6.537 và 6.562 MiB, chỉ lệch 0,4%. Cộng khoảng
+# 300 MiB của web, đỉnh thật trong cgroup xấp xỉ 6,7 GiB, dưới MemoryHigh=7G nên
+# lượt inference bình thường không bị throttle.
 #
-# Không hạ MemoryMax xuống dưới khoảng 6,5 GiB nếu vẫn dùng birefnet: lớp chặn RAM
-# so ngưỡng 6 GiB với phần CÒN LẠI của cgroup, không phải tổng RAM. Muốn hạ phải
-# hạ cả ngưỡng trong MODEL_MEMORY_REQUIREMENTS hoặc đổi model mặc định, và phải
-# biết birefnet là model duy nhất đã đo được xử lý sạch cả nền tối lẫn bóng đổ
-# trên bàn gỗ.
+# MemoryMax=7.5G còn chừa khoảng 250 MiB RAM vật lý cho OS, Caddy và journald,
+# cộng swap 4 GiB (swappiness=10) làm đệm. Khoảng này cố ý hẹp nhưng MemoryHigh=7G
+# sẽ kìm trước khi cgroup chạm trần cứng. KHÔNG được xóa swap đó.
+#
+# Chốt RAM của nhóm birefnet là 6,5 GiB phần CÒN LẠI trong cgroup. Không đặt chốt
+# đúng 7 GiB: với web dao động 300-800 MiB dưới MemoryMax=7.5G, phần còn lại sẽ
+# quanh đúng 7 GiB và skill lúc chạy được lúc không. Muốn hạ giới hạn phải đổi
+# cả chốt trong MODEL_MEMORY_REQUIREMENTS hoặc đổi model mặc định; birefnet là
+# model duy nhất đã đo được xử lý sạch cả nền tối lẫn bóng đổ trên bàn gỗ.
 #
 # Giữ giới hạn cgroup để khi vượt trần, OOM chỉ chọn nạn nhân trong cgroup Xanax,
 # không bắn nhầm Caddy hay sshd và làm mất đường vào máy.
-MemoryHigh=6.5G
-MemoryMax=7G
+MemoryHigh=7G
+MemoryMax=7.5G
 
 # CẢNH BÁO: systemctl revert cũng xóa drop-in bền vững ở /etc; chạy
 # systemctl cat xanax để kiểm tra trước. Sau khi copy unit vào /etc/systemd/system/,

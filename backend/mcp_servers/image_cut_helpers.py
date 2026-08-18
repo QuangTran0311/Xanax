@@ -13,16 +13,24 @@ SKIP_MEMORY_CHECK_ENV = "XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK"
 
 GIB = 1024 ** 3
 
-# Số đo thật trên VPS production ngày 18/08/2026:
-# - birefnet-general-lite: RSS đỉnh 5.562–5.628 MiB, 24–46 giây/ảnh. Ảnh test chỉ
-#   485x711; ép đầu vào xuống 800px vẫn đạt đỉnh 5.562 MiB vì ONNX có input cố
-#   định [1, 3, 1024, 1024], không có trục động. Đặt ngưỡng 6 GiB để có biên.
+# Số đo thật trên VPS production ngày 18/08/2026, sau khi nâng lên MemTotal 7,75 GiB:
+# - birefnet-general-lite: RSS đỉnh 6.105–6.562 MiB, ổn định ở 6.562 MiB từ lượt
+#   thứ hai, 14,5–27,6 giây/ảnh. Chạy trần đạt 6.537 MiB; chạy đúng
+#   OMP_NUM_THREADS=4 + MALLOC_ARENA_MAX=2 như production đạt 6.562 MiB, chênh
+#   0,4% chỉ là nhiễu. Ảnh test nhỏ cũng không hạ nền chính vì ONNX có input cố
+#   định [1, 3, 1024, 1024], không có trục động.
 # - u2netp: RSS đỉnh 518 MiB, 0,7–2,3 giây/ảnh. Nhóm model nhẹ dùng ngưỡng 1 GiB.
-# - Sau 30 giây nhàn rỗi RSS còn 127–138 MiB nhờ xóa session + malloc_trim.
-# VPS lúc đo có MemTotal khoảng 5,8 GB và cgroup MemoryMax=5G, nên birefnet đang
-# vượt trần. Không hạ ngưỡng theo kích thước ảnh đầu vào.
+# - Trên máy đủ RAM, RSS ngay sau mỗi lượt cắt là 525 MiB. Mức 127–138 MiB trên
+#   máy cũ là do áp lực bộ nhớ ép kernel reclaim, không phải code khi đó dọn tốt hơn.
+# Đỉnh cũ 5.562–5.628 MiB được đo trên máy chỉ có khoảng 5,8 GiB RAM nên đã bị
+# chính máy cắt cụt: tiến trình cần thêm nhưng kernel không còn gì để cấp. Vì vậy
+# không được coi việc máy từng chạy xong là bằng chứng model chỉ cần khoảng 5,5 GiB.
+#
+# Chốt 6,5 GiB nhỉnh hơn đỉnh 6.562 MiB (xấp xỉ 6,41 GiB) nhưng vẫn có khoảng an
+# toàn tới MemoryMax=7.5G. Không đặt đúng 7 GiB: web dùng 300–800 MiB làm phần còn
+# lại của cgroup dao động quanh ngưỡng đó, khiến skill lúc chạy được lúc không.
 MODEL_MEMORY_REQUIREMENTS = {
-    "birefnet-general-lite": 6 * GIB,
+    "birefnet-general-lite": 13 * GIB // 2,
     "u2netp": 1 * GIB,
     "u2net": 1 * GIB,
     "isnet-general-use": 1 * GIB,
@@ -75,7 +83,7 @@ def model_memory_requirement(model: str) -> tuple[int, bool]:
     """
     normalized = (model or "").strip().casefold()
     if normalized.startswith("birefnet"):
-        return 6 * GIB, True
+        return MODEL_MEMORY_REQUIREMENTS["birefnet-general-lite"], True
     if normalized in MODEL_MEMORY_REQUIREMENTS:
         return MODEL_MEMORY_REQUIREMENTS[normalized], True
     return _LIGHT_MODEL_MEMORY, False
@@ -148,7 +156,8 @@ def calculate_available_memory(
 def _format_memory(byte_count: int) -> str:
     if byte_count < GIB:
         return f"{byte_count / (1024 ** 2):.0f} MiB"
-    return f"{byte_count / GIB:.2f} GiB".replace(".00 GiB", " GiB")
+    value = f"{byte_count / GIB:.2f}".rstrip("0").rstrip(".")
+    return f"{value} GiB"
 
 
 def build_insufficient_memory_message(

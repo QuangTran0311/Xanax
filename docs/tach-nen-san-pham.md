@@ -212,7 +212,7 @@ Bốn hướng, xếp theo chi phí:
 
 1. **Đổi sang model mạnh hơn.** Rẻ nhất về công sức, và đã làm: birefnet giải
    được cả bóng đổ lẫn con mắt bị bạc. Trên production, trả bằng tốc độ
-   (u2netp 0,7–2,3 giây → birefnet 24–46 giây) và dung lượng model
+   (u2netp 0,7–2,3 giây → birefnet 14,5–27,6 giây) và dung lượng model
    (4,4MB → 214MB). Trần của hướng này là danh sách model rembg có sẵn.
 2. **Sửa đầu vào, không sửa thuật toán.** Chụp trên nền sáng tương phản, ánh sáng
    toả đều để không đổ bóng gắt, tháo phụ kiện kim loại. Không tốn gì và phá được
@@ -237,7 +237,7 @@ cut_product(input_path, output_path,
             alpha_matting_erode_size=10)               # ĐỪNG nâng quá 10
 ```
 
-Giá phải trả trên production: **0,7–2,3 giây → 24–46 giây mỗi ảnh**, và 214MB
+Giá phải trả trên production: **0,7–2,3 giây → 14,5–27,6 giây mỗi ảnh**, và 214MB
 tải về lần đầu. Với ảnh đăng bán thì đáng. Cần nhanh (thư mục vài trăm ảnh) thì
 `model="u2netp"` — RSS đỉnh đo được 518 MiB, đổi lại chấp nhận bóng đổ còn sót.
 
@@ -272,25 +272,43 @@ hoàn toàn khác.
 
 ## 6. RAM trên production: số đo ngày 18/08/2026
 
-Đây là số đo trực tiếp trên VPS production, không phải suy ra từ dung lượng file
-model:
+Đây là số đo lại trực tiếp trên VPS production sau khi nâng máy lên 8 GB,
+MemTotal thật **7,75 GiB**. Máy còn dư RAM trong lúc đo nên các số dưới đây mới
+phản ánh nhu cầu thật, không phải suy ra từ dung lượng file model:
 
 | model / phép thử | RSS đỉnh | thời gian mỗi ảnh |
 |---|---:|---:|
-| `birefnet-general-lite`, ảnh test 485x711 | **5.562–5.628 MiB (~5,5 GiB)** | **24–46 giây** |
-| `birefnet-general-lite`, ép đầu vào xuống 800px | **5.562 MiB** | — |
+| `birefnet-general-lite`, các lượt chạy | **6.105–6.562 MiB**; từ lượt thứ hai ổn định ở **6.562 MiB** | **14,5–27,6 giây** |
+| `birefnet-general-lite`, chạy trần | **6.537 MiB** | — |
+| `birefnet-general-lite`, `OMP_NUM_THREADS=4` + `MALLOC_ARENA_MAX=2` như production | **6.562 MiB** | — |
 | `u2netp` | **518 MiB** | **0,7–2,3 giây** |
 
-Sau khi nghỉ 30 giây, RSS còn **127–138 MiB**. Bản vá xóa session khi nhàn rỗi,
-GC và `malloc_trim(0)` đang trả RAM tốt; không bỏ hay sửa đường dọn này.
+Hai đợt đo birefnet đạt 6.537 và 6.562 MiB, chỉ chênh **0,4%**: số vCPU tăng từ
+3 lên 4 và hai biến môi trường production không tạo khác biệt đáng kể. Trên máy
+đủ RAM, RSS ngay sau mỗi lượt cắt là **525 MiB**. Mức **127–138 MiB** từng ghi
+trên máy cũ là hậu quả của áp lực bộ nhớ ép kernel reclaim, không phải bằng chứng
+code cũ dọn RAM tốt hơn. Vẫn giữ đường xóa session, GC và `malloc_trim(0)`, nhưng
+không dùng RSS sau lượt cắt của hai máy để suy ra hiệu quả dọn bộ nhớ.
+
+### Bài học riêng: máy thiếu RAM cho ra đỉnh RSS thấp giả tạo
+
+Số cũ 5.562–5.628 MiB được đo trên máy chỉ có khoảng 5,8 GiB RAM. Tiến trình còn
+muốn cấp thêm bộ nhớ nhưng kernel không còn gì để cấp nên phải reclaim; vì thế
+đỉnh RSS bị **chính máy cũ cắt cụt**, không phải nhu cầu thật của model. Việc máy
+vẫn chạy xong không chứng minh model chỉ cần chừng đó.
+
+**Muốn biết nhu cầu thật phải đo trên máy còn dư RAM.** Sai lầm này đã dẫn tới
+việc đặt thấp cả trần cgroup lẫn ngưỡng chặn trước inference. Khi đọc lại log đo,
+phải phân biệt “cao nhất máy cho phép giữ” với “cao nhất tiến trình cần dùng”.
 
 ### Thu nhỏ đầu vào không hạ được đỉnh của birefnet
 
-Ảnh test vốn chỉ 485x711, và thử ép cạnh xuống 800px vẫn chạm đúng đỉnh 5.562
-MiB. Nguyên nhân đã xác nhận từ file ONNX: `birefnet-general-lite` có input shape
-cố định **`[1, 3, 1024, 1024]`**, không có trục động. Model luôn dựng và chạy
-tensor 1024x1024 bất kể kích thước ảnh đưa vào. Vì vậy **không được tiếp tục coi
-thu nhỏ ảnh là hướng để kéo RSS đỉnh birefnet xuống**.
+Phép thử cũ với ảnh 485x711 và cạnh bị ép xuống 800px cũng chịu cùng áp lực bộ
+nhớ, nên con số đỉnh cụ thể của phép thử đó không còn giá trị. Tuy nhiên nguyên
+nhân kỹ thuật đã xác nhận trực tiếp từ file ONNX vẫn đúng: `birefnet-general-lite`
+có input shape cố định **`[1, 3, 1024, 1024]`**, không có trục động. Model luôn
+dựng và chạy tensor 1024x1024 bất kể kích thước ảnh đưa vào. Vì vậy **không được
+tiếp tục coi thu nhỏ ảnh là hướng để kéo RSS đỉnh birefnet xuống**.
 
 Bước thu nhỏ vẫn được giữ. Với ảnh điện thoại thật 4000x3000, nó giảm các buffer
 PIL/rembg trước và sau inference; alpha sau đó vẫn được phóng về kích thước gốc
@@ -308,7 +326,7 @@ cgroup v1 không lỗi.
 
 | nhóm model | ngưỡng trước inference | hành vi |
 |---|---:|---|
-| `birefnet-general-lite` và mọi model tên bắt đầu bằng `birefnet` | **6 GiB** | từ chối nếu thấp hơn |
+| `birefnet-general-lite` và mọi model tên bắt đầu bằng `birefnet` | **6,5 GiB** | từ chối nếu thấp hơn |
 | `u2netp`, `u2net`, `isnet-general-use`, `u2net_cloth_seg`, `u2net_human_seg` | **1 GiB** | từ chối nếu thấp hơn |
 | tên model lạ, chưa đo | ngưỡng tham chiếu 1 GiB | không chặn, vì chưa được phép đoán là nặng |
 
@@ -316,16 +334,18 @@ Thông báo từ chối ghi model, ngưỡng, RAM còn lại, nguồn đang ngh�
 `model='u2netp'`. Batch kiểm tra trước vòng lặp và dừng ngay nếu RAM tụt xuống
 dưới ngưỡng, không lặp cùng một lỗi cho hàng trăm ảnh.
 
-Sau khi nâng RAM, VPS có MemTotal `8131780 kB` (khoảng 7,75 GiB) và service dùng
-`MemoryMax=7G`. Lúc nghỉ, `MemoryCurrent=301723648` byte (khoảng 288 MiB), nên
-cgroup còn khoảng 6,7 GiB, vượt chốt 6 GiB và birefnet chạy được. Đỉnh inference
-5.562–5.628 MiB cộng 288 MiB của web vẫn dưới `MemoryHigh=6.5G`; trần 7G chừa
-khoảng 0,75 GiB cho OS, Caddy và journald, cộng swap 4 GiB làm đệm.
+Sau khi nâng RAM, VPS có MemTotal `8131780 kB` (khoảng 7,75 GiB). Đỉnh thật trong
+cgroup xấp xỉ **6,7 GiB**: 6.562 MiB của rembg cộng khoảng 300 MiB của web. Mức
+này nằm dưới `MemoryHigh=7G`, nên lượt inference bình thường không bị throttle.
+`MemoryMax=7.5G` còn chừa khoảng 250 MiB RAM vật lý cộng swap 4 GiB; MemoryHigh
+sẽ kìm và đẩy trang ít dùng ra swap trước khi cgroup chạm được trần cứng đó.
 
-Không hạ `MemoryMax` xuống dưới khoảng 6,5 GiB nếu vẫn giữ birefnet: chốt so với
-phần **còn lại** của cgroup, không phải tổng RAM. Muốn hạ phải hạ cả ngưỡng trong
-`MODEL_MEMORY_REQUIREMENTS` hoặc đổi model mặc định; birefnet là model duy nhất
-đã đo được xử lý sạch cả nền tối lẫn bóng đổ trên bàn gỗ.
+Chốt birefnet dùng **6,5 GiB**, nhỉnh hơn đỉnh rembg 6.562 MiB (xấp xỉ 6,41 GiB)
+và vẫn còn khoảng an toàn tới trần. Không đặt chốt đúng 7 GiB: với
+`MemoryMax=7.5G` và web dao động 300–800 MiB, phần **còn lại** của cgroup sẽ dao
+động quanh đúng ngưỡng, khiến skill lúc chạy được lúc không. Chốt luôn so với
+phần còn lại của cgroup, không phải tổng RAM; muốn đổi giới hạn phải tính lại cả
+`MODEL_MEMORY_REQUIREMENTS` và phần RAM của web.
 
 Ba biến môi trường liên quan:
 

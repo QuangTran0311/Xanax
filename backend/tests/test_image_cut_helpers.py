@@ -51,25 +51,25 @@ def test_env_bang_khong_hoac_am_deu_tat_tinh_nang():
     assert read_nonnegative_env("NGUONG", 2000, {"NGUONG": "-15"}) == 0
 
 
-def test_birefnet_bi_chan_khi_ram_kha_dung_thap_hon_sau_gib():
+def test_birefnet_bi_chan_khi_ram_kha_dung_thap_hon_sau_ruoi_gib():
     error = memory_check_error(
-        "birefnet-general-lite", _meminfo(5), None, None, {},
+        "birefnet-general-lite", _meminfo(6.49), None, None, {},
     )
 
     assert error is not None
-    assert "6 GiB" in error
-    assert "5 GiB" in error
+    assert "6.5 GiB" in error
+    assert "6.49 GiB" in error
     assert "MemAvailable" in error
     assert "model='u2netp'" in error
     assert "518 MiB" in error
     assert "bóng đổ" in error
 
 
-def test_birefnet_duoc_chay_khi_ram_kha_dung_du_sau_gib():
+def test_birefnet_duoc_chay_khi_ram_kha_dung_du_sau_ruoi_gib():
     assert memory_check_error(
-        "birefnet-general-lite", _meminfo(6), None, None, {},
+        "birefnet-general-lite", _meminfo(6.5), None, None, {},
     ) is None
-    assert model_memory_requirement("birefnet-massive")[0] == 6 * GIB
+    assert model_memory_requirement("birefnet-massive")[0] == 13 * GIB // 2
 
 
 def test_u2netp_khong_bi_chan_o_muc_ram_ma_birefnet_bi_chan():
