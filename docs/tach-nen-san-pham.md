@@ -316,10 +316,16 @@ Thông báo từ chối ghi model, ngưỡng, RAM còn lại, nguồn đang ngh�
 `model='u2netp'`. Batch kiểm tra trước vòng lặp và dừng ngay nếu RAM tụt xuống
 dưới ngưỡng, không lặp cùng một lỗi cho hàng trăm ảnh.
 
-VPS hiện có MemTotal khoảng 5,8 GB và `MemoryMax=5G`; birefnet vì vậy vượt trần
-cgroup và có thể khiến kernel OOM-kill bất kỳ tiến trình nào trong service, kể cả
-web. Chủ máy đã chọn giữ birefnet mặc định và nâng RAM, nhưng việc nâng chưa diễn
-ra. Chốt mới sẽ từ chối birefnet cho tới khi cgroup thực sự còn ít nhất 6 GiB.
+Sau khi nâng RAM, VPS có MemTotal `8131780 kB` (khoảng 7,75 GiB) và service dùng
+`MemoryMax=7G`. Lúc nghỉ, `MemoryCurrent=301723648` byte (khoảng 288 MiB), nên
+cgroup còn khoảng 6,7 GiB, vượt chốt 6 GiB và birefnet chạy được. Đỉnh inference
+5.562–5.628 MiB cộng 288 MiB của web vẫn dưới `MemoryHigh=6.5G`; trần 7G chừa
+khoảng 0,75 GiB cho OS, Caddy và journald, cộng swap 4 GiB làm đệm.
+
+Không hạ `MemoryMax` xuống dưới khoảng 6,5 GiB nếu vẫn giữ birefnet: chốt so với
+phần **còn lại** của cgroup, không phải tổng RAM. Muốn hạ phải hạ cả ngưỡng trong
+`MODEL_MEMORY_REQUIREMENTS` hoặc đổi model mặc định; birefnet là model duy nhất
+đã đo được xử lý sạch cả nền tối lẫn bóng đổ trên bàn gỗ.
 
 Ba biến môi trường liên quan:
 

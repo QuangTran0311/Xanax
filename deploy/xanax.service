@@ -43,18 +43,28 @@ RestartSec=5s
 # trần cứng có thể giết tiến trình. Đặt hai mức cách nhau để máy còn cơ hội hồi
 # phục bằng cách chạy chậm lại, thay vì vừa chạm ngưỡng đã giết ngay.
 #
-# Gói VPS quảng cáo 6 GB nhưng MemTotal thật chỉ khoảng 5,8 GB. Với MemoryMax=5G,
-# chỉ còn khoảng 0,8 GB cho OS, Caddy và journald: rất mỏng, chỉ đứng vững nhờ
-# swap 4 GB (swappiness=10) đã tạo ngày 17/08/2026. KHÔNG được xóa swap đó.
+# Gói VPS quảng cáo 8 GB có MemTotal thật 8131780 kB, khoảng 7,75 GiB; available
+# sau nâng là 7,2 GiB. Service lúc nghỉ có MemoryCurrent=301723648 byte, khoảng
+# 288 MiB; với MemoryMax=7G, cgroup còn trống 7 GiB - 288 MiB, khoảng 6,7 GiB,
+# vượt ngưỡng 6 GiB mà lớp chặn RAM trong image_cut.py yêu cầu nên skill cắt ảnh
+# chạy được.
 #
-# Đây là mức TẠM để sống sót qua sự cố rembg đang treo và giữ khoảng 4,5 GB không
-# trả lại. Sau khi vá xong rembg, siết về khoảng MemoryHigh=3.5G/MemoryMax=4.5G,
-# nhưng chỉ sau khi đo được RSS đỉnh và RSS-sau-nghỉ của tiến trình cắt ảnh trên
-# VPS.
+# Đỉnh inference birefnet-general-lite đã đo là 5.562-5.628 MiB (khoảng 5,5 GiB);
+# cộng 288 MiB của web vẫn dưới MemoryHigh=6.5G nên một lượt inference không bị
+# throttle. MemoryMax=7G cũng chừa khoảng 0,75 GiB RAM vật lý cho OS, Caddy và
+# journald, cộng swap 4 GiB (swappiness=10, chưa dùng byte nào) làm đệm. KHÔNG
+# được xóa swap đó.
+#
+# Không hạ MemoryMax xuống dưới khoảng 6,5 GiB nếu vẫn dùng birefnet: lớp chặn RAM
+# so ngưỡng 6 GiB với phần CÒN LẠI của cgroup, không phải tổng RAM. Muốn hạ phải
+# hạ cả ngưỡng trong MODEL_MEMORY_REQUIREMENTS hoặc đổi model mặc định, và phải
+# biết birefnet là model duy nhất đã đo được xử lý sạch cả nền tối lẫn bóng đổ
+# trên bàn gỗ.
+#
 # Giữ giới hạn cgroup để khi vượt trần, OOM chỉ chọn nạn nhân trong cgroup Xanax,
 # không bắn nhầm Caddy hay sshd và làm mất đường vào máy.
-MemoryHigh=4.5G
-MemoryMax=5G
+MemoryHigh=6.5G
+MemoryMax=7G
 
 # CẢNH BÁO: systemctl revert cũng xóa drop-in bền vững ở /etc; chạy
 # systemctl cat xanax để kiểm tra trước. Sau khi copy unit vào /etc/systemd/system/,

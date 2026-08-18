@@ -52,10 +52,11 @@ sudo useradd --system --create-home --home-dir /home/xanax \
 
 Nếu user đã tồn tại, `useradd` sẽ báo lỗi; kiểm tra bằng `id xanax` rồi đi tiếp.
 
-Tạo swapfile 4 GB trước khi build hoặc chạy service. Gói VPS quảng cáo 6 GB nhưng
-MemTotal thật chỉ khoảng 5,8 GB; không có swap thì `MemoryHigh` gần như không có
-chỗ để đẩy các trang ít dùng ra. Với trần tạm 5G, máy chỉ còn đứng vững nhờ swap
-4 GB này, vì vậy **không được xóa nó**; riêng
+Tạo swapfile 4 GiB trước khi build hoặc chạy service. Gói VPS quảng cáo 8 GB có
+MemTotal thật `8131780 kB` (khoảng 7,75 GiB); không có swap thì `MemoryHigh` gần
+như không có chỗ để đẩy các trang ít dùng ra. Với `MemoryMax=7G`, máy còn khoảng
+0,75 GiB cho OS, Caddy và journald, cộng swap 4 GiB làm đệm, vì vậy **không được
+xóa swap**; riêng
 `npm run build` của Vite lúc cập nhật cũng có thể ăn nhiều RAM. Trước hết kiểm tra
 máy chưa có swapfile trùng tên hoặc swap đã bật:
 
@@ -273,10 +274,14 @@ Thu nhỏ ảnh vẫn giữ để giảm buffer PIL của ảnh điện thoại 
 **Cảnh báo cgroup:** trước khi chạy bất kỳ model birefnet nào, cgroup phải còn ít
 nhất **6 GiB khả dụng**. Vì tiến trình rembg dùng chung cgroup với web,
 `MemoryMax` phải cao hơn hẳn **6 GiB cộng với phần RAM tiến trình web và các tiến
-trình con đang dùng**; đặt đúng 6G vẫn không đủ. VPS hiện có MemTotal khoảng 5,8
-GB và `MemoryMax=5G`, nên chốt trong `image_cut.py` sẽ từ chối birefnet thay vì để
-kernel OOM-kill một nạn nhân bất kỳ trong `xanax.service`. Chủ máy đã quyết định
-nâng RAM để giữ model mặc định nhưng việc nâng chưa xảy ra. Chỉ dùng
+trình con đang dùng**; đặt đúng 6G vẫn không đủ. VPS sau khi nâng có MemTotal
+`8131780 kB` (khoảng 7,75 GiB), `MemoryMax=7G`, và service lúc nghỉ có
+`MemoryCurrent=301723648` byte (khoảng 288 MiB). Cgroup khi đó còn khoảng 6,7
+GiB, vượt chốt 6 GiB nên birefnet chạy được. Không hạ `MemoryMax` xuống dưới
+khoảng 6,5 GiB nếu chưa hạ cả ngưỡng trong `MODEL_MEMORY_REQUIREMENTS` hoặc đổi
+model mặc định: chốt so với phần **còn lại** của cgroup, không phải tổng RAM.
+`birefnet-general-lite` là model duy nhất đã đo được xử lý sạch cả nền tối lẫn
+bóng đổ trên bàn gỗ. Chỉ dùng
 `XANAX_IMAGE_CUT_SKIP_MEMORY_CHECK=1` khi đo đạc hoặc đã chủ động nhận rủi ro.
 
 Đường MCP hiện chờ 90 giây để kết nối và tối đa 300 giây cho **toàn bộ
@@ -759,14 +764,15 @@ systemctl show xanax -p MemoryHigh -p MemoryMax -p TasksMax
 systemctl status xanax.service --no-pager | grep -i memory
 ```
 
-`MemoryHigh=4.5G` là ngưỡng kìm, `MemoryMax=5G` mới là trần cứng;
-`TasksMax=512` chặn rò process/thread từ các CLI agent. MemTotal thật khoảng 5,8 GB,
-nên chỉ còn khoảng 0,8 GB cho OS, Caddy và journald: mức tạm rất mỏng, chỉ đứng
-vững nhờ swap 4 GB với `swappiness=10` đã tạo ngày 17/08/2026. **Không được xóa
-swap đó.** Số đo 18/08/2026 cho thấy birefnet đạt đỉnh 5.562–5.628 MiB; cấu hình
-5G hiện tại không chạy an toàn và chốt RAM sẽ từ chối. Sau khi nâng VPS, đặt
-`MemoryMax` cao hơn hẳn 6 GiB cộng với mức RAM web đang dùng, rồi xác nhận lại
-bằng `systemctl show` trước khi thử inference.
+`MemoryHigh=6.5G` là ngưỡng kìm, `MemoryMax=7G` mới là trần cứng;
+`TasksMax=512` chặn rò process/thread từ các CLI agent. MemTotal thật là
+`8131780 kB` (khoảng 7,75 GiB), nên trần 7G chừa khoảng 0,75 GiB cho OS, Caddy và
+journald, cộng swap 4 GiB với `swappiness=10` làm đệm. **Không được xóa swap đó.**
+Service lúc nghỉ dùng 288 MiB, nên cgroup còn khoảng 6,7 GiB, vượt chốt 6 GiB
+trước inference. Số đo 18/08/2026 cho thấy birefnet đạt đỉnh 5.562–5.628 MiB;
+cộng 288 MiB của web vẫn dưới `MemoryHigh=6.5G`, nên một lượt inference không bị
+throttle. Giữ giới hạn cgroup để OOM chỉ chọn nạn nhân trong Xanax, không bắn
+nhầm Caddy hay sshd. Xác nhận cấu hình bằng `systemctl show` trước khi inference.
 
 ### Backup và restore
 
