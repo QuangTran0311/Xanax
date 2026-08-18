@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = Field(default=8, ge=1)
     login_rate_limit_window_seconds: int = Field(default=900, ge=1)
     login_rate_limit_lock_seconds: int = Field(default=900, ge=1)
+    # Idle: không hoạt động quá lâu thì mất phiên.
+    session_idle_timeout_minutes: int = Field(default=30, ge=1)
+    # Absolute: trần tuyệt đối; dùng liên tục cũng không kéo dài phiên quá mức này.
+    session_absolute_hours: int = Field(default=8, ge=1)
 
     # Các biến XANAX_* cũng được đọc từ backend/.env dù model dùng tiền tố HUB_.
     admin_user: str = Field(default="admin", validation_alias="XANAX_ADMIN_USER")

@@ -131,7 +131,8 @@ async def login(req: LoginRequest, request: Request, response: Response):
         value=token,
         httponly=True,
         samesite="lax",
-        max_age=604_800,  # 7 days
+        # Cookie phiên chết khi đóng trình duyệt, nhưng Chrome/Edge có thể khôi phục
+        # nó cùng tab; bảo vệ thật vì thế nằm ở idle timeout phía server.
         path="/",
         secure=settings.secure_cookie_enabled,
     )

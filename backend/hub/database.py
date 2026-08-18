@@ -35,7 +35,9 @@ def _database_path_from_url(database_url: str) -> Path | str:
 
 
 DB_PATH = _database_path_from_url(settings.database_url)
-SESSION_TTL_HOURS = 8  # 8 hours — force re-login after one work session
+# Middleware xác thực gọi validate_session() ở mọi /api/* và /ws/*; giãn lần ghi
+# để lưu lượng đọc dày không biến thành một lượt ghi SQLite cho mỗi request.
+SESSION_LAST_SEEN_WRITE_INTERVAL_SECONDS = 60
 COOKIE_NAME = "xanax_session"
 
 
@@ -68,9 +70,10 @@ async def init_db() -> None:
         """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
-                token      TEXT PRIMARY KEY,
-                user_id    INTEGER NOT NULL,
-                expires_at TEXT    NOT NULL,
+                token        TEXT PRIMARY KEY,
+                user_id      INTEGER NOT NULL,
+                expires_at   TEXT    NOT NULL,
+                last_seen_at TEXT    NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
@@ -214,11 +217,16 @@ async def create_session(user_id: int) -> str:
     token      = secrets.token_urlsafe(32)
     # Use SQLite-compatible format (space separator, no timezone suffix)
     # so that comparison with datetime('now') works correctly as string compare
-    expires_at = (_now_utc() + timedelta(hours=SESSION_TTL_HOURS)).strftime('%Y-%m-%d %H:%M:%S')
+    now = _now_utc()
+    last_seen_at = now.strftime('%Y-%m-%d %H:%M:%S')
+    expires_at = (now + timedelta(hours=settings.session_absolute_hours)).strftime(
+        '%Y-%m-%d %H:%M:%S'
+    )
     async with connect() as db:
         await db.execute(
-            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
-            (token, user_id, expires_at),
+            "INSERT INTO sessions (token, user_id, expires_at, last_seen_at) "
+            "VALUES (?, ?, ?, ?)",
+            (token, user_id, expires_at, last_seen_at),
         )
         await db.commit()
     return token
@@ -226,20 +234,44 @@ async def create_session(user_id: int) -> str:
 
 async def validate_session(token: str) -> dict | None:
     """Return {id, username} if valid and not expired, else None."""
+    now = _now_utc()
+    now_text = now.strftime('%Y-%m-%d %H:%M:%S')
+    idle_cutoff = (now - timedelta(
+        minutes=settings.session_idle_timeout_minutes
+    )).strftime('%Y-%m-%d %H:%M:%S')
+    write_cutoff = (now - timedelta(
+        seconds=SESSION_LAST_SEEN_WRITE_INTERVAL_SECONDS
+    )).strftime('%Y-%m-%d %H:%M:%S')
+
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT u.id, u.username
+            SELECT u.id, u.username, s.expires_at, s.last_seen_at
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token = ?
-              AND s.expires_at > datetime('now')
             """,
             (token,),
         ) as cur:
             row = await cur.fetchone()
-            return dict(row) if row else None
+
+        if row is None or row["expires_at"] <= now_text:
+            return None
+
+        last_seen_at = row["last_seen_at"]
+        if last_seen_at and last_seen_at < idle_cutoff:
+            return None
+
+        if not last_seen_at or last_seen_at <= write_cutoff:
+            await db.execute(
+                "UPDATE sessions SET last_seen_at = ? "
+                "WHERE token = ? AND last_seen_at = ?",
+                (now_text, token, last_seen_at),
+            )
+            await db.commit()
+
+        return {"id": row["id"], "username": row["username"]}
 
 
 async def delete_session(token: str) -> None:
@@ -249,8 +281,20 @@ async def delete_session(token: str) -> None:
 
 
 async def purge_expired_sessions() -> None:
+    now = _now_utc()
+    now_text = now.strftime('%Y-%m-%d %H:%M:%S')
+    idle_cutoff = (now - timedelta(
+        minutes=settings.session_idle_timeout_minutes
+    )).strftime('%Y-%m-%d %H:%M:%S')
     async with connect() as db:
-        await db.execute("DELETE FROM sessions WHERE expires_at <= datetime('now')")
+        await db.execute(
+            """
+            DELETE FROM sessions
+            WHERE expires_at <= ?
+               OR (last_seen_at <> '' AND last_seen_at < ?)
+            """,
+            (now_text, idle_cutoff),
+        )
         await db.commit()
 
 
@@ -966,6 +1010,9 @@ async def _run_migrations(db) -> None:
         # Dữ liệu thí nghiệm cũ chưa có phân loại nên mặc định answered. Đây là
         # lựa chọn tương thích: không được tự suy diễn lại hành vi từ câu chữ cũ.
         "ALTER TABLE experiment_trials ADD COLUMN response_classification TEXT NOT NULL DEFAULT 'answered'",
+        # Không backfill vì clear_all_sessions() chạy mỗi lần server khởi động;
+        # mọi phiên cũ bị xoá trước khi cột này được dùng.
+        "ALTER TABLE sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             await db.execute(col_sql)
