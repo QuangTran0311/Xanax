@@ -244,7 +244,7 @@ def test_tong_hop_tach_clarify_conflict_khoi_diem_va_bat_co_mau_nho():
 
 @pytest.mark.asyncio
 async def test_db_cu_thieu_phan_loai_duoc_doc_nhu_answered(tmp_path, monkeypatch):
-    """Migration phải giữ nguyên nghĩa số liệu cũ, không đoán lại từ response."""
+    """Dữ liệu trước trạng thái judging vẫn đọc đúng, không đoán lại từ response."""
     import sqlite3
 
     from hub import database
@@ -254,11 +254,11 @@ async def test_db_cu_thieu_phan_loai_duoc_doc_nhu_answered(tmp_path, monkeypatch
         db.execute(
             """CREATE TABLE experiment_trials (
                 id INTEGER PRIMARY KEY, experiment_id INTEGER, condition TEXT,
-                execution_order INTEGER, score REAL
+                execution_order INTEGER, score REAL, status TEXT
             )"""
         )
         db.execute(
-            "INSERT INTO experiment_trials VALUES (1, 9, 'khong_soul', 1, 7.5)"
+            "INSERT INTO experiment_trials VALUES (1, 9, 'khong_soul', 1, 7.5, 'scored')"
         )
     monkeypatch.setattr(database, "DB_PATH", str(db_path))
 
@@ -266,6 +266,108 @@ async def test_db_cu_thieu_phan_loai_duoc_doc_nhu_answered(tmp_path, monkeypatch
     trials = await database.list_experiment_trials(9)
 
     assert trials[0]["response_classification"] == "answered"
+    assert trials[0]["status"] == "scored"
+
+
+@pytest.mark.asyncio
+async def test_batch_duoc_danh_dau_dang_cham_truoc_va_da_cham_sau_do(monkeypatch):
+    """Sự kiện phải đến khi cả batch đã là judging, trước lúc gọi giám khảo."""
+    from core import experiment_runner as runner_module
+    from core.experiment_runner import ExperimentRunnerManager
+
+    states = {11: "generated", 12: "generated"}
+    order = []
+    trials = [
+        {"id": trial_id, "case_index": 2, "status": status}
+        for trial_id, status in states.items()
+    ]
+
+    async def fake_update(trial_id, **kwargs):
+        states[trial_id] = kwargs["status"]
+        return True
+
+    async def fake_list(_experiment_id):
+        return [
+            {"id": trial_id, "case_index": 2, "status": status}
+            for trial_id, status in states.items()
+        ]
+
+    async def fake_refresh(_experiment_id):
+        return {"total_trials": 2, "completed_trials": 2, "scored_trials": 0}
+
+    manager = ExperimentRunnerManager()
+
+    async def fake_broadcast(_experiment_id, event):
+        assert set(states.values()) == {"judging"}
+        order.append(event["type"])
+
+    async def fake_judge(*_args):
+        assert set(states.values()) == {"judging"}
+        order.append("judge")
+        for trial_id in states:
+            states[trial_id] = "scored"
+
+    monkeypatch.setattr(runner_module, "update_experiment_trial", fake_update)
+    monkeypatch.setattr(runner_module, "list_experiment_trials", fake_list)
+    monkeypatch.setattr(runner_module, "refresh_experiment_progress", fake_refresh)
+    monkeypatch.setattr(manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(manager, "_judge_case", fake_judge)
+
+    await manager._judge_batch(7, 3, {"prompt": "Đề"}, trials)
+
+    assert order == ["judging_progress", "judge"]
+    assert set(states.values()) == {"scored"}
+
+
+@pytest.mark.asyncio
+async def test_batch_loi_khong_bi_ket_o_dang_cham(monkeypatch):
+    """Lỗi bất ngờ ngoài nhánh judge_error thông thường cũng phải dọn cả batch."""
+    from core import experiment_runner as runner_module
+    from core.experiment_runner import ExperimentRunnerManager
+
+    states = {21: "generated", 22: "generated"}
+    errors = {}
+    trials = [
+        {"id": trial_id, "case_index": 4, "status": status, "error_text": ""}
+        for trial_id, status in states.items()
+    ]
+
+    async def fake_update(trial_id, **kwargs):
+        states[trial_id] = kwargs["status"]
+        if kwargs.get("error_text"):
+            errors[trial_id] = kwargs["error_text"]
+        return True
+
+    async def fake_list(_experiment_id):
+        return [
+            {
+                "id": trial_id, "case_index": 4, "status": status,
+                "error_text": errors.get(trial_id, ""),
+            }
+            for trial_id, status in states.items()
+        ]
+
+    async def fake_refresh(_experiment_id):
+        return {"total_trials": 2, "completed_trials": 2, "scored_trials": 0}
+
+    async def fake_broadcast(_experiment_id, _event):
+        return None
+
+    async def fake_judge(*_args):
+        raise RuntimeError("giám khảo mất kết nối")
+
+    manager = ExperimentRunnerManager()
+    monkeypatch.setattr(runner_module, "update_experiment_trial", fake_update)
+    monkeypatch.setattr(runner_module, "list_experiment_trials", fake_list)
+    monkeypatch.setattr(runner_module, "refresh_experiment_progress", fake_refresh)
+    monkeypatch.setattr(manager, "broadcast", fake_broadcast)
+    monkeypatch.setattr(manager, "_judge_case", fake_judge)
+
+    with pytest.raises(RuntimeError, match="mất kết nối"):
+        await manager._judge_batch(8, 3, {"prompt": "Đề"}, trials)
+
+    assert set(states.values()) == {"judge_error"}
+    assert all("bất thường" in error for error in errors.values())
 
 
 @pytest.mark.asyncio

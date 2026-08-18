@@ -1902,7 +1902,7 @@ async def cancel_unfinished_experiment_trials(experiment_id: int) -> None:
     async with connect() as db:
         await db.execute(
             """UPDATE experiment_trials SET status='cancelled',completed_at=datetime('now')
-               WHERE experiment_id=? AND status IN ('pending','running','generated')""",
+               WHERE experiment_id=? AND status IN ('pending','running','generated','judging')""",
             (experiment_id,),
         )
         await db.execute(
@@ -1919,7 +1919,7 @@ async def recover_interrupted_experiments() -> int:
     async with connect() as db:
         await db.execute(
             """UPDATE experiment_trials SET status='interrupted',completed_at=datetime('now')
-               WHERE status='running'"""
+               WHERE status IN ('running','judging')"""
         )
         cur = await db.execute(
             """UPDATE experiments SET status='interrupted',completed_at=datetime('now'),

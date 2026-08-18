@@ -31,6 +31,7 @@ const TRIAL_LIFECYCLE_STATUSES = [
   "pending",
   "running",
   "generated",
+  "judging",
   "scored",
 ] as const;
 
@@ -1271,6 +1272,7 @@ function trialStatusLabel(status: string, t: (key: HubMessageKey) => string): st
     pending: "experiment.trial.pending",
     running: "experiment.trial.running",
     generated: "experiment.trial.generated",
+    judging: "experiment.trial.judging",
     generation_error: "experiment.trial.generation_error",
     scored: "experiment.trial.scored",
     judge_error: "experiment.trial.judge_error",

@@ -500,7 +500,7 @@ class ExperimentRunnerManager:
             if trial.get("status") == "generated":
                 by_case[int(trial["case_index"])].append(trial)
         for case_index in sorted(by_case):
-            await self._judge_case(
+            await self._judge_batch(
                 experiment_id, judge["id"], test_cases[case_index], by_case[case_index]
             )
 
@@ -513,6 +513,52 @@ class ExperimentRunnerManager:
             "type": "complete", "experiment_id": experiment_id, "status": status,
             "summary": calculate_experiment_summary(final_trials), **progress,
         })
+
+    async def _judge_batch(
+        self,
+        experiment_id: int,
+        judge_model_pool_id: int,
+        case: dict,
+        trials: list[dict],
+    ) -> None:
+        cancelled = False
+        try:
+            for trial in trials:
+                await update_experiment_trial(trial["id"], status="judging")
+
+            progress = await refresh_experiment_progress(experiment_id)
+            await self.broadcast(experiment_id, {
+                "type": "judging_progress", "experiment_id": experiment_id,
+                "case_index": int(trials[0]["case_index"]),
+                "remaining_in_case": len(trials), **progress,
+            })
+
+            await self._judge_case(
+                experiment_id, judge_model_pool_id, case, trials
+            )
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        finally:
+            current_trials = await list_experiment_trials(experiment_id)
+            trial_ids = {int(trial["id"]) for trial in trials}
+            stuck_trials = [
+                trial for trial in current_trials
+                if int(trial["id"]) in trial_ids and trial.get("status") == "judging"
+            ]
+            for trial in stuck_trials:
+                if cancelled:
+                    # Trả về generated để luồng huỷ chung đổi thành cancelled; nếu giữ
+                    # judging, lượt sẽ bị kẹt vì giám khảo đã không còn xử lý nó nữa.
+                    await update_experiment_trial(trial["id"], status="generated")
+                else:
+                    # Mọi nhánh lỗi phải rời judging, nếu không giao diện sẽ báo đang
+                    # chấm mãi dù batch đã thoát khỏi giám khảo.
+                    await update_experiment_trial(
+                        trial["id"], status="judge_error",
+                        error_text=trial.get("error_text") or "Batch chấm kết thúc bất thường",
+                        completed_at=_utc_now(),
+                    )
 
     async def _judge_case(
         self,
