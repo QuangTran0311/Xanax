@@ -82,6 +82,7 @@ interface ExperimentTrial {
   response: string;
   score: number | null;
   score_reason: string;
+  response_classification?: "answered" | "clarify" | "conflict";
   status: string;
   error_text?: string;
   elapsed_seconds?: number;
@@ -95,6 +96,12 @@ interface SummaryRow {
   mean: number | null;
   stddev: number | null;
   n: number;
+  total_n: number;
+  clarify_n: number;
+  clarify_rate: number;
+  conflict_n: number;
+  conflict_rate: number;
+  insufficient_answered: boolean;
   delta_vs_control: number | null;
 }
 
@@ -109,6 +116,8 @@ interface ExperimentSummary {
   status?: string;
   conditions: SummaryRow[];
   cases: CaseSummary[];
+  score_population?: string;
+  minimum_answered?: number;
   stddev_method?: string;
 }
 
@@ -738,7 +747,9 @@ function ExperimentDetailView({
   const sameJudgeWarning = experiment.warnings?.some(
     (warning) => warning.code === "judge_same_as_measured",
   );
-  const hasPartialResults = (summary?.conditions || []).some((row) => row.n > 0);
+  const hasPartialResults = (summary?.conditions || []).some(
+    (row) => (row.total_n ?? row.n) > 0,
+  );
   const generationPercent = percent(progress.completedTrials, progress.totalTrials);
   const judgingPercent = percent(progress.scoredTrials, progress.totalTrials);
   const active = isActiveStatus(progress.status);
@@ -916,11 +927,31 @@ function ExperimentResults({
   const orderedRows = CONDITIONS.map(
     (condition) => summary.conditions.find((row) => row.condition === condition),
   ).filter((row): row is SummaryRow => Boolean(row));
+  const lowSampleRows = orderedRows.filter((row) => row.insufficient_answered);
+  const minimumAnswered = summary.minimum_answered ?? 10;
 
   return (
     <div className={c("experimentResults")} data-testid="experiment-results">
       {partial ? (
         <p className={c("experimentPartialNotice")}>{t("experiment.results.partial")}</p>
+      ) : null}
+      <p className={c("experimentMethodNote")}>{t("experiment.results.answered_only_note")}</p>
+      {lowSampleRows.length ? (
+        <section
+          className={c("experimentMethodWarning")}
+          data-testid="experiment-small-sample-warning"
+        >
+          <Icon name="warning" />
+          <div>
+            <strong>{t("experiment.warning.small_sample_title")}</strong>
+            <p>{t("experiment.warning.small_sample_detail")}</p>
+            <p>
+              {lowSampleRows.map((row) => (
+                `${conditionLabel(row.condition, t)}: n=${row.n}/${minimumAnswered}`
+              )).join(" · ")}
+            </p>
+          </div>
+        </section>
       ) : null}
       <section data-testid="experiment-condition-table">
         <h3>{t("experiment.results.conditions")}</h3>
@@ -931,7 +962,9 @@ function ExperimentResults({
                 <th>{t("experiment.column.condition")}</th>
                 <th>{t("experiment.column.mean")}</th>
                 <th>{t("experiment.column.stddev")}</th>
-                <th>n</th>
+                <th>{t("experiment.column.answered_n")}</th>
+                <th>{t("experiment.column.clarify")}</th>
+                <th>{t("experiment.column.conflict")}</th>
                 <th>{t("experiment.column.delta")}</th>
               </tr>
             </thead>
@@ -945,6 +978,8 @@ function ExperimentResults({
                   <td>{formatScore(row.mean, language)}</td>
                   <td>{formatScore(row.stddev, language)}</td>
                   <td>{row.n}</td>
+                  <td>{formatCountRate(row.clarify_n, row.clarify_rate, language)}</td>
+                  <td>{formatCountRate(row.conflict_n, row.conflict_rate, language)}</td>
                   <td className={deltaClass(row.delta_vs_control)}>
                     {formatDelta(row.delta_vs_control, language)}
                   </td>
@@ -970,7 +1005,9 @@ function ExperimentResults({
                 <th>{t("experiment.column.condition")}</th>
                 <th>{t("experiment.column.mean")}</th>
                 <th>{t("experiment.column.stddev")}</th>
-                <th>n</th>
+                <th>{t("experiment.column.answered_n")}</th>
+                <th>{t("experiment.column.clarify")}</th>
+                <th>{t("experiment.column.conflict")}</th>
                 <th>{t("experiment.column.delta")}</th>
               </tr>
             </thead>
@@ -990,6 +1027,8 @@ function ExperimentResults({
                     <td>{formatScore(row.mean, language)}</td>
                     <td>{formatScore(row.stddev, language)}</td>
                     <td>{row.n}</td>
+                    <td>{formatCountRate(row.clarify_n, row.clarify_rate, language)}</td>
+                    <td>{formatCountRate(row.conflict_n, row.conflict_rate, language)}</td>
                     <td className={deltaClass(row.delta_vs_control)}>
                       {formatDelta(row.delta_vs_control, language)}
                     </td>
@@ -1166,6 +1205,15 @@ function formatDelta(value: number | null, language: string): string {
   if (value === null) return "—";
   if (value === 0) return formatScore(0, language);
   return `${value > 0 ? "+" : ""}${formatScore(value, language)}`;
+}
+
+function formatCountRate(count: number, rate: number, language: string): string {
+  const safeCount = count ?? 0;
+  const safeRate = rate ?? 0;
+  return `${safeCount} (${safeRate.toLocaleString(language, {
+    style: "percent",
+    maximumFractionDigits: 1,
+  })})`;
 }
 
 function formatSeconds(value: number | undefined, language: string): string {

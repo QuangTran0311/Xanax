@@ -50,11 +50,22 @@ CONDITIONS: dict[str, PromptLayerFlags] = {
     "day_du": PromptLayerFlags(True, True, True),
 }
 
+RESPONSE_CLASSIFICATIONS = frozenset({"answered", "clarify", "conflict"})
+MIN_ANSWERED_TRIALS = 10
+TRIAL_RESPONSE_INSTRUCTION = (
+    "Hãy trả lời bằng kiến thức và bối cảnh HIỆN CÓ, không hỏi ngược chỉ vì thiếu "
+    "thông tin; nếu thiếu thông tin, hãy tự đưa ra giả định hợp lý và nói rõ giả định đó."
+)
+
 JUDGE_SYSTEM = """Bạn là giám khảo độc lập, nghiêm khắc cho một nghiên cứu AI.
 Chấm MỖI câu trả lời độc lập theo đúng đề bài và tiêu chí được cung cấp, thang 0-10.
 Không xếp hạng tương đối giữa các câu. Không suy đoán nguồn gốc hay cách tạo câu trả lời.
+Ngoài điểm, phân loại cách câu trả lời xử lý đề bài bằng đúng một trong ba giá trị:
+- "answered": có trả lời đúng dạng đề yêu cầu, dù chất lượng cao hay thấp.
+- "clarify": hỏi ngược để xin thêm thông tin thay vì làm bài.
+- "conflict": báo đề bài mâu thuẫn với luật/tri thức đã được dạy và từ chối làm theo.
 Chỉ trả JSON hợp lệ theo dạng:
-{"scores":[{"id":"mã ẩn danh","score":7.5,"reason":"lý do ngắn gọn"}]}"""
+{"scores":[{"id":"mã ẩn danh","score":7.5,"reason":"lý do ngắn gọn","classification":"answered"}]}"""
 
 
 def _utc_now() -> str:
@@ -90,13 +101,13 @@ def _parse_json_object(text: str) -> dict:
     return value
 
 
-def _valid_scores(raw: str, allowed_ids: set[str]) -> dict[str, tuple[float, str]]:
+def _valid_scores(raw: str, allowed_ids: set[str]) -> dict[str, tuple[float, str, str]]:
     """Chỉ nhận điểm có id đúng và trong thang; tuyệt đối không tự điền điểm 5."""
     value = _parse_json_object(raw)
     rows = value.get("scores")
     if not isinstance(rows, list):
         raise ValueError("JSON chấm thiếu mảng scores")
-    result: dict[str, tuple[float, str]] = {}
+    result: dict[str, tuple[float, str, str]] = {}
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -109,27 +120,72 @@ def _valid_scores(raw: str, allowed_ids: set[str]) -> dict[str, tuple[float, str
         score_value = float(score)
         if not 0 <= score_value <= 10:
             continue
-        result[opaque_id] = (score_value, str(row.get("reason", "")).strip())
+        classification = row.get("classification")
+        if not isinstance(classification, str) or classification not in RESPONSE_CLASSIFICATIONS:
+            # Giữ tương thích kết quả chấm cũ, nhưng phải để lại dấu vết vì im lặng
+            # nuốt schema sai sẽ làm số liệu hành vi trông đáng tin hơn thực tế.
+            logger.warning(
+                "Giám khảo trả classification thiếu hoặc lạ cho mã %s (%r); coi là answered",
+                opaque_id,
+                classification,
+            )
+            classification = "answered"
+        result[opaque_id] = (
+            score_value,
+            str(row.get("reason", "")).strip(),
+            classification,
+        )
     return result
 
 
 def calculate_experiment_summary(trials: list[dict]) -> dict:
     """Tổng hợp toàn bộ và từng đề bằng độ lệch chuẩn mẫu (n-1)."""
-    rows: list[dict] = []
-    means: dict[str, float | None] = {}
-    for condition in CONDITIONS:
-        scores = [float(t["score"]) for t in trials
-                  if t.get("condition") == condition and t.get("score") is not None]
-        mean = statistics.fmean(scores) if scores else None
-        stddev = statistics.stdev(scores) if len(scores) >= 2 else (0.0 if scores else None)
-        means[condition] = mean
-        rows.append({
+    def classification_of(trial: dict) -> str:
+        classification = trial.get("response_classification", "answered")
+        return (
+            classification
+            if isinstance(classification, str) and classification in RESPONSE_CLASSIFICATIONS
+            else "answered"
+        )
+
+    def summarize(condition_trials: list[dict], condition: str) -> tuple[dict, float | None]:
+        scored = [trial for trial in condition_trials
+                  if trial.get("condition") == condition and trial.get("score") is not None]
+        classifications = [classification_of(trial) for trial in scored]
+        answered_scores = [
+            float(trial["score"])
+            for trial, classification in zip(scored, classifications)
+            if classification == "answered"
+        ]
+        mean = statistics.fmean(answered_scores) if answered_scores else None
+        stddev = (
+            statistics.stdev(answered_scores) if len(answered_scores) >= 2
+            else (0.0 if answered_scores else None)
+        )
+        total_n = len(scored)
+        clarify_n = classifications.count("clarify")
+        conflict_n = classifications.count("conflict")
+        return ({
             "condition": condition,
             "mean": round(mean, 4) if mean is not None else None,
             "stddev": round(stddev, 4) if stddev is not None else None,
-            "n": len(scores),
+            # n là mẫu thực sự đi vào mean/stddev, không phải tổng số lượt đã chấm.
+            "n": len(answered_scores),
+            "total_n": total_n,
+            "clarify_n": clarify_n,
+            "clarify_rate": round(clarify_n / total_n, 4) if total_n else 0.0,
+            "conflict_n": conflict_n,
+            "conflict_rate": round(conflict_n / total_n, 4) if total_n else 0.0,
+            "insufficient_answered": 0 < total_n and len(answered_scores) < MIN_ANSWERED_TRIALS,
             "delta_vs_control": None,
-        })
+        }, mean)
+
+    rows: list[dict] = []
+    means: dict[str, float | None] = {}
+    for condition in CONDITIONS:
+        row, mean = summarize(trials, condition)
+        means[condition] = mean
+        rows.append(row)
 
     control = means.get("khong_soul")
     for row in rows:
@@ -148,18 +204,9 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         case_means: dict[str, float | None] = {}
         condition_rows: list[dict] = []
         for condition in CONDITIONS:
-            scores = [float(t["score"]) for t in case_trials
-                      if t.get("condition") == condition and t.get("score") is not None]
-            mean = statistics.fmean(scores) if scores else None
-            stddev = statistics.stdev(scores) if len(scores) >= 2 else (0.0 if scores else None)
+            row, mean = summarize(case_trials, condition)
             case_means[condition] = mean
-            condition_rows.append({
-                "condition": condition,
-                "mean": round(mean, 4) if mean is not None else None,
-                "stddev": round(stddev, 4) if stddev is not None else None,
-                "n": len(scores),
-                "delta_vs_control": None,
-            })
+            condition_rows.append(row)
         case_control = case_means.get("khong_soul")
         for row in condition_rows:
             mean = case_means[row["condition"]]
@@ -174,12 +221,25 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
     return {
         "conditions": rows,
         "cases": case_summaries,
+        "warnings": [
+            {
+                "code": "insufficient_answered",
+                "condition": row["condition"],
+                "answered_n": row["n"],
+                "minimum_answered": MIN_ANSWERED_TRIALS,
+            }
+            for row in rows if row["insufficient_answered"]
+        ],
         "layer_contributions": {
             "soul_nhan_vien": delta("soul_nhan_vien", "khong_soul"),
             "phu_luc_ky_nang": delta("them_ky_nang", "soul_nhan_vien"),
             "soul_du_an": delta("day_du", "them_ky_nang"),
             "tong_day_du_vs_doi_chung": delta("day_du", "khong_soul"),
         },
+        # Không gộp conflict thành điểm 0: làm vậy sẽ phạt đúng hành vi ta muốn
+        # giữ — phát hiện lệnh mới đá luật cũ và hỏi lại thay vì âm thầm vi phạm.
+        "score_population": "answered_only",
+        "minimum_answered": MIN_ANSWERED_TRIALS,
         "stddev_method": "sample_n_minus_1",
     }
 
@@ -363,6 +423,7 @@ class ExperimentRunnerManager:
                 }
                 for name, flags in CONDITIONS.items()
             },
+            "trial_response_instruction": TRIAL_RESPONSE_INSTRUCTION,
             # Lưu luôn các mảnh prompt để tái lập byte-for-byte dù DB đổi sau này.
             "prompt_context": context_snapshot,
         }
@@ -399,7 +460,10 @@ class ExperimentRunnerManager:
             messages: list[dict] = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": trial["prompt"]})
+            messages.append({
+                "role": "user",
+                "content": f"{trial['prompt']}\n\n{TRIAL_RESPONSE_INSTRUCTION}",
+            })
             try:
                 response, elapsed, usage = await self._call_model(measured["id"], messages)
                 await update_experiment_trial(
@@ -498,10 +562,11 @@ class ExperimentRunnerManager:
                 ])
                 parsed = _valid_scores(raw, set(opaque_to_trial))
                 completed_ids: set[int] = set()
-                for opaque_id, (score, reason) in parsed.items():
+                for opaque_id, (score, reason, classification) in parsed.items():
                     trial = opaque_to_trial[opaque_id]
                     await update_experiment_trial(
                         trial["id"], score=score, score_reason=reason,
+                        response_classification=classification,
                         status="scored", completed_at=_utc_now(),
                     )
                     completed_ids.add(trial["id"])

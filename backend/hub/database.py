@@ -680,6 +680,7 @@ async def _run_migrations(db) -> None:
             response          TEXT    NOT NULL DEFAULT '',
             score             REAL,
             score_reason      TEXT    NOT NULL DEFAULT '',
+            response_classification TEXT NOT NULL DEFAULT 'answered',
             status            TEXT    NOT NULL DEFAULT 'pending',
             error_text        TEXT    NOT NULL DEFAULT '',
             elapsed_seconds   REAL    NOT NULL DEFAULT 0,
@@ -962,6 +963,9 @@ async def _run_migrations(db) -> None:
         # Các đầu việc Xanax tách từ biên bản đã chốt, chờ CEO duyệt trước khi
         # thực sự tạo work_items trong dự án liên kết.
         "ALTER TABLE meetings ADD COLUMN proposed_items_json TEXT NOT NULL DEFAULT '[]'",
+        # Dữ liệu thí nghiệm cũ chưa có phân loại nên mặc định answered. Đây là
+        # lựa chọn tương thích: không được tự suy diễn lại hành vi từ câu chữ cũ.
+        "ALTER TABLE experiment_trials ADD COLUMN response_classification TEXT NOT NULL DEFAULT 'answered'",
     ]:
         try:
             await db.execute(col_sql)
@@ -1793,7 +1797,7 @@ async def get_experiment_trial(trial_id: int) -> dict | None:
 
 async def update_experiment_trial(trial_id: int, **kwargs) -> bool:
     allowed = {
-        "judge_order", "response", "score", "score_reason", "status",
+        "judge_order", "response", "score", "score_reason", "response_classification", "status",
         "error_text", "elapsed_seconds", "tokens_input", "tokens_cache",
         "tokens_output", "judgement_id", "started_at", "completed_at",
     }

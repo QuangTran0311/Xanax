@@ -183,7 +183,7 @@ async def export_csv(experiment_id: int):
         "measured_model_pool_id", "measured_model_name", "judge_model_pool_id",
         "judge_model_name", "repetitions", "trial_id", "condition", "case_index",
         "repetition", "execution_order", "judge_order", "prompt", "criteria", "response",
-        "score", "score_reason", "trial_status", "error_text", "elapsed_seconds",
+        "score", "score_reason", "response_classification", "trial_status", "error_text", "elapsed_seconds",
         "tokens_input", "tokens_cache", "tokens_output", "started_at", "completed_at",
     ]
     writer = csv.DictWriter(output, fieldnames=fields)
@@ -215,6 +215,7 @@ async def export_csv(experiment_id: int):
             "response": trial["response"],
             "score": trial.get("score", ""),
             "score_reason": trial.get("score_reason", ""),
+            "response_classification": trial.get("response_classification", "answered"),
             "trial_status": trial["status"],
             "error_text": trial.get("error_text", ""),
             "elapsed_seconds": trial.get("elapsed_seconds", 0),

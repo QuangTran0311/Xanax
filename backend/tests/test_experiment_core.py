@@ -170,16 +170,102 @@ def test_tong_hop_dung_do_lech_chuan_mau_va_dong_gop_tung_tang():
         trials.extend({"condition": condition, "score": value} for value in values)
 
     summary = calculate_experiment_summary(trials)
-    assert summary["conditions"][0] == {
-        "condition": "khong_soul", "mean": 5.0, "stddev": 1.4142,
-        "n": 2, "delta_vs_control": 0.0,
-    }
+    control = summary["conditions"][0]
+    assert control["condition"] == "khong_soul"
+    assert control["mean"] == 5.0
+    assert control["stddev"] == 1.4142
+    assert control["n"] == control["total_n"] == 2
+    assert control["clarify_n"] == control["conflict_n"] == 0
+    assert control["delta_vs_control"] == 0.0
     assert summary["layer_contributions"] == {
         "soul_nhan_vien": 1.0,
         "phu_luc_ky_nang": 2.0,
         "soul_du_an": 1.0,
         "tong_day_du_vs_doi_chung": 4.0,
     }
+
+
+def test_giam_khao_phan_loai_du_ba_dang_va_lui_an_toan_ve_answered(caplog):
+    from core.experiment_runner import _valid_scores
+
+    raw = json.dumps({"scores": [
+        {"id": "a", "score": 8, "reason": "đã làm", "classification": "answered"},
+        {"id": "b", "score": 1, "reason": "hỏi thêm", "classification": "clarify"},
+        {"id": "c", "score": 0, "reason": "đá luật", "classification": "conflict"},
+        {"id": "d", "score": 7, "reason": "schema cũ"},
+        {"id": "e", "score": 6, "reason": "giá trị lạ", "classification": "other"},
+        {"id": "f", "score": 5, "reason": "sai kiểu", "classification": ["answered"]},
+    ]})
+
+    parsed = _valid_scores(raw, {"a", "b", "c", "d", "e", "f"})
+
+    assert parsed == {
+        "a": (8.0, "đã làm", "answered"),
+        "b": (1.0, "hỏi thêm", "clarify"),
+        "c": (0.0, "đá luật", "conflict"),
+        "d": (7.0, "schema cũ", "answered"),
+        "e": (6.0, "giá trị lạ", "answered"),
+        "f": (5.0, "sai kiểu", "answered"),
+    }
+    assert caplog.text.count("coi là answered") == 3
+
+
+def test_tong_hop_tach_clarify_conflict_khoi_diem_va_bat_co_mau_nho():
+    from core.experiment_runner import calculate_experiment_summary
+
+    trials = [
+        {"condition": "khong_soul", "score": 8, "response_classification": "answered"},
+        {"condition": "khong_soul", "score": 10, "response_classification": "answered"},
+        {"condition": "khong_soul", "score": 0, "response_classification": "conflict"},
+        {"condition": "khong_soul", "score": 0.5, "response_classification": "clarify"},
+    ]
+    trials.extend(
+        {"condition": "soul_nhan_vien", "score": 6, "response_classification": "answered"}
+        for _ in range(10)
+    )
+
+    summary = calculate_experiment_summary(trials)
+    control, employee = summary["conditions"][:2]
+    assert control["mean"] == 9.0, "conflict/clarify không được kéo trung bình xuống"
+    assert control["n"] == 2
+    assert control["total_n"] == 4
+    assert control["clarify_n"] == 1 and control["clarify_rate"] == 0.25
+    assert control["conflict_n"] == 1 and control["conflict_rate"] == 0.25
+    assert control["insufficient_answered"] is True
+    assert employee["n"] == 10 and employee["insufficient_answered"] is False
+    assert summary["warnings"] == [{
+        "code": "insufficient_answered",
+        "condition": "khong_soul",
+        "answered_n": 2,
+        "minimum_answered": 10,
+    }]
+    assert summary["score_population"] == "answered_only"
+
+
+@pytest.mark.asyncio
+async def test_db_cu_thieu_phan_loai_duoc_doc_nhu_answered(tmp_path, monkeypatch):
+    """Migration phải giữ nguyên nghĩa số liệu cũ, không đoán lại từ response."""
+    import sqlite3
+
+    from hub import database
+
+    db_path = tmp_path / "legacy-experiment.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            """CREATE TABLE experiment_trials (
+                id INTEGER PRIMARY KEY, experiment_id INTEGER, condition TEXT,
+                execution_order INTEGER, score REAL
+            )"""
+        )
+        db.execute(
+            "INSERT INTO experiment_trials VALUES (1, 9, 'khong_soul', 1, 7.5)"
+        )
+    monkeypatch.setattr(database, "DB_PATH", str(db_path))
+
+    await database.init_db()
+    trials = await database.list_experiment_trials(9)
+
+    assert trials[0]["response_classification"] == "answered"
 
 
 @pytest.mark.asyncio
@@ -226,15 +312,20 @@ async def test_runner_nen_luu_du_bon_dieu_kien_va_snapshot(tmp_path, monkeypatch
         repetitions=1,
     )
     manager = ExperimentRunnerManager()
+    measured_user_prompts = []
 
     async def fake_call(model_pool_id, messages):
         if model_pool_id == measured_id:
+            measured_user_prompts.append(messages[-1]["content"])
             return "Câu trả lời nguyên văn", 0.01, {
                 "tokens_in": 10, "tokens_cache": 0, "tokens_out": 4,
             }
         ids = re.findall(r"### Mã ([0-9a-f]+)", messages[-1]["content"])
         raw = json.dumps({"scores": [
-            {"id": opaque_id, "score": 8, "reason": "Đạt tiêu chí"}
+            {
+                "id": opaque_id, "score": 8, "reason": "Đạt tiêu chí",
+                "classification": "answered",
+            }
             for opaque_id in ids
         ]})
         return raw, 0.02, {"tokens_in": 20, "tokens_cache": 0, "tokens_out": 5}
@@ -250,6 +341,9 @@ async def test_runner_nen_luu_du_bon_dieu_kien_va_snapshot(tmp_path, monkeypatch
     }
     assert all(trial["response"] == "Câu trả lời nguyên văn" for trial in trials)
     assert all(trial["score"] == 8 for trial in trials)
+    assert all(trial["response_classification"] == "answered" for trial in trials)
+    assert all("không hỏi ngược" in prompt for prompt in measured_user_prompts)
+    assert all("giả định hợp lý" in prompt for prompt in measured_user_prompts)
     assert agent_soul.soul_path(agent_id).read_bytes() == before
     snapshot = json.loads(experiment["soul_snapshot_json"])
     assert "Xưng em" in snapshot["agent"]
