@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "../../api/client";
+import { versionApi } from "../../api/version";
 import { Icon } from "../../components/Icon";
 import { Tooltip } from "../../components/Tooltip";
 import { useTooltipText } from "../../i18n/tooltips";
@@ -17,6 +18,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
   const [error, setError] = useState(() =>
     new URLSearchParams(window.location.search).get("reason") === "idle" ? IDLE_MESSAGE : "",
   );
@@ -33,6 +35,19 @@ export function LoginPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    let mounted = true;
+    void versionApi.current()
+      .then((response) => {
+        const current = response.version.trim();
+        if (mounted && current) setVersion(current);
+      })
+      .catch(() => {
+        // Thiếu version tốt hơn hiển thị một số cũ có vẻ hợp lệ.
+      });
+    return () => { mounted = false; };
+  }, []);
 
   function showError(message: string) {
     setError(message);
@@ -222,11 +237,11 @@ export function LoginPage() {
               </Tooltip>
             </form>
           </div>
-          <div className={styles["panel-footer"]}>v1.0 · Antigravity × Hermes Agent</div>
+          <div className={styles["panel-footer"]}>{version ? `v${version} · ` : ""}Antigravity × Hermes Agent</div>
         </main>
       </div>
 
-      <footer className={styles["page-footer"]}>© 2025 Xanax — Personal AI Agent</footer>
+      <footer className={styles["page-footer"]}>© {new Date().getFullYear()} Xanax — Personal AI Agent</footer>
     </>
   );
 }

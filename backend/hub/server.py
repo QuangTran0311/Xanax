@@ -188,6 +188,7 @@ def create_app() -> FastAPI:
 
     # ── API Routes ────────────────────────────────────────────
     from api.routes.health        import router as health_router
+    from api.routes.version       import get_git_commit, router as version_router
     from api.routes.agents        import router as agents_router
     from api.routes.tasks         import router as tasks_router
     from api.routes.tools         import router as tools_router
@@ -215,7 +216,12 @@ def create_app() -> FastAPI:
     from api.websocket_workflow   import router as ws_workflow_router
     from api.websocket_experiment import router as ws_experiment_router
 
+    # Hâm cache khi tạo app để không chạy tiến trình Git ở request đầu tiên.
+    # Lỗi/không có .git đã được chuyển thành None, phù hợp bản deploy từ tarball.
+    get_git_commit()
+
     app.include_router(health_router,        prefix="/api",                tags=["Health"])
+    app.include_router(version_router,       prefix="/api",                tags=["Version"])
     app.include_router(agents_router,        prefix="/api/agents",         tags=["Agents"])
     app.include_router(tasks_router,         prefix="/api/tasks",          tags=["Tasks"])
     app.include_router(tools_router,         prefix="/api/tools",          tags=["Tools"])

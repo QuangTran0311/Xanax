@@ -222,6 +222,35 @@ class TestHealthRoutes:
         assert resp.headers["content-type"].startswith("text/html")
 
 
+class TestVersionRoute:
+    @pytest.mark.asyncio
+    async def test_cong_khai_chi_tra_version_tu_settings(self, anon_client):
+        """Trang đăng nhập lấy đúng nguồn version nhưng không thấy dấu vân tay Git."""
+        from hub.config import settings
+
+        resp = await anon_client.get("/api/version")
+        assert resp.status_code == 200
+        assert resp.json() == {"version": settings.version}
+
+    @pytest.mark.asyncio
+    async def test_git_hong_tra_null_khong_loi_500(self, client, monkeypatch):
+        """Deploy từ tarball hoặc máy không có Git vẫn phải trả response hợp lệ."""
+        from api.routes import version
+
+        def git_khong_ton_tai(*_args, **_kwargs):
+            raise FileNotFoundError("không có git")
+
+        monkeypatch.setattr(version.subprocess, "run", git_khong_ton_tai)
+        version.get_git_commit.cache_clear()
+        try:
+            resp = await client.get("/api/version")
+            assert resp.status_code == 200
+            assert resp.json() == {"version": version.settings.version, "commit": None}
+        finally:
+            # Không để giá trị mô phỏng ảnh hưởng các app được tạo sau test này.
+            version.get_git_commit.cache_clear()
+
+
 class TestAgentRoutes:
     @pytest.mark.asyncio
     async def test_list_agents_empty(self, client):

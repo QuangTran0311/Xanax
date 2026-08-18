@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { Icon, type IconName } from "../../components/Icon";
+import { Icon } from "../../components/Icon";
 import { Tooltip } from "../../components/Tooltip";
 import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage } from "../../store/language";
@@ -9,7 +9,8 @@ import { sessionApi } from "../../store/session";
 import { useTheme } from "../../store/theme";
 import { HubProvider, useHub } from "./HubContext";
 import { HubOverlays } from "./HubOverlays";
-import { hubText, type HubMessageKey } from "./i18n";
+import { hubText } from "./i18n";
+import { hubNavigation as navigation, validHubTabs as validTabs, type HubTab } from "./navigation";
 import type { ProjectSubtab } from "./types";
 import styles from "./HubPage.module.css";
 
@@ -26,44 +27,6 @@ const WorkspacePage = lazy(() => import("../workspace/WorkspacePage").then((modu
 const TaskrunnerPage = lazy(() => import("../taskrunner/TaskrunnerPage").then((module) => ({ default: module.TaskrunnerPage })));
 
 const c = (name: string) => styles[name] ?? name;
-
-type HubTab =
-  | "home"
-  | "agents"
-  | "skills"
-  | "tasks"
-  | "meeting"
-  | "train"
-  | "company-runner"
-  | "auto-runner"
-  | "assets"
-  | "model"
-  | "cost"
-  | "settings";
-
-interface NavigationItem {
-  tab: HubTab;
-  label: HubMessageKey;
-  icon: IconName;
-  divider?: boolean;
-}
-
-const navigation: NavigationItem[] = [
-  { tab: "home", label: "nav.home", icon: "home" },
-  { tab: "agents", label: "nav.agents", icon: "bot", divider: true },
-  { tab: "skills", label: "nav.skills", icon: "puzzle" },
-  { tab: "tasks", label: "nav.tasks", icon: "briefcase", divider: true },
-  { tab: "meeting", label: "nav.meeting", icon: "meeting" },
-  { tab: "train", label: "nav.train", icon: "teach", divider: true },
-  { tab: "company-runner", label: "nav.company", icon: "workflow" },
-  { tab: "auto-runner", label: "nav.automation", icon: "bolt" },
-  { tab: "assets", label: "nav.assets", icon: "assets" },
-  { tab: "model", label: "nav.model", icon: "brain" },
-  { tab: "cost", label: "nav.cost", icon: "cost" },
-  { tab: "settings", label: "nav.settings", icon: "settings", divider: true },
-];
-
-const validTabs = new Set(navigation.map((item) => item.tab));
 
 export function HubPage() {
   return (

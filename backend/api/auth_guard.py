@@ -32,7 +32,12 @@ _PUBLIC_EXACT = {
     "/api/auth/me",         # tự trả 401 đúng ngữ nghĩa cho giao diện dò trạng thái
     "/api/health",          # probe của reverse proxy / uptime monitor
     "/api/health/ready",
+    "/api/version",         # trang đăng nhập cần biết đúng backend đang chạy
 }
+
+# Route này công khai nhưng vẫn nhận diện cookie/API key nếu có, vì chỉ người đã
+# xác thực mới được xem dấu vân tay commit. Không nhân đôi cách đọc cookie ở router.
+_OPTIONAL_AUTH_EXACT = {"/api/version"}
 
 # Webhook trigger từ n8n/Zapier/curl: token trong URL đã là bí mật riêng của từng
 # workflow (xem _ensure_webhook_token trong api/routes/workflow.py), bên gọi không
@@ -85,19 +90,35 @@ class AuthGuardMiddleware:
     def __init__(self, app):
         self.app = app
 
-    async def __call__(self, scope, receive, send):
-        if scope["type"] not in ("http", "websocket") or not _is_guarded(scope.get("path", "")):
-            await self.app(scope, receive, send)
-            return
-
+    async def _authenticate(self, scope) -> bool:
         if _api_key_ok(scope):
-            await self.app(scope, receive, send)
-            return
+            scope["authenticated"] = True
+            return True
 
         token = _session_token(scope)
         user = await validate_session(token) if token else None
-        if user:
-            scope["user"] = user       # route nào cần biết ai đang gọi thì đọc ở đây
+        if not user:
+            return False
+        scope["user"] = user       # route nào cần biết ai đang gọi thì đọc ở đây
+        scope["authenticated"] = True
+        return True
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if path in _OPTIONAL_AUTH_EXACT:
+            await self._authenticate(scope)
+            await self.app(scope, receive, send)
+            return
+
+        if not _is_guarded(path):
+            await self.app(scope, receive, send)
+            return
+
+        if await self._authenticate(scope):
             await self.app(scope, receive, send)
             return
 
