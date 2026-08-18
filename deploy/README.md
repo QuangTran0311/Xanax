@@ -52,8 +52,10 @@ sudo useradd --system --create-home --home-dir /home/xanax \
 
 Nếu user đã tồn tại, `useradd` sẽ báo lỗi; kiểm tra bằng `id xanax` rồi đi tiếp.
 
-Tạo swapfile 4 GB trước khi build hoặc chạy service. Với máy 6 GB, không có swap
-thì `MemoryHigh` gần như không có chỗ để đẩy các trang ít dùng ra; riêng
+Tạo swapfile 4 GB trước khi build hoặc chạy service. Gói VPS quảng cáo 6 GB nhưng
+MemTotal thật chỉ khoảng 5,8 GB; không có swap thì `MemoryHigh` gần như không có
+chỗ để đẩy các trang ít dùng ra. Với trần tạm 5G, máy chỉ còn đứng vững nhờ swap
+4 GB này, vì vậy **không được xóa nó**; riêng
 `npm run build` của Vite lúc cập nhật cũng có thể ăn nhiều RAM. Trước hết kiểm tra
 máy chưa có swapfile trùng tên hoặc swap đã bật:
 
@@ -247,11 +249,25 @@ tiên `XANAX_REMBG_PYTHON`, sau đó dùng mặc định
 `/opt/xanax/.venv-rembg/bin/python`. Không lưu đường dẫn Windows/Linux vào
 `skills.config_json` nữa.
 
+Skill có hai biến môi trường riêng; không đặt thì đã dùng mặc định an toàn:
+
+| Biến | Mặc định | Ý nghĩa |
+|------|----------|---------|
+| `XANAX_IMAGE_CUT_MAX_SIDE` | `2000` | Cạnh dài tối đa của bản đưa vào inference; kết quả vẫn lấy pixel ảnh gốc. `0` hoặc số âm tắt thu nhỏ. |
+| `XANAX_IMAGE_CUT_IDLE_SECONDS` | `600` | Xóa session model sau từng ấy giây không cắt ảnh. `0` hoặc số âm giữ session mãi. |
+
+Giá trị sai định dạng quay về mặc định. Nếu cần ghi đè, đặt chúng bằng
+`Environment=` trong unit/drop-in của `xanax.service`; `core/mcp_client.py` truyền
+tường minh sang launcher và tiến trình trong venv rembg. Sau khi đổi unit phải
+`daemon-reload` và restart như mục 7.
+
 Inference `birefnet-general-lite` ăn thêm khoảng 1–2 GB và tiến trình MCP nằm
-cùng cgroup với `xanax.service`. Nếu journal báo OOM trong cgroup khi cắt ảnh,
-đo RAM thực tế rồi nâng `MemoryMax` khỏi mức 4.5G (và chỉnh `MemoryHigh`) cho phù
-hợp; không chỉ restart vì lần sau vẫn chết. VPS 3 vCPU cũng sẽ chậm hơn mốc 13,5 giây/ảnh đo ở
-máy dev. Đường MCP hiện chờ 90 giây để kết nối và tối đa 300 giây cho **toàn bộ
+cùng cgroup với `xanax.service`. Mức tạm `MemoryHigh=4.5G`/`MemoryMax=5G` dùng để
+sống sót qua lỗi rembg giữ khoảng 4,5 GB không trả lại; sau khi vá lỗi, chỉ siết
+về khoảng 3.5G/4.5G khi đã đo RSS đỉnh và RSS-sau-nghỉ của tiến trình cắt ảnh trên
+VPS. Không chỉ restart vì lần sau vẫn gặp lại. VPS 3 vCPU cũng sẽ chậm hơn mốc
+13,5 giây/ảnh đo ở máy dev. Đường MCP hiện chờ 90 giây để kết nối và tối đa 300
+giây cho **toàn bộ
 một lần gọi tool**; `HUB_CLI_TIMEOUT_SECONDS` không áp dụng ở đây. Một batch lớn
 có thể vượt 300 giây và bị hủy, nên chia batch nhỏ; tài liệu này không tự nâng
 timeout vì tăng trần sẽ làm mọi MCP tool treo lâu hơn khi có sự cố.
@@ -389,11 +405,15 @@ uvicorn.
 ## 4. Cài systemd và Caddy
 
 Unit mẫu dùng `/opt/xanax`. Nếu dùng đường khác, sửa tất cả placeholder trước khi
-cài:
+cài. `systemctl revert` cũng xóa drop-in bền vững ở `/etc`, nên phải xem
+`systemctl cat xanax.service` trước khi chạy; bước revert bên dưới xóa drop-in
+`--runtime` trong `/run/systemd/system.control/` để nó không đè unit vừa copy:
 
 ```bash
 sudo install -m 0644 /opt/xanax/deploy/xanax.service \
   /etc/systemd/system/xanax.service
+sudo systemctl cat xanax.service
+sudo systemctl revert xanax.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now xanax.service
 sudo systemctl status xanax.service --no-pager
@@ -560,8 +580,11 @@ lại unit sau khi cập nhật mã nguồn:
 
 ```bash
 sudo install -m 0644 /opt/xanax/deploy/xanax.service /etc/systemd/system/xanax.service
+sudo systemctl cat xanax.service   # kiểm tra trước: revert cũng xóa drop-in bền vững ở /etc
+sudo systemctl revert xanax.service
 sudo systemctl daemon-reload
 sudo systemctl restart xanax.service
+sudo systemctl show xanax -p MemoryHigh -p MemoryMax
 ```
 
 Kiểm tra đường cảnh báo hoạt động thật, bằng cách ép service chết:
@@ -696,17 +719,23 @@ và không đưa dependency nặng của rembg vào `requirements.lock`. Nếu r
 đổi yêu cầu của skill cắt ảnh, cập nhật venv rembg bằng lệnh riêng ở mục 2, tải
 trước model dưới user `xanax`, chạy kiểm tra launcher rồi mới restart service.
 
-Nếu đợt cập nhật có thay đổi file trong `deploy/`, cài lại unit/script tương ứng,
-chạy `systemctl daemon-reload`, validate Caddyfile rồi mới reload Caddy.
+Nếu đợt cập nhật có thay đổi file trong `deploy/`, cài lại unit/script tương ứng;
+với `xanax.service`, làm đủ bước `cat`/`revert` bên dưới trước khi
+`systemctl daemon-reload`. Validate Caddyfile rồi mới reload Caddy.
 
 ### Áp dụng thay đổi unit và xem giới hạn tài nguyên
 
 Sửa file trong repo chưa làm unit đang chạy thay đổi. Sau mỗi lần sửa
-`deploy/xanax.service`, cài lại bản root-owned, nạp lại systemd rồi restart:
+`deploy/xanax.service`, cài lại bản root-owned rồi xóa drop-in `--runtime` trong
+`/run/systemd/system.control/`; nếu không, giá trị tạm cũ vẫn đè lên file mới.
+`systemctl revert` cũng xóa drop-in bền vững ở `/etc`, nên phải dùng
+`systemctl cat xanax.service` kiểm tra trước:
 
 ```bash
 sudo install -m 0644 /opt/xanax/deploy/xanax.service \
   /etc/systemd/system/xanax.service
+sudo systemctl cat xanax.service
+sudo systemctl revert xanax.service
 sudo systemctl daemon-reload
 sudo systemctl restart xanax.service
 ```
@@ -714,14 +743,16 @@ sudo systemctl restart xanax.service
 Xác nhận systemd đã đọc đúng giới hạn và xem lượng RAM hiện tại:
 
 ```bash
-systemctl show xanax.service -p MemoryHigh -p MemoryMax -p TasksMax
+systemctl show xanax -p MemoryHigh -p MemoryMax -p TasksMax
 systemctl status xanax.service --no-pager | grep -i memory
 ```
 
-`MemoryHigh=3.5G` là ngưỡng kìm, `MemoryMax=4.5G` mới là trần cứng;
-`TasksMax=512` chặn rò process/thread từ các CLI agent. Các số này dành cho VPS
-6 GB, chừa khoảng 1.5 GB cho OS, Caddy và journald. Nếu journal xác nhận Xanax bị
-OOM trong cgroup khi tải hợp lệ, đo lại rồi nâng `MemoryMax`; không xóa giới hạn.
+`MemoryHigh=4.5G` là ngưỡng kìm, `MemoryMax=5G` mới là trần cứng;
+`TasksMax=512` chặn rò process/thread từ các CLI agent. MemTotal thật khoảng 5,8 GB,
+nên chỉ còn khoảng 0,8 GB cho OS, Caddy và journald: mức tạm rất mỏng, chỉ đứng
+vững nhờ swap 4 GB với `swappiness=10` đã tạo ngày 17/08/2026. **Không được xóa
+swap đó.** Sau khi vá rembg giữ khoảng 4,5 GB không trả lại, đo RSS đỉnh và
+RSS-sau-nghỉ của tiến trình cắt ảnh trên VPS rồi mới siết về khoảng 3.5G/4.5G.
 
 ### Backup và restore
 

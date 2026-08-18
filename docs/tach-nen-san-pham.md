@@ -270,6 +270,53 @@ hoàn toàn khác.
 
 ---
 
+## 6. RAM trên production: vì sao lên 4,5 GB rồi không xuống
+
+Sự cố thật trên VPS có MemTotal khoảng 5,8 GB không đến từ một chỗ riêng lẻ mà
+là ba lớp cộng dồn:
+
+1. `MCPConnection` giữ tiến trình stdio sống suốt vòng đời app, nên tiến trình
+   rembg không có lần thoát tự nhiên để kernel thu hồi toàn bộ bộ nhớ.
+2. Arena allocator của onnxruntime giữ vùng đã xin để tái dùng. Sau inference,
+   object Python có thể đã hết nhưng RSS vẫn không trả về hệ điều hành.
+3. `remove()` từng nhận nguyên ảnh điện thoại 4000×3000. Model birefnet vẫn thu
+   về 1024×1024 bên trong, nhưng rembg/alpha matting đã dựng các buffer trung
+   gian khổng lồ ở kích thước ảnh gốc trước và sau bước model.
+
+Bản vá xử lý đủ cả ba lớp. Session onnxruntime được tạo với CPU arena tắt; sau
+mỗi ảnh, Python chạy GC rồi gọi `malloc_trim(0)` trên glibc Linux. Ảnh có cạnh
+dài vượt ngưỡng được thu nhỏ bằng LANCZOS chỉ để inference; alpha từ kết quả RGBA
+đầy đủ (vẫn giữ alpha matting) được phóng về kích thước gốc và gắn lên pixel ảnh
+gốc trước khi tính bbox/crop/padding/canvas. Vì vậy ảnh dùng đăng bán không bị
+resize theo bản inference. Session còn được xóa sau một quãng nhàn rỗi; lần cắt
+kế tiếp phải trả thêm khoảng 4 giây nạp model, đổi lại máy không giữ vài GB suốt
+đêm.
+
+Hai chốt có thể chỉnh bằng môi trường:
+
+- `XANAX_IMAGE_CUT_MAX_SIDE` mặc định `2000`: cạnh dài tối đa đưa vào rembg;
+  `0` hoặc số âm tắt bước thu nhỏ. Giá trị không phải số quay về `2000`.
+- `XANAX_IMAGE_CUT_IDLE_SECONDS` mặc định `600`: số giây nhàn rỗi trước khi xóa
+  toàn bộ session; `0` hoặc số âm tắt việc xóa. Giá trị không phải số quay về
+  `600`.
+
+Con số 4,5 GB là RSS đã thấy trước bản vá, không phải ước lượng. Máy dev Windows
+không có rembg nên chưa thể khẳng định RSS sau vá; phải đo trên đúng VPS bằng:
+
+```bash
+XANAX_IMAGE_CUT_IDLE_SECONDS=10 /opt/xanax/.venv-rembg/bin/python \
+  /opt/xanax/backend/scripts/measure_image_cut_memory.py \
+  /duong/dan/anh-4000x3000.jpg --runs 3 --rest-seconds 15
+```
+
+Script in RSS hiện tại sau từng lượt, RSS đỉnh của tiến trình và RSS sau thời
+gian nghỉ mà không cần `psutil`. Lệnh mẫu rút idle còn 10 giây chỉ trong tiến
+trình đo để không phải chờ đủ 600 giây. Dùng số đó rồi mới siết lại `MemoryHigh` và
+`MemoryMax`; không lấy mức mặc định 2000 px làm bằng chứng rằng đỉnh chắc chắn đã
+lọt dưới một trần cụ thể.
+
+---
+
 ## Phụ lục: cách đo lại
 
 Script đo nằm ở lịch sử phiên làm việc, nguyên tắc như sau:

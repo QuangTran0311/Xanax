@@ -43,6 +43,7 @@ _IMAGE_CUT_LAUNCHER = (
 # bên dưới cũng phải đi qua tường minh vì launcher cần đọc chúng.
 _STDIO_INHERITED_ENV = (
     "HOME", "XANAX_REMBG_PYTHON", "U2NET_HOME", "XDG_DATA_HOME", "OMP_NUM_THREADS",
+    "XANAX_IMAGE_CUT_MAX_SIDE", "XANAX_IMAGE_CUT_IDLE_SECONDS",
 )
 
 # Thời gian chờ tối đa cho từng giai đoạn. MCP server bên thứ ba có thể treo hoặc

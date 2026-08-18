@@ -29,19 +29,36 @@ Vì sao bóng đổ không chữa được bằng tham số, xem docs/tach-nen-s
 """
 from __future__ import annotations
 
+import ctypes
+import gc
 import io
 import os
+import sys
+import threading
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+import onnxruntime as ort
 from PIL import Image
 from rembg import new_session, remove
 
+from mcp_servers.image_cut_helpers import (
+    IDLE_SECONDS_ENV,
+    MAX_SIDE_ENV,
+    apply_alpha_to_original,
+    calculate_inference_size,
+    read_nonnegative_env,
+)
+
 mcp = FastMCP("xanax-image-cut")
 
-# Session được cache theo model: nạp model là phần đắt nhất (~4s cho u2netp),
-# giữ lại để từ ảnh thứ hai trở đi chỉ còn thời gian inference.
+# Session được cache theo model trong một đợt làm việc: nạp model là phần đắt
+# nhất (~4s cho u2netp), nhưng giữ nó suốt đêm từng làm RSS nằm ở vài GB.
 _sessions: dict[str, object] = {}
+_sessions_lock = threading.Lock()
+_idle_timer: threading.Timer | None = None
+_idle_generation = 0
+_active_cuts = 0
 
 # Alpha dưới ngưỡng này coi như nền. Không lọc thì các pixel bán trong suốt còn
 # sót quanh biên sẽ làm bounding box phình ra, cắt không sát.
@@ -51,9 +68,80 @@ _SUPPORTED_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp")
 
 
 def _session(model: str):
-    if model not in _sessions:
-        _sessions[model] = new_session(model)
-    return _sessions[model]
+    with _sessions_lock:
+        if model not in _sessions:
+            session_options = ort.SessionOptions()
+            # Arena nhanh hơn một chút vì tái dùng vùng đã cấp phát, nhưng cũng là
+            # lý do RSS leo lên rồi giữ nguyên sau inference trên VPS 5,8 GB.
+            session_options.enable_cpu_mem_arena = False
+            try:
+                _sessions[model] = new_session(model, sess_opts=session_options)
+            except TypeError:
+                # Một số bản rembg cũ chưa nhận sess_opts. stderr là bắt buộc vì
+                # stdout của tiến trình này chỉ dành cho JSON-RPC của MCP.
+                print(
+                    "Cảnh báo: rembg không nhận sess_opts; CPU memory arena vẫn được bật.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                _sessions[model] = new_session(model)
+        return _sessions[model]
+
+
+def _release_process_memory() -> None:
+    """Dọn object Python rồi xin glibc trả các heap page rảnh về hệ điều hành."""
+    gc.collect()
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        malloc_trim = libc.malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        malloc_trim(0)
+    except (OSError, AttributeError):
+        # Windows dev và musl/Alpine không có entry point này; dọn GC vẫn đủ để
+        # chạy đúng, chỉ không ép allocator trả RSS ngay được.
+        pass
+
+
+def _drop_sessions_after_idle(generation: int) -> None:
+    global _idle_timer
+    with _sessions_lock:
+        if generation != _idle_generation or _active_cuts:
+            return
+        _sessions.clear()
+        _idle_timer = None
+    # Lần cắt sau thời gian nhàn rỗi phải nạp lại model (~4s), đổi lại tiến trình
+    # MCP không giữ vài GB suốt đêm chỉ để tránh lần nạp đó.
+    _release_process_memory()
+
+
+def _cut_started() -> None:
+    global _active_cuts, _idle_generation, _idle_timer
+    with _sessions_lock:
+        _active_cuts += 1
+        _idle_generation += 1
+        if _idle_timer is not None:
+            _idle_timer.cancel()
+            _idle_timer = None
+
+
+def _cut_finished() -> None:
+    global _active_cuts, _idle_generation, _idle_timer
+    idle_seconds = read_nonnegative_env(IDLE_SECONDS_ENV, 600)
+    with _sessions_lock:
+        _active_cuts -= 1
+        if _active_cuts or idle_seconds == 0:
+            return
+        _idle_generation += 1
+        generation = _idle_generation
+        timer = threading.Timer(
+            idle_seconds, _drop_sessions_after_idle, args=(generation,),
+        )
+        timer.daemon = True
+        _idle_timer = timer
+        timer.start()
 
 
 def _parse_ratio(ratio: str) -> float | None:
@@ -100,6 +188,24 @@ def _cut_one(
     ratio: str, background: str, alpha_matting: bool,
     fg_threshold: int = 240, bg_threshold: int = 10, erode_size: int = 10,
 ) -> dict:
+    _cut_started()
+    try:
+        return _cut_one_impl(
+            input_path, output_path, model, padding_percent, ratio, background,
+            alpha_matting, fg_threshold, bg_threshold, erode_size,
+        )
+    finally:
+        # Tách hàm impl để frame chứa các buffer ảnh đã biến mất trước lúc trim;
+        # nếu gc chạy ngay trong cùng frame thì chính local variable còn giữ RAM.
+        _release_process_memory()
+        _cut_finished()
+
+
+def _cut_one_impl(
+    input_path: str, output_path: str, model: str, padding_percent: float,
+    ratio: str, background: str, alpha_matting: bool,
+    fg_threshold: int = 240, bg_threshold: int = 10, erode_size: int = 10,
+) -> dict:
     src = Path(input_path)
     if not src.is_file():
         raise FileNotFoundError(f"Không tìm thấy ảnh: {input_path}")
@@ -107,16 +213,37 @@ def _cut_one(
     ratio_value = _parse_ratio(ratio)
     bg_rgba = _parse_background(background)
 
-    original = Image.open(src)
-    original_size = original.size
-
-    cut_bytes = remove(
-        src.read_bytes(), session=_session(model), alpha_matting=alpha_matting,
-        alpha_matting_foreground_threshold=fg_threshold,
-        alpha_matting_background_threshold=bg_threshold,
-        alpha_matting_erode_size=erode_size,
-    )
-    cut = Image.open(io.BytesIO(cut_bytes)).convert("RGBA")
+    remove_options = {
+        "session": _session(model),
+        "alpha_matting": alpha_matting,
+        "alpha_matting_foreground_threshold": fg_threshold,
+        "alpha_matting_background_threshold": bg_threshold,
+        "alpha_matting_erode_size": erode_size,
+    }
+    max_side = read_nonnegative_env(MAX_SIDE_ENV, 2000)
+    with Image.open(src) as original:
+        original_size = original.size
+        inference_size = calculate_inference_size(original_size, max_side)
+        if inference_size is None:
+            # Ảnh đã nhỏ thì giữ nguyên đường đi cũ, kể cả cách rembg giải mã bytes.
+            cut_bytes = remove(src.read_bytes(), **remove_options)
+            with Image.open(io.BytesIO(cut_bytes)) as removed:
+                cut = removed.convert("RGBA")
+        else:
+            # Model vốn resize nội bộ (birefnet về 1024x1024), nên bước này hầu
+            # như không làm mask xấu đi; phần tiết kiệm lớn là buffer matting và
+            # hậu xử lý không còn được dựng ở độ phân giải điện thoại 4000x3000.
+            inference = original.convert("RGB").resize(
+                inference_size, Image.Resampling.LANCZOS,
+            )
+            inference_bytes = io.BytesIO()
+            inference.save(inference_bytes, format="PNG")
+            cut_bytes = remove(inference_bytes.getvalue(), **remove_options)
+            with Image.open(io.BytesIO(cut_bytes)) as removed:
+                # Không dùng only_mask: đường đó bỏ qua alpha matting mà public
+                # tool đang cho phép bật. Alpha phải lấy từ kết quả RGBA đầy đủ.
+                alpha = removed.convert("RGBA").getchannel("A")
+            cut = apply_alpha_to_original(original, alpha)
 
     bbox = _alpha_bbox(cut)
     if bbox is None:

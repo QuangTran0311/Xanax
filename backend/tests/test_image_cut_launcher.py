@@ -144,9 +144,13 @@ def test_target_noi_bo_doi_thanh_python_venv_chinh_va_launcher_tuyet_doi():
 def test_env_stdio_giu_home_va_cho_config_ghi_de(monkeypatch):
     monkeypatch.setenv("HOME", "/home/xanax")
     monkeypatch.setenv("XANAX_REMBG_PYTHON", "/opt/rembg/python")
+    monkeypatch.setenv("XANAX_IMAGE_CUT_MAX_SIDE", "1800")
+    monkeypatch.setenv("XANAX_IMAGE_CUT_IDLE_SECONDS", "300")
 
     env = _stdio_subprocess_env({"HOME": "/srv/custom-home", "RIENG": "1"})
 
     assert env["HOME"] == "/srv/custom-home"
     assert env["XANAX_REMBG_PYTHON"] == "/opt/rembg/python"
+    assert env["XANAX_IMAGE_CUT_MAX_SIDE"] == "1800"
+    assert env["XANAX_IMAGE_CUT_IDLE_SECONDS"] == "300"
     assert env["RIENG"] == "1"
