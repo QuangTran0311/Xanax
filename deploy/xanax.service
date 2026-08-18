@@ -28,6 +28,9 @@ Environment="PYTHONUNBUFFERED=1"
 # đúng cache model của user xanax, không tải lại hoặc thử ghi vào nơi khác.
 Environment="HOME=/home/xanax"
 Environment="U2NET_HOME=/home/xanax/.u2net"
+# rembg giải phóng bộ nhớ ở tầng Python nhưng glibc vẫn có thể ôm các arena, không
+# trả về OS. Giới hạn số arena để giảm phần RSS bị giữ lại vô ích.
+Environment="MALLOC_ARENA_MAX=2"
 # systemd không đọc PATH từ shell đăng nhập. Giữ các thư mục CLI của user xanax ở đây.
 Environment="PATH=/opt/xanax/.venv/bin:/home/xanax/.local/bin:/home/xanax/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/opt/xanax/.venv/bin/python /opt/xanax/backend/main.py
@@ -35,18 +38,29 @@ ExecStart=/opt/xanax/.venv/bin/python /opt/xanax/backend/main.py
 Restart=always
 RestartSec=5s
 
-# Toàn bộ claude/codex CLI do app sinh ra nằm cùng cgroup với service này.
+# Toàn bộ claude/codex CLI và rembg do app sinh ra nằm cùng cgroup với service này.
 # MemoryHigh kìm trước (throttle và đẩy trang ít dùng ra swap); MemoryMax mới là
 # trần cứng có thể giết tiến trình. Đặt hai mức cách nhau để máy còn cơ hội hồi
 # phục bằng cách chạy chậm lại, thay vì vừa chạm ngưỡng đã giết ngay.
 #
-# VPS có 6 GB RAM: Xanax được dùng tối đa 4.5 GB, chừa khoảng 1.5 GB cho OS,
-# Caddy và journald. Lợi ích chính không phải tiết kiệm RAM: nếu Xanax vượt trần,
-# OOM chỉ chọn nạn nhân trong cgroup này, không bắn nhầm Caddy hay sshd và làm mất
-# đường vào máy. Nếu journal cho thấy service bị OOM trong cgroup, nâng MemoryMax
-# sau khi đo thực tế; đừng xóa giới hạn và đừng hạ nó xuống dưới 4G.
-MemoryHigh=3.5G
-MemoryMax=4.5G
+# Gói VPS quảng cáo 6 GB nhưng MemTotal thật chỉ khoảng 5,8 GB. Với MemoryMax=5G,
+# chỉ còn khoảng 0,8 GB cho OS, Caddy và journald: rất mỏng, chỉ đứng vững nhờ
+# swap 4 GB (swappiness=10) đã tạo ngày 17/08/2026. KHÔNG được xóa swap đó.
+#
+# Đây là mức TẠM để sống sót qua sự cố rembg đang treo và giữ khoảng 4,5 GB không
+# trả lại. Sau khi vá xong rembg, siết về khoảng MemoryHigh=3.5G/MemoryMax=4.5G,
+# nhưng chỉ sau khi đo được RSS đỉnh và RSS-sau-nghỉ của tiến trình cắt ảnh trên
+# VPS.
+# Giữ giới hạn cgroup để khi vượt trần, OOM chỉ chọn nạn nhân trong cgroup Xanax,
+# không bắn nhầm Caddy hay sshd và làm mất đường vào máy.
+MemoryHigh=4.5G
+MemoryMax=5G
+
+# CẢNH BÁO: systemctl revert cũng xóa drop-in bền vững ở /etc; chạy
+# systemctl cat xanax để kiểm tra trước. Sau khi copy unit vào /etc/systemd/system/,
+# chạy systemctl revert xanax.service để xóa drop-in --runtime còn nằm trong
+# /run/systemd/system.control/, rồi daemon-reload, restart xanax và xác nhận bằng
+# systemctl show xanax -p MemoryHigh -p MemoryMax.
 
 # subprocess_util.py dùng 1 process CLI và 2 thread đọc pipe cho mỗi lần chạy.
 # Nếu process/thread bị rò, biến nó thành lỗi nhìn thấy được thay vì để cả máy
