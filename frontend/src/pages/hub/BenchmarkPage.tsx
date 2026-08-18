@@ -418,7 +418,7 @@ function BenchmarkForm({
       </Field>
       <div className={c("testCases")}>
         <header>
-          <strong>{vi ? "Câu hỏi thử nghiệm" : "Test cases"}</strong>
+          <strong>{hubText(language, "benchmark.form.test_cases")}</strong>
           <Tooltip label={tooltip("tooltip.benchmark.case_add")}>
             <button
               className={c("buttonGhost")}
@@ -435,39 +435,58 @@ function BenchmarkForm({
           </Tooltip>
         </header>
         {draft.test_cases.map((item, index) => (
-          <div key={index}>
-            <textarea
-              className={c("textarea")}
-              value={item.prompt}
-              placeholder={vi ? "Câu hỏi" : "Prompt"}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  test_cases: draft.test_cases.map((current, currentIndex) =>
-                    currentIndex === index
-                      ? { ...current, prompt: event.target.value }
-                      : current,
-                  ),
-                })
-              }
-            />
-            <input
-              className={c("input")}
-              value={item.criteria}
-              placeholder={vi ? "Tiêu chí kết quả tốt" : "Success criteria"}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  test_cases: draft.test_cases.map((current, currentIndex) =>
-                    currentIndex === index
-                      ? { ...current, criteria: event.target.value }
-                      : current,
-                  ),
-                })
-              }
-            />
+          <div key={index} className={c("testCaseRow")}>
+            <label className={c("testCaseField")}>
+              <span>{hubText(language, "benchmark.form.prompt_label")}</span>
+              <span
+                className={c("testCaseTextareaSizer")}
+                data-replicated-value={item.prompt}
+              >
+                <textarea
+                  className={c("textarea")}
+                  rows={4}
+                  value={item.prompt}
+                  placeholder={hubText(language, "benchmark.form.prompt_placeholder")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      test_cases: draft.test_cases.map((current, currentIndex) =>
+                        currentIndex === index
+                          ? { ...current, prompt: event.target.value }
+                          : current,
+                      ),
+                    })
+                  }
+                />
+              </span>
+            </label>
+            <label className={c("testCaseField")}>
+              <span>{hubText(language, "benchmark.form.criteria_label")}</span>
+              <span
+                className={c("testCaseTextareaSizer")}
+                data-replicated-value={item.criteria}
+              >
+                <textarea
+                  className={c("textarea")}
+                  rows={4}
+                  value={item.criteria}
+                  placeholder={hubText(language, "benchmark.form.criteria_placeholder")}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      test_cases: draft.test_cases.map((current, currentIndex) =>
+                        currentIndex === index
+                          ? { ...current, criteria: event.target.value }
+                          : current,
+                      ),
+                    })
+                  }
+                />
+              </span>
+            </label>
             <Tooltip label={tooltip("tooltip.benchmark.case_remove", index + 1)}>
               <button
+                className={c("testCaseRemove")}
                 aria-label={tooltip("tooltip.benchmark.case_remove", index + 1)}
                 onClick={() =>
                   setDraft({

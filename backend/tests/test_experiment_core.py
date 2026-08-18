@@ -185,6 +185,50 @@ def test_tong_hop_dung_do_lech_chuan_mau_va_dong_gop_tung_tang():
     }
 
 
+def test_tong_hop_chi_bat_co_khi_chenh_lech_vuot_ngoai_nhieu():
+    from core.experiment_runner import calculate_experiment_summary
+
+    trials = []
+    scores = {
+        "khong_soul": [4, 6, 4, 6],
+        "soul_nhan_vien": [8, 10, 8, 10],
+        "them_ky_nang": [4.5, 6.5, 4.5, 6.5],
+    }
+    for condition, values in scores.items():
+        trials.extend({"condition": condition, "score": value} for value in values)
+
+    summary = calculate_experiment_summary(trials)
+    ro_rang = summary["conditions"][1]
+    trong_nhieu = summary["conditions"][2]
+
+    assert ro_rang["delta_vs_control"] == 4.0
+    assert ro_rang["delta_standard_error"] == pytest.approx(0.8165)
+    assert ro_rang["delta_confidence_margin_95"] == pytest.approx(1.6003)
+    assert ro_rang["delta_distinguishable"] is True, "hiệu vượt biên 95% phải bật cờ"
+
+    assert trong_nhieu["delta_vs_control"] == 0.5
+    assert trong_nhieu["delta_confidence_margin_95"] == pytest.approx(1.6003)
+    assert trong_nhieu["delta_distinguishable"] is False, "hiệu nhỏ trong nhiễu phải tắt cờ"
+
+
+def test_tong_hop_mau_don_hoac_thieu_du_lieu_khong_chia_cho_khong():
+    from core.experiment_runner import calculate_experiment_summary
+
+    summary = calculate_experiment_summary([
+        {"condition": "khong_soul", "score": 5},
+        {"condition": "soul_nhan_vien", "score": 9},
+    ])
+    doi_chung, mau_don, thieu = summary["conditions"][:3]
+
+    assert doi_chung["delta_confidence_margin_95"] == 0.0
+    assert mau_don["delta_vs_control"] == 4.0
+    assert mau_don["delta_standard_error"] is None
+    assert mau_don["delta_confidence_margin_95"] is None
+    assert mau_don["delta_distinguishable"] is False
+    assert thieu["delta_vs_control"] is None
+    assert thieu["delta_distinguishable"] is False
+
+
 def test_giam_khao_phan_loai_du_ba_dang_va_lui_an_toan_ve_answered(caplog):
     from core.experiment_runner import _valid_scores
 

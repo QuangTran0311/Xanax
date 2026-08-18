@@ -104,6 +104,9 @@ interface SummaryRow {
   conflict_rate: number;
   insufficient_answered: boolean;
   delta_vs_control: number | null;
+  delta_standard_error?: number | null;
+  delta_confidence_margin_95?: number | null;
+  delta_distinguishable?: boolean;
 }
 
 interface CaseSummary {
@@ -120,6 +123,8 @@ interface ExperimentSummary {
   score_population?: string;
   minimum_answered?: number;
   stddev_method?: string;
+  delta_confidence_level?: number;
+  delta_confidence_z?: number;
 }
 
 interface ExperimentDetail {
@@ -937,6 +942,7 @@ function ExperimentResults({
         <p className={c("experimentPartialNotice")}>{t("experiment.results.partial")}</p>
       ) : null}
       <p className={c("experimentMethodNote")}>{t("experiment.results.answered_only_note")}</p>
+      <p className={c("experimentMethodNote")}>{t("experiment.results.delta_noise_note")}</p>
       {lowSampleRows.length ? (
         <section
           className={c("experimentMethodWarning")}
@@ -981,8 +987,8 @@ function ExperimentResults({
                   <td>{row.n}</td>
                   <td>{formatCountRate(row.clarify_n, row.clarify_rate, language)}</td>
                   <td>{formatCountRate(row.conflict_n, row.conflict_rate, language)}</td>
-                  <td className={deltaClass(row.delta_vs_control)}>
-                    {formatDelta(row.delta_vs_control, language)}
+                  <td className={deltaClass(row)}>
+                    <DeltaEstimate row={row} language={language} t={t} />
                   </td>
                 </tr>
               ))}
@@ -1030,8 +1036,8 @@ function ExperimentResults({
                     <td>{row.n}</td>
                     <td>{formatCountRate(row.clarify_n, row.clarify_rate, language)}</td>
                     <td>{formatCountRate(row.conflict_n, row.conflict_rate, language)}</td>
-                    <td className={deltaClass(row.delta_vs_control)}>
-                      {formatDelta(row.delta_vs_control, language)}
+                    <td className={deltaClass(row)}>
+                      <DeltaEstimate row={row} language={language} t={t} />
                     </td>
                   </tr>
                 );
@@ -1208,6 +1214,34 @@ function formatDelta(value: number | null, language: string): string {
   return `${value > 0 ? "+" : ""}${formatScore(value, language)}`;
 }
 
+function DeltaEstimate({
+  row,
+  language,
+  t,
+}: {
+  row: SummaryRow;
+  language: string;
+  t: (key: HubMessageKey) => string;
+}) {
+  const margin = row.delta_confidence_margin_95;
+  const estimate = margin === null || margin === undefined
+    ? formatDelta(row.delta_vs_control, language)
+    : `${formatDelta(row.delta_vs_control, language)} ± ${formatScore(margin, language)}`;
+  const isControl = row.condition === "khong_soul";
+  const noiseLabel = margin === null || margin === undefined
+    ? t("experiment.delta.noise_unavailable")
+    : row.delta_distinguishable
+      ? t("experiment.delta.outside_noise")
+      : t("experiment.delta.inside_noise");
+
+  return (
+    <span className={c("experimentDeltaEstimate")}>
+      <span>{estimate}</span>
+      {!isControl && row.delta_vs_control !== null ? <small>{noiseLabel}</small> : null}
+    </span>
+  );
+}
+
 function formatCountRate(count: number, rate: number, language: string): string {
   const safeCount = count ?? 0;
   const safeRate = rate ?? 0;
@@ -1222,9 +1256,16 @@ function formatSeconds(value: number | undefined, language: string): string {
   return `${value.toLocaleString(language, { maximumFractionDigits: 2 })} s`;
 }
 
-function deltaClass(value: number | null): string {
-  if (value === null || value === 0) return "";
-  return value > 0 ? c("experimentDeltaPositive") : c("experimentDeltaNegative");
+function deltaClass(row: SummaryRow): string {
+  // Chỉ tô màu khi hiệu đã vượt biên nhiễu 95%. Tô xanh/đỏ một hiệu còn nằm
+  // trong nhiễu là mời người đọc kết luận sai; ở đây sai lầm đó có thể dẫn tới
+  // quyết định gỡ tri thức khỏi nhân viên dù dữ liệu chưa chứng minh điều gì.
+  if (!row.delta_distinguishable || row.delta_vs_control === null || row.delta_vs_control === 0) {
+    return "";
+  }
+  return row.delta_vs_control > 0
+    ? c("experimentDeltaPositive")
+    : c("experimentDeltaNegative");
 }
 
 function conditionLabel(

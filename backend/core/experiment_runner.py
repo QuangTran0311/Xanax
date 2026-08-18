@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import secrets
 import statistics
@@ -52,6 +53,7 @@ CONDITIONS: dict[str, PromptLayerFlags] = {
 
 RESPONSE_CLASSIFICATIONS = frozenset({"answered", "clarify", "conflict"})
 MIN_ANSWERED_TRIALS = 10
+NORMAL_95_Z = 1.96
 TRIAL_RESPONSE_INSTRUCTION = (
     "Hãy trả lời bằng kiến thức và bối cảnh HIỆN CÓ, không hỏi ngược chỉ vì thiếu "
     "thông tin; nếu thiếu thông tin, hãy tự đưa ra giả định hợp lý và nói rõ giả định đó."
@@ -148,7 +150,9 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             else "answered"
         )
 
-    def summarize(condition_trials: list[dict], condition: str) -> tuple[dict, float | None]:
+    def summarize(
+        condition_trials: list[dict], condition: str,
+    ) -> tuple[dict, float | None, float | None]:
         scored = [trial for trial in condition_trials
                   if trial.get("condition") == condition and trial.get("score") is not None]
         classifications = [classification_of(trial) for trial in scored]
@@ -178,40 +182,69 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             "conflict_rate": round(conflict_n / total_n, 4) if total_n else 0.0,
             "insufficient_answered": 0 < total_n and len(answered_scores) < MIN_ANSWERED_TRIALS,
             "delta_vs_control": None,
-        }, mean)
+            "delta_standard_error": None,
+            "delta_confidence_margin_95": None,
+            "delta_distinguishable": False,
+        }, mean, stddev)
+
+    def add_control_comparisons(
+        summary_rows: list[dict],
+        stats: dict[str, tuple[float | None, float | None, int]],
+    ) -> None:
+        control_mean, control_stddev, control_n = stats["khong_soul"]
+        for row in summary_rows:
+            mean, stddev, n = stats[row["condition"]]
+            if control_mean is None or mean is None:
+                continue
+
+            difference = mean - control_mean
+            row["delta_vs_control"] = round(difference, 4)
+            if row["condition"] == "khong_soul":
+                row["delta_standard_error"] = 0.0
+                row["delta_confidence_margin_95"] = 0.0
+                continue
+
+            # Với n < 2, độ lệch chuẩn mẫu chưa được ước lượng. Giữ kết quả trung
+            # tính thay vì biến một mẫu đơn lẻ có "độ lệch chuẩn 0" thành chắc chắn.
+            if (
+                n < 2
+                or control_n < 2
+                or stddev is None
+                or control_stddev is None
+            ):
+                continue
+
+            standard_error = math.sqrt(
+                (stddev ** 2 / n) + (control_stddev ** 2 / control_n)
+            )
+            confidence_margin = NORMAL_95_Z * standard_error
+            row["delta_standard_error"] = round(standard_error, 4)
+            row["delta_confidence_margin_95"] = round(confidence_margin, 4)
+            row["delta_distinguishable"] = abs(difference) > confidence_margin
 
     rows: list[dict] = []
-    means: dict[str, float | None] = {}
+    stats: dict[str, tuple[float | None, float | None, int]] = {}
     for condition in CONDITIONS:
-        row, mean = summarize(trials, condition)
-        means[condition] = mean
+        row, mean, stddev = summarize(trials, condition)
+        stats[condition] = (mean, stddev, row["n"])
         rows.append(row)
-
-    control = means.get("khong_soul")
-    for row in rows:
-        mean = means[row["condition"]]
-        if control is not None and mean is not None:
-            row["delta_vs_control"] = round(mean - control, 4)
+    add_control_comparisons(rows, stats)
 
     def delta(after: str, before: str) -> float | None:
-        a, b = means.get(after), means.get(before)
+        a, b = stats[after][0], stats[before][0]
         return round(a - b, 4) if a is not None and b is not None else None
 
     case_summaries: list[dict] = []
     case_indices = sorted({int(t["case_index"]) for t in trials if t.get("case_index") is not None})
     for case_index in case_indices:
         case_trials = [t for t in trials if int(t.get("case_index", -1)) == case_index]
-        case_means: dict[str, float | None] = {}
+        case_stats: dict[str, tuple[float | None, float | None, int]] = {}
         condition_rows: list[dict] = []
         for condition in CONDITIONS:
-            row, mean = summarize(case_trials, condition)
-            case_means[condition] = mean
+            row, mean, stddev = summarize(case_trials, condition)
+            case_stats[condition] = (mean, stddev, row["n"])
             condition_rows.append(row)
-        case_control = case_means.get("khong_soul")
-        for row in condition_rows:
-            mean = case_means[row["condition"]]
-            if case_control is not None and mean is not None:
-                row["delta_vs_control"] = round(mean - case_control, 4)
+        add_control_comparisons(condition_rows, case_stats)
         case_summaries.append({
             "case_index": case_index,
             "prompt": case_trials[0].get("prompt", "") if case_trials else "",
@@ -241,6 +274,8 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         "score_population": "answered_only",
         "minimum_answered": MIN_ANSWERED_TRIALS,
         "stddev_method": "sample_n_minus_1",
+        "delta_confidence_level": 0.95,
+        "delta_confidence_z": NORMAL_95_Z,
     }
 
 

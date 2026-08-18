@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # NGUỒN DUY NHẤT của số phiên bản. Đừng khai HUB_VERSION trong .env —
     # .env đè lên đây và sửa dòng này sẽ không có tác dụng gì.
     # Quy ước đánh số: xem mục "Đánh số phiên bản" trong README.
-    version: str = "2.13.1"
+    version: str = "2.13.2"
     description: str = "Multi-Agent Orchestration Platform powered by Hermes Agent"
 
     # Security
