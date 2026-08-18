@@ -810,6 +810,17 @@ function ExperimentDetailView({
               CSV
             </a>
           </Tooltip>
+          <Tooltip label={tooltip("tooltip.experiment.download_excel", experiment.name)}>
+            <a
+              data-testid="download-experiment-report"
+              className={c("buttonGhost")}
+              href={`/api/experiments/${experiment.id}/report.xlsx`}
+              download
+            >
+              <Icon name="download" />
+              Excel
+            </a>
+          </Tooltip>
         </div>
       </header>
 

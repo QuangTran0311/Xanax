@@ -8,6 +8,7 @@ import json
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
+from core.experiment_report_xlsx import build_experiment_report_xlsx
 from core.experiment_runner import calculate_experiment_summary, experiment_runner
 from hub.database import (
     create_experiment,
@@ -231,4 +232,24 @@ async def export_csv(experiment_id: int):
         content=content.encode("utf-8"),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="experiment_{experiment_id}.csv"'},
+    )
+
+
+@router.get("/{experiment_id}/report.xlsx")
+async def export_report_xlsx(experiment_id: int):
+    experiment = await get_experiment(experiment_id)
+    if not experiment:
+        raise HTTPException(404, "Không tìm thấy thí nghiệm")
+    trials = await list_experiment_trials(experiment_id)
+    summary = calculate_experiment_summary(trials)
+    config_snapshot = _loads(experiment.get("config_snapshot_json", "{}"), {})
+    content = build_experiment_report_xlsx(experiment, summary, config_snapshot)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="experiment_{experiment_id}_report.xlsx"'
+            )
+        },
     )

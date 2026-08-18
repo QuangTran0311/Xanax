@@ -185,6 +185,7 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             "delta_standard_error": None,
             "delta_confidence_margin_95": None,
             "delta_distinguishable": False,
+            "cohens_d": None,
         }, mean, stddev)
 
     def add_control_comparisons(
@@ -194,6 +195,8 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         control_mean, control_stddev, control_n = stats["khong_soul"]
         for row in summary_rows:
             mean, stddev, n = stats[row["condition"]]
+            if row["condition"] == "khong_soul":
+                row["cohens_d"] = 0.0
             if control_mean is None or mean is None:
                 continue
 
@@ -221,6 +224,19 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             row["delta_standard_error"] = round(standard_error, 4)
             row["delta_confidence_margin_95"] = round(confidence_margin, 4)
             row["delta_distinguishable"] = abs(difference) > confidence_margin
+
+            pooled_sd = math.sqrt(
+                (
+                    (n - 1) * stddev ** 2
+                    + (control_n - 1) * control_stddev ** 2
+                )
+                / (n + control_n - 2)
+            )
+            # Độ lệch chuẩn gộp bằng 0 không chứng minh hiệu ứng là vô hạn. Giữ None
+            # để báo cáo trung tính, giống cách CI không bịa độ chắc chắn từ mẫu thiếu.
+            if pooled_sd == 0:
+                continue
+            row["cohens_d"] = round(difference / pooled_sd, 4)
 
     rows: list[dict] = []
     stats: dict[str, tuple[float | None, float | None, int]] = {}
@@ -274,6 +290,7 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         "score_population": "answered_only",
         "minimum_answered": MIN_ANSWERED_TRIALS,
         "stddev_method": "sample_n_minus_1",
+        "effect_size_method": "cohens_d_pooled",
         "delta_confidence_level": 0.95,
         "delta_confidence_z": NORMAL_95_Z,
     }
