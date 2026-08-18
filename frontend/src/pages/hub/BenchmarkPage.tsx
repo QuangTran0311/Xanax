@@ -4,8 +4,9 @@ import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
 import { Tooltip } from "../../components/Tooltip";
 import { useTooltipText } from "../../i18n/tooltips";
-import { useLanguage } from "../../store/language";
+import { useLanguage, type Language } from "../../store/language";
 import { useHub } from "./HubContext";
+import { hubText, type HubMessageKey } from "./i18n";
 import styles from "./HubPage.module.css";
 
 const c = (name: string) => styles[name] ?? name;
@@ -20,6 +21,12 @@ export interface Benchmark {
 interface TestCase {
   prompt: string;
   criteria: string;
+}
+interface BenchmarkDraft {
+  name: string;
+  role_description: string;
+  models: string[];
+  test_cases: TestCase[];
 }
 interface Scores {
   quality: number;
@@ -51,11 +58,13 @@ export function BenchmarkPage({
 }) {
   const { language } = useLanguage();
   const vi = language === "vi";
+  const t = (key: HubMessageKey) => hubText(language, key);
   const tooltip = useTooltipText();
   const { modelPool, toast, confirm } = useHub();
   const [selected, setSelected] = useState<Benchmark | null>(null);
   const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState({
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<BenchmarkDraft>({
     name: "",
     role_description: "",
     models: [] as string[],
@@ -72,6 +81,7 @@ export function BenchmarkPage({
   useEffect(() => {
     if (createRequest <= 0) return;
     setCreating(true);
+    setEditing(false);
     setSelected(null);
     setDraft({
       name: "",
@@ -83,7 +93,9 @@ export function BenchmarkPage({
   const open = async (benchmark: Benchmark) => {
     setSelected(benchmark);
     setCreating(false);
+    setEditing(false);
     setProgress([]);
+    setResults([]);
     if (benchmark.status === "completed") {
       const data = await apiClient.get<{
         results: Array<Result & { scores?: Scores; scores_json?: string }>;
@@ -95,7 +107,7 @@ export function BenchmarkPage({
             item.scores || (JSON.parse(item.scores_json || "{}") as Scores),
         })),
       );
-    } else setResults([]);
+    }
   };
   const createAndRun = async () => {
     const cases = draft.test_cases.filter((item) => item.prompt.trim());
@@ -115,6 +127,63 @@ export function BenchmarkPage({
     setCreating(false);
     await refreshBenchmarks();
     run(benchmark.id, draft.models);
+  };
+  const edit = (benchmark: Benchmark) => {
+    setSelected(benchmark);
+    setCreating(false);
+    setEditing(true);
+    setDraft({
+      name: benchmark.name,
+      role_description: benchmark.role_description || "",
+      models: [...(benchmark.models || [])],
+      test_cases: benchmark.test_cases?.length
+        ? benchmark.test_cases.map((item) => ({
+            prompt: item.prompt,
+            criteria: item.criteria || "",
+          }))
+        : [{ prompt: "", criteria: "" }],
+    });
+  };
+  const save = async () => {
+    if (!selected) return;
+    const cases = draft.test_cases.filter((item) => item.prompt.trim());
+    if (!draft.name.trim() || !cases.length) {
+      toast(t("benchmark.validation.edit"), "error");
+      return;
+    }
+
+    try {
+      const prior = await apiClient.get<{ results: Result[] }>(
+        `/benchmarks/${selected.id}/results`,
+      );
+      // Kết quả cũ vẫn là dữ liệu có giá trị nên chủ dự án được quyền sửa. Chỉ
+      // cảnh báo vì hai lần chạy dùng hai bộ đề sẽ không còn so sánh trực tiếp.
+      if (
+        (prior.results || []).length > 0 &&
+        !(await confirm(t("benchmark.confirm.results")))
+      ) {
+        return;
+      }
+
+      const updated = await apiClient.patch<Benchmark>(
+        `/benchmarks/${selected.id}`,
+        {
+          name: draft.name.trim(),
+          role_description: draft.role_description,
+          models: draft.models,
+          test_cases: cases,
+        },
+      );
+      setSelected(updated);
+      setEditing(false);
+      await refreshBenchmarks();
+      toast(t("benchmark.toast.saved"), "success");
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : t("benchmark.error.save"),
+        "error",
+      );
+    }
   };
   const run = (id: number, models: string[]) => {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -203,15 +272,20 @@ export function BenchmarkPage({
         ))}
       </aside>
       <section className={c("detailPane")}>
-        {creating ? (
+        {creating || editing ? (
           <BenchmarkForm
             draft={draft}
             setDraft={setDraft}
-            models={modelPool
-              .map((model) => model.model_id || model.name || "")
-              .filter(Boolean)}
-            vi={vi}
-            onRun={createAndRun}
+            models={Array.from(new Set([
+              ...modelPool
+                .map((model) => model.model_id || model.name || "")
+                .filter(Boolean),
+              ...(editing ? draft.models : []),
+            ]))}
+            language={language}
+            editing={editing}
+            onSubmit={editing ? save : createAndRun}
+            onCancel={editing ? () => setEditing(false) : undefined}
           />
         ) : selected ? (
           <>
@@ -220,17 +294,30 @@ export function BenchmarkPage({
                 <h2>{selected.name}</h2>
                 <p>{selected.role_description}</p>
               </div>
-              <Tooltip
-                label={tooltip("tooltip.benchmark.delete", selected.name || "")}
-              >
-                <button
-                  className={c("dangerLink")}
-                  onClick={() => void remove(selected)}
+              <div className={c("detailHeaderActions")}>
+                <Tooltip
+                  label={tooltip("tooltip.benchmark.edit", selected.name || "")}
                 >
-                  <Icon name="trash" />
-                  {vi ? "Xoá" : "Delete"}
-                </button>
-              </Tooltip>
+                  <button
+                    className={c("buttonGhost")}
+                    onClick={() => edit(selected)}
+                  >
+                    <Icon name="edit" />
+                    {t("benchmark.action.edit")}
+                  </button>
+                </Tooltip>
+                <Tooltip
+                  label={tooltip("tooltip.benchmark.delete", selected.name || "")}
+                >
+                  <button
+                    className={c("dangerLink")}
+                    onClick={() => void remove(selected)}
+                  >
+                    <Icon name="trash" />
+                    {vi ? "Xoá" : "Delete"}
+                  </button>
+                </Tooltip>
+              </div>
             </header>
             {progress.length && !results.length ? (
               <div className={c("progressList")}>
@@ -275,25 +362,20 @@ function BenchmarkForm({
   draft,
   setDraft,
   models,
-  vi,
-  onRun,
+  language,
+  editing,
+  onSubmit,
+  onCancel,
 }: {
-  draft: {
-    name: string;
-    role_description: string;
-    models: string[];
-    test_cases: TestCase[];
-  };
-  setDraft: (draft: {
-    name: string;
-    role_description: string;
-    models: string[];
-    test_cases: TestCase[];
-  }) => void;
+  draft: BenchmarkDraft;
+  setDraft: (draft: BenchmarkDraft) => void;
   models: string[];
-  vi: boolean;
-  onRun: () => Promise<void>;
+  language: Language;
+  editing: boolean;
+  onSubmit: () => Promise<void>;
+  onCancel?: () => void;
 }) {
+  const vi = language === "vi";
   const tooltip = useTooltipText();
   return (
     <div className={c("formStack")}>
@@ -402,16 +484,39 @@ function BenchmarkForm({
           </div>
         ))}
       </div>
-      <Tooltip label={tooltip("tooltip.benchmark.run")}>
-        <button
-          data-testid="run-benchmark"
-          className={c("primaryButton")}
-          onClick={() => void onRun()}
-        >
-          <Icon name="play" />
-          {vi ? "Tạo và chạy" : "Create and run"}
-        </button>
-      </Tooltip>
+      {editing ? (
+        <div className={c("formActions")}>
+          <div />
+          <div>
+            <Tooltip label={tooltip("tooltip.benchmark.cancel")}>
+              <button className={c("buttonGhost")} onClick={onCancel}>
+                {hubText(language, "common.cancel")}
+              </button>
+            </Tooltip>
+            <Tooltip label={tooltip("tooltip.benchmark.save")}>
+              <button
+                data-testid="save-benchmark"
+                className={c("primaryButton")}
+                onClick={() => void onSubmit()}
+              >
+                <Icon name="save" />
+                {hubText(language, "benchmark.action.save")}
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+      ) : (
+        <Tooltip label={tooltip("tooltip.benchmark.run")}>
+          <button
+            data-testid="run-benchmark"
+            className={c("primaryButton")}
+            onClick={() => void onSubmit()}
+          >
+            <Icon name="play" />
+            {vi ? "Tạo và chạy" : "Create and run"}
+          </button>
+        </Tooltip>
+      )}
     </div>
   );
 }

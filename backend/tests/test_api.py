@@ -92,6 +92,113 @@ class TestAuthGuard:
         assert (await client.get("/api/skills/")).status_code == 200
 
 
+class TestBenchmarkUpdate:
+    async def _create(self, *, status: str = "pending") -> int:
+        from hub.database import create_benchmark, update_benchmark
+
+        benchmark_id = await create_benchmark(
+            name="Bộ đề ban đầu",
+            role_description="Vai trò ban đầu",
+            test_cases_json='[{"prompt":"Đề cũ","criteria":"Tiêu chí cũ"}]',
+            models_json='["model-a","model-b"]',
+        )
+        if status != "pending":
+            await update_benchmark(benchmark_id, status=status)
+        return benchmark_id
+
+    @pytest.mark.asyncio
+    async def test_sua_dung_truong_gui_va_giu_nguyen_truong_khong_gui(self, client):
+        benchmark_id = await self._create()
+
+        response = await client.patch(
+            f"/api/benchmarks/{benchmark_id}",
+            json={
+                "name": "  Bộ đề đã sửa  ",
+                "test_cases": [{
+                    "prompt": "Đề mới",
+                    "criteria": "Tiêu chí mới",
+                    "truong_thua": "không được lưu",
+                }],
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["name"] == "Bộ đề đã sửa"
+        assert data["role_description"] == "Vai trò ban đầu"
+        assert data["models"] == ["model-a", "model-b"]
+        assert data["test_cases"] == [{
+            "prompt": "Đề mới",
+            "criteria": "Tiêu chí mới",
+        }]
+
+    @pytest.mark.asyncio
+    async def test_tu_choi_ten_rong(self, client):
+        benchmark_id = await self._create()
+
+        response = await client.patch(
+            f"/api/benchmarks/{benchmark_id}", json={"name": "   "},
+        )
+
+        assert response.status_code == 422
+        assert "Tên bài đánh giá không được để trống" in response.text
+
+    @pytest.mark.asyncio
+    async def test_tu_choi_danh_sach_de_khong_co_prompt(self, client):
+        benchmark_id = await self._create()
+
+        response = await client.patch(
+            f"/api/benchmarks/{benchmark_id}",
+            json={"test_cases": [
+                {"prompt": "  ", "criteria": "Tiêu chí"},
+                {"criteria": "Vẫn không có đề"},
+            ]},
+        )
+
+        assert response.status_code == 422
+        assert "Danh sách đề phải có ít nhất một prompt không rỗng" in response.text
+
+    @pytest.mark.asyncio
+    async def test_tu_choi_models_khong_phai_danh_sach_chuoi(self, client):
+        benchmark_id = await self._create()
+
+        response = await client.patch(
+            f"/api/benchmarks/{benchmark_id}", json={"models": ["model-a", 12]},
+        )
+
+        assert response.status_code == 422
+        assert "models phải là danh sách chuỗi" in response.text
+
+    @pytest.mark.asyncio
+    async def test_id_la_tra_404(self, client):
+        response = await client.patch(
+            "/api/benchmarks/987654321", json={"name": "Tên hợp lệ"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Không tìm thấy bài đánh giá"
+
+    @pytest.mark.asyncio
+    async def test_tu_choi_sua_khi_dang_chay(self, client):
+        benchmark_id = await self._create(status="running")
+
+        response = await client.patch(
+            f"/api/benchmarks/{benchmark_id}", json={"name": "Tên mới"},
+        )
+
+        assert response.status_code == 409
+        assert "đang chạy" in response.json()["detail"]
+        assert "trộn hai bộ đề" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_patch_can_xac_thuc(self, anon_client):
+        response = await anon_client.patch(
+            "/api/benchmarks/1", json={"name": "Tên mới"},
+        )
+
+        assert response.status_code == 401
+
+
 async def _tao_file_tai_san(tmp_path, monkeypatch, ten_file: str, noi_dung: bytes,
                             mime_client: str = "application/octet-stream") -> int:
     """Tạo tài sản trực tiếp để test không phụ thuộc parser multipart."""

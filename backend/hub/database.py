@@ -1596,7 +1596,10 @@ async def create_benchmark(name: str, role_description: str = "",
 
 
 async def update_benchmark(benchmark_id: int, **kwargs) -> bool:
-    allowed = {"status", "completed_at"}
+    content_fields = {
+        "name", "role_description", "test_cases_json", "models_json",
+    }
+    allowed = content_fields | {"status", "completed_at"}
     fields, values = [], []
     for k, v in kwargs.items():
         if k in allowed and v is not None:
@@ -1605,9 +1608,17 @@ async def update_benchmark(benchmark_id: int, **kwargs) -> bool:
     if not fields:
         return False
     values.append(benchmark_id)
+    # Khoá điều kiện ngay trong UPDATE để một lượt chạy vừa chuyển sang running
+    # không thể bị route sửa nội dung chen vào giữa bước kiểm tra và bước ghi.
+    status_guard = (
+        " AND status != 'running'"
+        if any(key in content_fields and value is not None for key, value in kwargs.items())
+        else ""
+    )
     async with connect() as db:
         cur = await db.execute(
-            f"UPDATE benchmarks SET {', '.join(fields)} WHERE id = ?", values
+            f"UPDATE benchmarks SET {', '.join(fields)} WHERE id = ?{status_guard}",
+            values,
         )
         await db.commit()
         return cur.rowcount > 0
