@@ -181,6 +181,10 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         elapsed = (time.perf_counter() - start) * 1000
         response.headers["X-Process-Time"] = f"{elapsed:.2f}ms"
+        # API là dữ liệu động (trạng thái workflow, tài sản, cấu hình...). Chặn
+        # cache ở một chỗ chung để route mới không vô tình lặp lại lỗi dữ liệu cũ.
+        if request.url.path == "/api" or request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, must-revalidate"
         return response
 
     # Added last so compression wraps every HTTP response, including static assets.

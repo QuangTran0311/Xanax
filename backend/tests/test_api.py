@@ -92,6 +92,104 @@ class TestAuthGuard:
         assert (await client.get("/api/skills/")).status_code == 200
 
 
+async def _tao_file_tai_san(tmp_path, monkeypatch, ten_file: str, noi_dung: bytes,
+                            mime_client: str = "application/octet-stream") -> int:
+    """Tạo tài sản trực tiếp để test không phụ thuộc parser multipart."""
+    from api.routes import assets
+    from hub.database import create_asset
+
+    monkeypatch.setattr(assets, "ASSETS_DIR", tmp_path)
+    ten_luu = f"stored-{ten_file}"
+    (tmp_path / ten_luu).write_bytes(noi_dung)
+    return await create_asset(
+        filename=ten_file,
+        stored_path=ten_luu,
+        mime_type=mime_client,
+        size_bytes=len(noi_dung),
+        source="upload",
+    )
+
+
+class TestAssetPreview:
+    """Bản xem trước phải hữu ích nhưng không biến file upload thành XSS cùng origin."""
+
+    @pytest.mark.asyncio
+    async def test_anh_tra_inline_dung_content_type_tu_duoi_file(
+        self, client, tmp_path, monkeypatch,
+    ):
+        asset_id = await _tao_file_tai_san(
+            tmp_path, monkeypatch, "anh.png", b"\x89PNG\r\n\x1a\nnoi-dung-test",
+            # Cố tình giả MIME nguy hiểm: server tuyệt đối không được tin giá trị này.
+            mime_client="text/html",
+        )
+
+        response = await client.get(f"/api/assets/{asset_id}/preview")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["content-disposition"].startswith("inline;")
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+
+    @pytest.mark.asyncio
+    async def test_kieu_ngoai_whitelist_bi_tu_choi_415(
+        self, client, tmp_path, monkeypatch,
+    ):
+        asset_id = await _tao_file_tai_san(tmp_path, monkeypatch, "tai-lieu.pdf", b"%PDF-test")
+        response = await client.get(f"/api/assets/{asset_id}/preview")
+        assert response.status_code == 415
+        assert "không được phép xem trước" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_file_text_lon_bi_cat_va_co_co_bao(
+        self, client, tmp_path, monkeypatch,
+    ):
+        from api.routes.assets import TEXT_PREVIEW_LIMIT
+
+        asset_id = await _tao_file_tai_san(
+            tmp_path, monkeypatch, "nhat-ky.txt", b"a" * (TEXT_PREVIEW_LIMIT + 123),
+        )
+        response = await client.get(f"/api/assets/{asset_id}/preview")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/plain")
+        assert response.headers["x-preview-truncated"] == "true"
+        assert len(response.content) == TEXT_PREVIEW_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_chua_xac_thuc_khong_xem_duoc_preview(
+        self, anon_client, tmp_path, monkeypatch,
+    ):
+        asset_id = await _tao_file_tai_san(tmp_path, monkeypatch, "ghi-chu.txt", b"bi mat")
+        response = await anon_client.get(f"/api/assets/{asset_id}/preview")
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_svg_bi_tu_choi_de_chan_script_cung_origin(
+        self, client, tmp_path, monkeypatch,
+    ):
+        asset_id = await _tao_file_tai_san(
+            tmp_path, monkeypatch, "doc-hai.svg", b"<svg><script>alert(1)</script></svg>",
+            mime_client="image/svg+xml",
+        )
+        assert (await client.get(f"/api/assets/{asset_id}/preview")).status_code == 415
+
+    @pytest.mark.asyncio
+    async def test_html_bi_tu_choi_de_chan_script_cung_origin(
+        self, client, tmp_path, monkeypatch,
+    ):
+        asset_id = await _tao_file_tai_san(
+            tmp_path, monkeypatch, "doc-hai.html", b"<script>document.cookie</script>",
+            mime_client="text/html",
+        )
+        assert (await client.get(f"/api/assets/{asset_id}/preview")).status_code == 415
+
+    @pytest.mark.asyncio
+    async def test_api_tai_san_khong_duoc_cache(self, client):
+        response = await client.get("/api/assets/")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store, must-revalidate"
+
+
 class TestHealthRoutes:
     @pytest.mark.asyncio
     async def test_health_check(self, client):

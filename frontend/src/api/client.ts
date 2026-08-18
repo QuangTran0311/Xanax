@@ -55,6 +55,9 @@ export async function api<TResponse>(
 
   const response = await fetch(`${API_PREFIX}${normalized}`, {
     ...init,
+    // API trả dữ liệu vận hành thay đổi liên tục. Không để cache HTTP giữ lại
+    // một snapshot cũ khi người dùng chuyển giữa các tab vẫn đang được mount.
+    cache: "no-store",
     method,
     headers,
     body: body === undefined

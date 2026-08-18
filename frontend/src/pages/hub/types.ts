@@ -71,6 +71,7 @@ export interface AssetFile {
   mime_type?: string;
   note?: string;
   download_url: string;
+  preview_url?: string;
 }
 
 export interface AssetRecord {

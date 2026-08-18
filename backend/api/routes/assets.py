@@ -6,9 +6,10 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from hub.database import (
     create_asset, list_assets, get_asset, delete_asset,
@@ -19,9 +20,72 @@ router = APIRouter()
 
 ASSETS_DIR = Path(__file__).parent.parent.parent / "data" / "assets"
 
+# Chỉ các định dạng dưới đây được phép hiển thị cùng origin. Đặc biệt KHÔNG thêm
+# SVG/HTML: cả hai có thể chứa script và đọc cookie phiên nếu trình duyệt render
+# chúng trong origin của ứng dụng. MIME lưu trong DB đến từ client nên không được
+# dùng để quyết định; loại phản hồi chỉ được suy ra từ đuôi file do server duyệt.
+_PREVIEW_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".txt": "text/plain",
+    ".md": "text/plain",
+    ".log": "text/plain",
+    ".json": "application/json",
+}
+_TEXT_PREVIEW_TYPES = {"text/plain", "application/json"}
+# Giới hạn này là đánh đổi có chủ ý: đủ để đọc log/kết quả thông thường nhưng
+# không thể kéo nguyên file hàng trăm MB vào RAM và làm treo tab trình duyệt.
+TEXT_PREVIEW_LIMIT = 512 * 1024
+_PREVIEW_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+}
+
 
 def _safe_name(filename: str) -> str:
     return Path(filename or "file").name
+
+
+def _preview_media_type(filename: str) -> str:
+    media_type = _PREVIEW_TYPES.get(Path(filename).suffix.lower())
+    if not media_type:
+        raise HTTPException(
+            415,
+            "Kiểu file này không được phép xem trước; hãy tải file xuống để mở.",
+        )
+    return media_type
+
+
+def _inline_text_response(content: bytes, filename: str, media_type: str) -> Response:
+    truncated = len(content) > TEXT_PREVIEW_LIMIT
+    if truncated:
+        content = content[:TEXT_PREVIEW_LIMIT]
+    headers = {
+        **_PREVIEW_SECURITY_HEADERS,
+        "Content-Disposition": f"inline; filename*=utf-8''{quote(_safe_name(filename))}",
+        "X-Preview-Truncated": "true" if truncated else "false",
+    }
+    return Response(content=content, media_type=media_type, headers=headers)
+
+
+def _preview_file(target: Path, filename: str) -> Response:
+    media_type = _preview_media_type(filename)
+    if media_type in _TEXT_PREVIEW_TYPES:
+        # Chỉ đọc hơn giới hạn đúng một byte để biết có bị cắt, không nạp toàn bộ
+        # một file log khổng lồ rồi mới cắt ở bước tạo response.
+        with target.open("rb") as source:
+            content = source.read(TEXT_PREVIEW_LIMIT + 1)
+        return _inline_text_response(content, filename, media_type)
+    return FileResponse(
+        target,
+        media_type=media_type,
+        filename=_safe_name(filename),
+        content_disposition_type="inline",
+        headers=_PREVIEW_SECURITY_HEADERS,
+    )
 
 
 @router.post("/upload", status_code=201)
@@ -73,6 +137,7 @@ async def list_all():
                 "size_bytes": a["size_bytes"],
                 "mime_type": a["mime_type"],
                 "download_url": f"/api/assets/{a['id']}/download",
+                "preview_url": f"/api/assets/{a['id']}/preview",
             }],
         })
 
@@ -98,6 +163,7 @@ async def list_all():
                         "mime_type": "image/png" if key == "image_file" else "text/markdown",
                         "note": step.get("agent_name") or "",
                         "download_url": f"/api/workflow/runs/{run_id}/archive-file?path={fname}",
+                        "preview_url": f"/api/assets/workflow-runs/{run_id}/preview?path={quote(fname)}",
                     })
             if not files:
                 continue
@@ -121,6 +187,7 @@ async def list_all():
             "mime_type": "application/json",
             "note": r.get("recommendation") or "",
             "download_url": f"/api/assets/benchmark-results/{r['id']}/download",
+            "preview_url": f"/api/assets/benchmark-results/{r['id']}/preview",
         } for r in results]
         items.append({
             "id": f"benchmark-{b['id']}",
@@ -149,6 +216,33 @@ async def download_benchmark_result(result_id: int):
     )
 
 
+@router.get("/benchmark-results/{result_id}/preview")
+async def preview_benchmark_result(result_id: int):
+    r = await get_benchmark_result(result_id)
+    if not r:
+        raise HTTPException(404, "Result not found")
+    r["scores"] = json.loads(r.pop("scores_json", "{}") or "{}")
+    r["responses"] = json.loads(r.pop("responses_json", "[]") or "[]")
+    content = json.dumps(r, ensure_ascii=False, indent=2).encode("utf-8")
+    return _inline_text_response(
+        content, f"benchmark-result-{result_id}.json", "application/json"
+    )
+
+
+@router.get("/workflow-runs/{run_id}/preview")
+async def preview_workflow_file(run_id: int, path: str):
+    from core.project_storage import get_or_create_run_dir
+
+    try:
+        run_dir = (await get_or_create_run_dir(run_id)).resolve()
+    except ValueError:
+        raise HTTPException(404, "Run not found")
+    target = (run_dir / path).resolve()
+    if run_dir not in target.parents or not target.is_file():
+        raise HTTPException(404, "File not found")
+    return _preview_file(target, target.name)
+
+
 @router.get("/{asset_id}/download")
 async def download_asset(asset_id: int):
     a = await get_asset(asset_id)
@@ -158,6 +252,17 @@ async def download_asset(asset_id: int):
     if not target.is_file():
         raise HTTPException(404, "File not found on disk")
     return FileResponse(target, filename=a["filename"])
+
+
+@router.get("/{asset_id}/preview")
+async def preview_asset(asset_id: int):
+    a = await get_asset(asset_id)
+    if not a:
+        raise HTTPException(404, "Asset not found")
+    target = ASSETS_DIR / a["stored_path"]
+    if not target.is_file():
+        raise HTTPException(404, "File not found on disk")
+    return _preview_file(target, a["filename"])
 
 
 @router.delete("/{asset_id}", status_code=204)
