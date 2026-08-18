@@ -14,7 +14,7 @@ from PIL import Image
 
 from core.image_compose import compose_on_background
 from core.image_gen import (
-    extract_image_prompt, extract_image_ratio, extract_product_image,
+    extract_image_prompt, extract_image_ratio, extract_poster, extract_product_image,
     extract_product_placement, safe_product_path,
 )
 
@@ -195,6 +195,32 @@ def test_doc_khoi_vi_tri_san_pham():
 
     # Model hay viết phần trăm, viết tiếng Anh, hoặc dùng dấu '='.
     assert extract_product_placement("PRODUCT PLACEMENT\nheight = 60%\noffset: -0.03") == (0.6, -0.03)
+
+
+def test_doc_khoi_poster_json_dung_chung_ten_truong():
+    text = '''IMAGE PROMPT
+an empty background without text
+
+TỶ LỆ
+4:5
+
+POSTER
+```json
+{
+  "title": "Chàng Dev Tập Móc",
+  "tagline": "Gửi trọn yêu thương",
+  "features": ["Móc tay tỉ mỉ", "An toàn cho bé", "Quà tặng ý nghĩa", "bị cắt"],
+  "price": "299.000₫",
+  "cta": "Nhắn tin đặt hàng",
+  "handle": "@chang_dev_tap_moc"
+}
+```'''
+    poster = extract_poster(text)
+    assert set(poster) == {"title", "tagline", "features", "price", "cta", "handle"}
+    assert poster["features"] == ["Móc tay tỉ mỉ", "An toàn cho bé", "Quà tặng ý nghĩa"]
+    assert extract_image_prompt(text) == "an empty background without text"
+    assert extract_poster("IMAGE PROMPT\nx") is None
+    assert extract_poster("POSTER\n{JSON hỏng}") is None
 
 
 def test_kep_vi_tri_san_pham_ve_khoang_an_toan():

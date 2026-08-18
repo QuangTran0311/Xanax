@@ -6,22 +6,15 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 
 import httpx
 
 logger = logging.getLogger("xanax.image_gen")
-
-_FONT_CANDIDATES = [
-    "C:/Windows/Fonts/segoeui.ttf",
-    "C:/Windows/Fonts/arial.ttf",
-    "C:/Windows/Fonts/calibri.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-]
 
 # Aspect ratio → (ratio_w, ratio_h) for post-processing
 _RATIO_MAP = {
@@ -58,74 +51,6 @@ def _fit_to_ratio(img, ratio_w: int, ratio_h: int):
     y_off = (new_h - h) // 2
     bg.paste(img, (x_off, y_off))
     return bg
-
-
-def _add_gradient_text(img, text: str):
-    """Overlay gradient + styled text at bottom of image."""
-    from PIL import Image, ImageDraw, ImageFont
-
-    img = img.convert("RGBA")
-    w, h = img.size
-
-    # Gradient: transparent → dark, bottom 38% of image
-    grad_h = int(h * 0.38)
-    gradient = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(gradient)
-    for i in range(grad_h):
-        alpha = int(210 * (i / grad_h) ** 1.4)
-        y = h - grad_h + i
-        gd.line([(0, y), (w, y)], fill=(0, 0, 0, alpha))
-
-    img = Image.alpha_composite(img, gradient)
-
-    # Load font
-    font_size = max(52, w // 13)
-    font = None
-    for fc in _FONT_CANDIDATES:
-        try:
-            font = ImageFont.truetype(fc, font_size)
-            break
-        except Exception:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-
-    # Word wrap
-    draw = ImageDraw.Draw(img)
-    words = text.split()
-    lines: list[str] = []
-    current = ""
-    max_w = int(w * 0.82)
-    for word in words:
-        test = (current + " " + word).strip()
-        bb = draw.textbbox((0, 0), test, font=font)
-        if bb[2] - bb[0] <= max_w:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-
-    line_h = font_size + 14
-    total_h = len(lines) * line_h
-    margin_bottom = int(h * 0.055)
-    y_start = h - margin_bottom - total_h
-
-    for i, line in enumerate(lines):
-        bb = draw.textbbox((0, 0), line, font=font)
-        text_w = bb[2] - bb[0]
-        x = (w - text_w) // 2
-        y = y_start + i * line_h
-
-        # Multi-layer shadow for depth
-        for dx, dy, alpha in [(3, 3, 200), (-2, -2, 120), (0, 4, 160)]:
-            draw.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, alpha))
-        # Main white text
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
-
-    return img.convert("RGB")
 
 
 def _build_image_url(base_url: str) -> str:
@@ -271,7 +196,8 @@ def photo_mode_note(images: list[str], *, da_cat: bool = False) -> str:
         "2. IMAGE PROMPT chỉ tả CÁI NỀN — tuyệt đối không tả món hàng, vì món hàng "
         "là ảnh chụp thật sẽ được dán vào giữa nền.\n"
         "3. Kèm khối ẢNH SẢN PHẨM trỏ tới file .png đã cắt.\n"
-        "4. Chừa trống vùng sản phẩm sẽ nằm, đặt chữ ra ngoài vùng đó."
+        "4. IMAGE PROMPT tuyệt đối không chứa chữ; xuất nội dung chữ riêng trong "
+        "khối POSTER để code đo và vẽ sau khi ghép sản phẩm."
         + ket
     )
 
@@ -346,19 +272,29 @@ def extract_image_ratio(llm_output: str) -> tuple[int, int]:
     return (4, 5)
 
 
-def extract_text_overlay(llm_output: str) -> str | None:
-    """Parse TEXT OVERLAY block từ output Lexapro."""
-    match = re.search(
-        r"TEXT OVERLAY\s*\n(.*?)(?:\n[📍#A-Z\U0001F300-\U0001FFFF]|\Z)",
-        llm_output,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if match:
-        for line in match.group(1).splitlines():
-            line = line.strip()
-            if line and not line.startswith("-"):
-                return line
-    return None
+def extract_poster(llm_output: str) -> dict | None:
+    """Đọc JSON trong khối POSTER và chỉ giữ contract dùng chung của hai skill.
+
+    Dùng ``JSONDecoder.raw_decode`` thay vì regex bắt cặp ngoặc: chuỗi CTA có thể
+    chứa dấu ngoặc bình thường. Fence JSON Markdown là tuỳ chọn để Lexapro dễ đọc.
+    Khối vắng hoặc JSON lỗi trả None, nhờ đó output cũ đi nguyên đường cũ.
+    """
+
+    match = re.search(r"^\s*POSTER\s*:?\s*$", llm_output or "",
+                      re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return None
+    raw = (llm_output or "")[match.end():].lstrip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, count=1, flags=re.IGNORECASE)
+    try:
+        parsed, _ = json.JSONDecoder().raw_decode(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Bỏ qua khối POSTER vì JSON không hợp lệ")
+        return None
+    from core.poster_layer import normalize_poster
+    clean = normalize_poster(parsed)
+    return clean or None
 
 
 class ImageGenError(Exception):
@@ -501,6 +437,8 @@ async def generate_with_agent_models(
     notify: Callable[[str], Awaitable[None]] | None = None,
     product_overlay: str | Path | None = None,
     placement: tuple[float, float] | None = None,
+    poster: Mapping | None = None,
+    poster_palette: Mapping | None = None,
 ) -> str | None:
     """Sinh ảnh bằng đúng dàn model đã cấu hình cho nhân viên. Trả None nếu xong,
     hoặc chuỗi lỗi đã diễn giải sẵn cho người đọc nếu thất bại.
@@ -528,12 +466,32 @@ async def generate_with_agent_models(
         if not product_overlay:
             return
         from core.image_compose import compose_on_background
-        if placement:
-            scale, y_offset = placement
-            compose_on_background(product_overlay, save_path, save_path,
-                                  scale=scale, y_offset=y_offset)
+        layout = None
+        effective_placement = placement
+        if poster:
+            from PIL import Image
+            from core.poster_layer import build_poster_layout
+            with Image.open(save_path) as background:
+                layout = build_poster_layout(
+                    background.size, poster, explicit_placement=placement)
+            # Không có VỊ TRÍ SẢN PHẨM tường minh thì chính khoảng trống giữa hai
+            # khối chữ quyết định cao/xuống. Có khai báo thì build_poster_layout
+            # giữ nguyên (sau khi kẹp an toàn), đúng quyền ưu tiên của người dùng.
+            effective_placement = (layout.product_scale, layout.product_y_offset)
+
+        if effective_placement:
+            scale, y_offset = effective_placement
+            compose_on_background(
+                product_overlay, save_path, save_path, scale=scale, y_offset=y_offset)
         else:
             compose_on_background(product_overlay, save_path, save_path)
+
+        if layout:
+            from PIL import Image
+            from core.poster_layer import render_poster_layer
+            with Image.open(save_path) as composed:
+                rendered = render_poster_layer(composed, layout, palette=poster_palette)
+            rendered.save(save_path, "PNG", optimize=True)
 
     ratio_str = f"{ratio[0]}:{ratio[1]}"
     attempt_errors: list[str] = []

@@ -107,6 +107,49 @@ async def test_hoc_vien_tu_chon_vi_tri_san_pham(tmp_path, monkeypatch):
     assert drawn["placement"] == (0.78, 0.02)
 
 
+async def test_hoc_vien_truyen_khoi_poster_vao_luong_ghep_che_do_b(tmp_path, monkeypatch):
+    """POSTER chỉ được truyền khi ảnh sản phẩm thật đã qua cổng safe path."""
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "poster.db"))
+    await database.init_db()
+    _, agent = await _make_agent_with_image_skill()
+
+    from api import websocket_training as wt
+    data_root = tmp_path / "data"
+    product = data_root / "assets" / "meo-cut.png"
+    product.parent.mkdir(parents=True)
+    product.write_bytes(b"png-test")
+    monkeypatch.setattr(wt, "_DATA_ROOT", data_root)
+    monkeypatch.setattr(wt, "TRAINING_IMAGE_DIR", tmp_path / "training-images")
+
+    drawn = {}
+
+    async def fake_generate(**kwargs):
+        drawn.update(kwargs)
+        kwargs["save_path"].parent.mkdir(parents=True, exist_ok=True)
+        kwargs["save_path"].write_bytes(b"anh")
+        return None
+
+    monkeypatch.setattr("core.image_gen.generate_with_agent_models", fake_generate)
+    reply = f'''IMAGE PROMPT
+empty backdrop, absolutely no text
+
+TỶ LỆ
+4:5
+
+ẢNH SẢN PHẨM
+{product}
+
+POSTER
+{{"title": "Mèo Len", "features": ["Móc tay"], "price": "199.000₫", "cta": "Đặt ngay"}}'''
+    await wt._maybe_draw_in_class(_FakeWS(), agent, 7, reply, [1])
+
+    assert drawn["product_overlay"] == product.resolve()
+    assert drawn["poster"] == {
+        "title": "Mèo Len", "features": ["Móc tay"],
+        "price": "199.000₫", "cta": "Đặt ngay",
+    }
+
+
 async def test_ve_hong_thi_buoi_hoc_van_chay_tiep(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "c.db"))
     await database.init_db()

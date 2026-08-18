@@ -50,6 +50,19 @@ sudo useradd --system --create-home --home-dir /home/xanax \
   --shell /bin/bash xanax
 ```
 
+Lớp poster vẽ chữ tiếng Việt bằng Pillow. Cài Inter để poster có typography đẹp,
+đồng thời giữ DejaVu/Liberation làm fallback an toàn:
+
+```bash
+sudo apt install -y fonts-inter fonts-dejavu-core fonts-liberation2 fontconfig
+sudo fc-cache -f
+```
+
+Code tự vẽ thử chuỗi dấu khó trước khi nhận font, nên font thiếu glyph tiếng Việt
+sẽ bị bỏ qua. Nếu không cài Inter, app **vẫn chạy** bằng DejaVu Sans hoặc Liberation
+Sans có sẵn trên Ubuntu, nhưng nét chữ nhìn thô hơn. Nếu cả các fallback này bị
+gỡ khỏi máy, bước dựng poster sẽ báo lỗi rõ và không xuất ảnh chữ ô vuông.
+
 Nếu user đã tồn tại, `useradd` sẽ báo lỗi; kiểm tra bằng `id xanax` rồi đi tiếp.
 
 Tạo swapfile 4 GiB trước khi build hoặc chạy service. Gói VPS quảng cáo 8 GB có

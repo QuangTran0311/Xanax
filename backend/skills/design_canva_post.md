@@ -1,58 +1,46 @@
 # design_canva_post
 
 ## Mô tả
-Đọc bài đăng từ bước trước, phân tích và xuất ra JSON với các trường dữ liệu chuẩn để điền vào template Canva — không viết lại caption, chỉ trích xuất thông tin theo đúng cấu trúc.
 
-## Nguyên tắc cốt lõi
-- **Đọc bài đăng từ Context previous steps** — không tự nghĩ ra nội dung
-- **Ngắn gọn theo từng trường** — mỗi trường tối đa 1–2 dòng, không dài dòng
-- **JSON phải đúng cú pháp** — output sẽ được parse tự động, sai format sẽ fail
-- **Giữ nguyên tiếng Việt** — không dịch sang tiếng Anh
+Đọc bài đăng từ bước trước và xuất JSON nội dung thiết kế. Bộ tên trường này dùng
+chung với khối `POSTER` của `generate_post_image.md`; không tự đặt alias khác.
 
-## Các trường dữ liệu chuẩn (phải khớp với tên field trong Canva template)
+## Nguyên tắc
+
+- Đọc bài đăng từ Context previous steps, không tự nghĩ thêm nội dung.
+- Mỗi trường ngắn gọn; `features` có tối đa 3 điểm bán.
+- Giữ nguyên tiếng Việt và output JSON đúng cú pháp.
+- Thiếu dữ liệu thì dùng `""` hoặc `[]`, không viết placeholder vào nội dung.
+
+## Các trường chuẩn
 
 | Trường | Mô tả | Ví dụ |
-|--------|-------|-------|
-| `title` | Tên thương hiệu / tên sản phẩm chính | `Chàng Dev Tập Móc` |
-| `tagline` | Slogan hoặc câu hook ngắn | `Móc từng mũi nhỏ – Gửi trọn yêu thương` |
-| `feature_1` | Điểm nổi bật thứ 1 (ngắn) | `100% Handmade – móc tay tỉ mỉ` |
-| `feature_2` | Điểm nổi bật thứ 2 (ngắn) | `An toàn cho bé – sợi mềm mại` |
-| `feature_3` | Điểm nổi bật thứ 3 (ngắn) | `Quà tặng ý nghĩa mọi dịp` |
-| `cta_text` | Call-to-action chính | `Nhắn tin để đặt hàng ngay!` |
-| `website_text` | Link hoặc @handle mạng xã hội | `@chang_dev_tap_moc` |
+|---|---|---|
+| `title` | Tên thương hiệu / sản phẩm | `Chàng Dev Tập Móc` |
+| `tagline` | Slogan hoặc hook ngắn | `Móc từng mũi nhỏ – Gửi trọn yêu thương` |
+| `features` | Mảng tối đa 3 điểm bán | `["100% handmade", "An toàn cho bé"]` |
+| `price` | Giá bán nếu bài có nêu | `299.000₫` |
+| `cta` | Call-to-action | `Nhắn tin để đặt hàng ngay!` |
+| `handle` | @handle, số điện thoại hoặc link | `@chang_dev_tap_moc` |
 
-## Quy trình thực hiện
+## Quy trình
 
-### Bước 1 — Đọc Context
-- Tìm bài đăng từ step trước (thường là step 1 — Celexa)
-- Xác định: tên sản phẩm, điểm bán hàng chính, CTA, thông tin liên hệ
-
-### Bước 2 — Trích xuất từng trường
-- `title`: lấy từ tên page/brand hoặc tên sản phẩm trong bài
-- `tagline`: câu hook đầu bài hoặc slogan nếu có
-- `feature_1/2/3`: 3 bullet points hoặc điểm nổi bật từ bài đăng
-- `cta_text`: câu kêu gọi hành động cuối bài
-- `website_text`: @handle, số điện thoại, hoặc link nếu có trong context
-
-### Bước 3 — Output JSON
-Chỉ output đúng 1 JSON block, không thêm giải thích trước hay sau.
+1. Tìm bài đăng ở step trước.
+2. Lấy title, tagline, tối đa 3 feature, giá, CTA và liên hệ có thật trong bài.
+3. Chỉ output một JSON block theo đúng schema dưới đây.
 
 ## Định dạng đầu ra
 
 ```json
 {
   "title": "[Tên thương hiệu/sản phẩm]",
-  "tagline": "[Slogan hoặc câu hook ngắn gọn]",
-  "feature_1": "[Điểm nổi bật 1]",
-  "feature_2": "[Điểm nổi bật 2]",
-  "feature_3": "[Điểm nổi bật 3]",
-  "cta_text": "[Câu kêu gọi hành động]",
-  "website_text": "[@handle hoặc link]"
+  "tagline": "[Slogan hoặc hook]",
+  "features": ["[Điểm bán 1]", "[Điểm bán 2]", "[Điểm bán 3]"],
+  "price": "[Giá hoặc chuỗi rỗng]",
+  "cta": "[Kêu gọi hành động]",
+  "handle": "[@handle/liên hệ]"
 }
 ```
 
-## Lưu ý quan trọng
-- **Chỉ output JSON block duy nhất** — bọc trong ` ```json ``` `
-- Không thêm text trước hoặc sau JSON
-- Nếu không có đủ thông tin cho một trường, để giá trị là chuỗi rỗng `""`
-- Không thêm trường nào ngoài 7 trường trên
+Không thêm field ngoài schema và không đổi tên thành `feature_1`, `cta_text` hay
+`website_text`; đổi tên sẽ làm Canva và lớp poster trôi contract khỏi nhau.
