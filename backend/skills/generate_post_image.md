@@ -7,150 +7,140 @@ Lệnh VPS: sudo -u xanax /opt/xanax/.venv/bin/python /opt/xanax/backend/scripts
 # generate_post_image
 
 ## Mô tả
+
 Đọc bài đăng từ bước trước và chuẩn bị ảnh social media chuyên nghiệp. Nếu có ảnh
-sản phẩm thật, model chỉ sinh nền không chữ; code sẽ ghép sản phẩm và vẽ lớp poster
-tiếng Việt sau cùng.
+sản phẩm thật, model vẫn thiết kế TOÀN BỘ poster kể cả typography tiếng Việt, nhưng
+chừa đúng một vùng theo template để code dán ảnh sản phẩm thật vào sau cùng.
 
-## HAI CHẾ ĐỘ — chọn đúng chế độ TRƯỚC khi viết prompt
+## Hai chế độ — chọn theo dữ kiện có thật
 
-> **Người dùng gửi kèm ảnh → CHẾ ĐỘ B. Chỉ đưa chủ đề, không ảnh → CHẾ ĐỘ A.**
+> Người dùng gửi kèm ảnh → CHẾ ĐỘ B. Chỉ đưa chủ đề, không ảnh → CHẾ ĐỘ A.
 
-| | Chế độ A — model vẽ tất | Chế độ B — sản phẩm là ảnh thật |
+| | Chế độ A — model vẽ tất | Chế độ B — dùng sản phẩm thật |
 |---|---|---|
-| Khi nào | Người dùng chỉ nói chủ đề | Người dùng bấm kẹp giấy gửi ảnh vào |
-| IMAGE PROMPT tả gì | Cả thiết kế, món hàng và chữ | **CHỈ CÁI NỀN, KHÔNG CHỮ** |
-| `ẢNH SẢN PHẨM` | Không có | **Bắt buộc có** |
-| `POSTER` | Không có | Có dữ liệu để code vẽ chữ |
+| Khi nào | Không có ảnh đính kèm | Có ảnh đính kèm |
+| Model vẽ | Thiết kế, chữ và món hàng | Thiết kế và chữ; KHÔNG vẽ món hàng |
+| `ẢNH SẢN PHẨM` | Không có | Bắt buộc |
+| `TEMPLATE` | Không có | Bắt buộc |
+| `POSTER` | Không có | Không bắt buộc; có thì ép dùng đường Pillow dự phòng |
 
-Hệ thống đã tự dò ảnh đính kèm và nói thẳng chế độ trong mục "NGUỒN ẢNH". Nghe
-theo dòng đó, không tự suy lại từ lời người dùng.
-
-### Người dùng không biết kỹ thuật — đừng hỏi họ
-
-Người gửi ảnh thường là chủ shop. Họ chỉ gửi ảnh và nói muốn làm poster; mọi bước
-kỹ thuật phía sau là việc của bạn.
-
-**Cấm hỏi người dùng** đường dẫn file, tên chế độ, `cao`/`xuống`, hoặc yêu cầu họ
-tự cắt nền. Chỉ hỏi khi thiếu thông tin chỉ họ mới biết, ví dụ giá bán hay tên page.
-
-Có ảnh thật mà vẫn dùng chế độ A sẽ tạo hai món hàng chồng nhau. Chế độ B là mặc
-định cho bài bán hàng vì ảnh đăng phải dùng đúng món hàng thật.
+Hệ thống đã tự dò ảnh và chốt chế độ trong mục “NGUỒN ẢNH”. Làm theo chỉ dẫn đó,
+không hỏi người dùng đường dẫn, tên chế độ, template, tọa độ, `cao`/`xuống`, hoặc
+bắt họ tự cắt nền. Chỉ hỏi điều chỉ họ mới biết như giá hoặc tên page.
 
 ## Nguyên tắc cốt lõi
 
 - Không output lại caption; bước trước đã viết rồi.
-- Chế độ A: prompt mô tả cả thiết kế và text tiếng Việt chính xác để model vẽ.
-- Chế độ B: prompt chỉ mô tả nền và **cấm tuyệt đối mọi chữ/ký tự/logo/watermark**.
-  Chữ tiếng Việt nằm trong JSON `POSTER`, do Pillow vẽ sau khi ghép sản phẩm.
-- Chỉ output đúng format của chế độ tương ứng, không thêm giải thích.
+- Chế độ A: prompt mô tả toàn bộ thiết kế, chữ tiếng Việt và món hàng.
+- Chế độ B mặc định mới: prompt mô tả toàn bộ thiết kế và chữ tiếng Việt; không
+  vẽ món hàng, người cầm hàng hoặc vật thay thế trong vùng sản phẩm.
+- Không còn luật “cấm mọi chữ” ở chế độ B. Chữ do model vẽ là điều mong muốn.
+- Chỉ output đúng format tương ứng, không thêm lời giải thích.
 
 ## Quy trình
 
-### Bước 1 — Đọc bài đăng từ Context
+### Bước 1 — Chắt lọc nội dung
 
-Xác định tên thương hiệu/sản phẩm, hook, tối đa 3 điểm bán, giá nếu có, CTA,
-@handle/liên hệ, tone và platform. Không bịa trường bị thiếu; để chuỗi rỗng hoặc
-danh sách rỗng trong `POSTER`, code sẽ bỏ hẳn phần đó.
+Xác định tên sản phẩm/thương hiệu, một hook, tối đa 3–4 lợi ích, giá nếu có, CTA,
+@handle, tone và platform. Không bịa dữ kiện thiếu.
 
-### Bước 2 — Xác định phong cách
+### Bước 2 — Chọn phong cách
 
-- Handmade: kem/be ấm, chất liệu giấy/vải nhẹ, thân thiện.
-- Thời trang: sạch, tương phản, hình học tối giản.
-- F&B: tông ấm và sáng, nhưng không vẽ thêm đồ ăn cạnh tranh với sản phẩm thật.
+- Handmade: kem/be ấm, giấy hoặc vải nhẹ, chữ script phối chữ tròn thân thiện.
+- Thời trang: sạch, tương phản, hình học tối giản, type có nhịp điệu.
+- F&B: ấm và sáng, không thêm thức ăn cạnh tranh với sản phẩm thật.
 - Công nghệ/dịch vụ: navy, gradient hiện đại, bề mặt studio gọn.
-- Trẻ em/đồ chơi: pastel, vòm hoặc pattern rất nhẹ.
+- Trẻ em/đồ chơi: pastel, sticker, badge và pattern rất nhẹ.
 
-### Bước 3 — Soạn IMAGE PROMPT
+Model được khuyến khích dùng chữ script có chọn lọc, mũi tên chỉ chi tiết, thẻ bo
+góc, badge và sticker. Mọi thứ phải có chủ đích, không chỉ xếp chữ thành từng hàng.
 
-Chế độ A mô tả đầy đủ layout, typography, text, hình chính và trang trí.
+### Bước 3 — Chọn template ở chế độ B
 
-Chế độ B chỉ mô tả:
+Lexapro tự chọn, không hỏi người dùng:
 
-1. Nền trống dùng cho ảnh sản phẩm cắt rời: `an empty product backdrop`.
-2. Màu, gradient, ánh sáng mềm từ trên xuống và chất liệu nền.
-3. Mặt phẳng/vòm/bục tối giản để sản phẩm có chỗ đứng.
-4. Khẳng định không có món hàng, người, tay, mannequin, chữ, logo hoặc watermark.
+1. `giua-khung`: món cao và hẹp như móc khóa, búp bê. Vùng sản phẩm x 30%–70%,
+   y 22%–74%. Tiêu đề ở dải trên; 2–3 thẻ trong y 74%–88%; CTA y 88%–97%.
+2. `trai-san-pham`: cần khoe nhiều tính năng hoặc nội dung cần cột riêng. Vùng sản
+   phẩm x 6%–56%, y 26%–84%. Tiêu đề toàn ngang y 0%–24%; 3 thẻ bên phải x
+   58%–96%, y 26%–84%; CTA y 86%–97%.
+3. `luoi-the-duoi`: món bè ngang như bộ lót ly, khăn. Vùng sản phẩm x 22%–78%,
+   y 20%–58%. Tiêu đề y 0%–18%; 4 thẻ nhỏ y 60%–76%; ghi chú y 76%–86%; CTA
+   y 87%–97%.
 
-## Chế độ B — layout chữ quyết định vị trí sản phẩm
+Ưu tiên dáng món hàng trước: cao-hẹp → `giua-khung`, bè-ngang → `luoi-the-duoi`.
+Với món gần vuông, nếu có 3 lợi ích cần đọc rõ thì dùng `trai-san-pham`; nếu chỉ
+có 1–2 ý thì dùng `giua-khung` để sản phẩm giữ vai trò chính.
 
-Không còn vùng cấm cứng 17–93%. Code làm theo thứ tự:
+### Bước 4 — Soạn IMAGE PROMPT
 
-1. Tự xuống dòng và đo chiều cao thật của khối trên (`title`, `tagline`).
-2. Đo khối dưới (`features`, `price`, `cta`, `handle`).
-3. Khoảng còn lại giữa hai khối trở thành chỗ sản phẩm.
-4. Từ khoảng đó code tính `cao` và `xuống`, rồi mới ghép sản phẩm.
+Chế độ A mô tả đầy đủ layout, typography, text, món hàng và trang trí.
 
-Vì vậy prompt nền **không được tự đặt chữ ở dải trên/dưới**. Model không biết bố
-cục Pillow đã đo ra bao nhiêu và chữ model vẽ vừa dễ sai dấu vừa bị chồng chữ.
+Chế độ B phải:
 
-### Trang trí nền được phép và vật thể cạnh tranh bị cấm
+1. Nêu đúng mã template và mô tả layout của nó.
+2. Ghi TƯỜNG MINH vùng sản phẩm bằng phần trăm x/y đúng như danh sách trên.
+3. Nói rõ một ảnh chụp sản phẩm thật đã tách nền sẽ được dán vào đúng vùng đó.
+4. Ra lệnh vùng ấy phải thật sự trống: không món hàng, silhouette, placeholder,
+   người, tay, prop, card, badge, icon, chữ hay pattern mạnh bên trong vùng.
+5. Đặt toàn bộ chữ, thẻ, badge, sticker và mũi tên BÊN NGOÀI vùng sản phẩm. Mũi tên
+   được phép hướng về mép vùng nhưng không vẽ chi tiết sản phẩm giả trong vùng.
+6. Cho phép nền liên tục, gradient, ánh sáng mềm, texture rất nhẹ và mặt phẳng đứng
+   đi xuyên qua vùng chừa; đó là nền, không phải vật thể cạnh tranh.
+7. Ghi nguyên văn từng chuỗi tiếng Việt cần model vẽ trong dấu ngoặc kép.
 
-Vùng giữa được phép có trang trí **nhẹ, phẳng hoặc mang tính kiến trúc nền**:
-gradient, vòm màu, bục trơn, ánh sáng loang, giấy/vải/đá mịn, pattern rất nhạt.
-Những thứ này vẫn hở quanh ảnh cắt rời và làm poster bớt sơ sài.
+### Luật viết chữ — tránh lặp và tránh “mô tả cho có”
 
-Không được vẽ vật thể có thể bị hiểu là món hàng hay giành sự chú ý: sản phẩm
-tương tự, đồ chơi, cuộn len, giỏ, hoa lớn, thức ăn, người, tay, mannequin. Cũng
-không vẽ icon có chữ, logo, ký tự trang trí hoặc watermark.
+- Tiêu đề, tagline và các thẻ tính năng KHÔNG được dùng lại cùng một từ khóa của
+  nhau. Đọc lại toàn bộ trước khi output; nếu một từ nổi bật xuất hiện hai lần,
+  viết lại một câu bằng lợi ích khác.
+- Mỗi thẻ chỉ nói MỘT LỢI ÍCH rõ ràng cho người mua: cảm xúc nhận được, dịp dùng,
+  độ bền, sự tiện lợi, an toàn hoặc giá trị quà tặng.
+- Không dùng thẻ để tả bộ phận hoặc dáng vẻ mà người mua không hiểu được lợi ích.
 
-### Tuỳ chọn: khai báo tường minh vị trí sản phẩm
+Ví dụ SAI: tagline “Mỏ ngơ ngơ hết sức” cạnh các thẻ “Mỏ cam nhỏ”, “Mặt ngơ ngác”
+và “Dáng gọn tay”. “Mỏ” lặp hai lần, “ngơ” lặp ba lần; “Dáng gọn tay” không cho
+người mua biết họ được gì.
 
-Thông thường không cần khối này vì code tự tính theo chữ. Chỉ khai báo khi có chủ
-đích bố cục rõ; khai báo tường minh **thắng** giá trị tự tính:
+Ví dụ ĐÚNG:
 
-```
-VỊ TRÍ SẢN PHẨM
-cao: 0.78
-xuống: 0.02
-```
+- Tiêu đề: “Đà Điểu Len Vui Nhộn”
+- Tagline: “Nhìn là muốn ôm”
+- Thẻ 1: “Quà nhỏ khiến người nhận bật cười”
+- Thẻ 2: “Treo balo nhẹ tênh mỗi ngày”
+- Thẻ 3: “Sợi mềm bền màu, dùng lâu vẫn xinh”
 
-`cao` là chiều cao món hàng / chiều cao ảnh. `xuống` là độ đẩy xuống so với tâm
-ảnh (số âm đẩy lên). Code kẹp `cao 0.30–0.90`, `xuống −0.15…0.15`.
+Ba thẻ lần lượt bán cảm xúc, tình huống sử dụng và độ bền; không kể lại mỏ, mắt,
+chân hay lặp keyword của tiêu đề/tagline.
 
-Khi tự khai báo, dùng công thức sau để biết vùng sản phẩm và bóng có thể chạm:
+## Đường Pillow dự phòng
 
-```
-mép trên sản phẩm = (1 − cao) / 2 + xuống
-mép dưới          = mép trên + cao
-VÙNG CẤM          = từ (mép trên − 3%) đến (mép dưới + 5%)
-```
+Mặc định KHÔNG xuất `POSTER`. Nếu cần tương thích hoặc model typography đang lỗi,
+có thể xuất khối `POSTER` theo contract cũ; sự hiện diện của khối này chọn tường
+minh renderer Pillow (`core/poster_layer.py`). Khi đã chọn fallback, IMAGE PROMPT
+phải là nền không chữ để tránh chồng lên chữ do Pillow vẽ.
 
-3% trên và 5% dưới dành cho bóng mềm. Không nhét quá nhiều chữ vào vùng còn lại;
-nếu xung đột, bỏ bớt feature trước khi làm sản phẩm nhỏ đi.
-
-## Khối POSTER
-
-Dùng đúng sáu tên trường dùng chung với `design_canva_post.md`:
-
-| Trường | Nội dung |
-|---|---|
-| `title` | Tên thương hiệu / sản phẩm |
-| `tagline` | Hook ngắn |
-| `features` | Mảng tối đa 3 điểm bán ngắn |
-| `price` | Giá; có thể rỗng |
-| `cta` | Kêu gọi hành động |
-| `handle` | @page / liên hệ |
-
-Không đổi thành `feature_1`, `cta_text`, `website_text` hay tên gần nghĩa khác.
-Trường thiếu để `""` hoặc `[]`; code sẽ bỏ hẳn, không vẽ placeholder.
+Các field hợp lệ: `title`, `tagline`, `features` (tối đa 3), `price`, `cta`, `handle`.
+Không đổi sang alias như `feature_1`, `cta_text` hoặc `website_text`.
 
 ## Định dạng đầu ra
 
 ### Chế độ A
 
-```
+```text
 IMAGE PROMPT
-[Prompt tiếng Anh mô tả thiết kế đầy đủ, gồm text tiếng Việt cụ thể trong dấu ngoặc kép. Dài 150–300 words.]
+[Prompt tiếng Anh 150–300 từ, gồm text tiếng Việt chính xác trong dấu ngoặc kép.]
 
 TỶ LỆ
 4:5
 ```
 
-### Chế độ B
+### Chế độ B — mặc định template
 
-````text
+```text
 IMAGE PROMPT
-[Prompt tiếng Anh mô tả CÁI NỀN KHÔNG CHỮ. Dài 120–250 words.]
+[Prompt tiếng Anh 180–350 từ: thiết kế toàn poster và mọi chữ tiếng Việt; nêu vùng
+chừa bằng phần trăm, ảnh thật sẽ dán vào đó, và cấm vật thể/chữ trong riêng vùng ấy.]
 
 TỶ LỆ
 4:5
@@ -158,47 +148,49 @@ TỶ LỆ
 ẢNH SẢN PHẨM
 D:\xanax\data\assets\<tên file>_cut.png
 
-POSTER
+TEMPLATE
+giua-khung
+```
+
+Đường dẫn phải tuyệt đối và trỏ tới PNG đã tách nền. Chưa có file thì tự dùng công
+cụ cắt ảnh trước.
+
+### Chế độ B — fallback tùy chọn
+
+Chỉ thêm khối này sau `TEMPLATE` khi chủ ý dùng Pillow:
+
 ```json
+POSTER
 {
-  "title": "[Tên thương hiệu/sản phẩm]",
-  "tagline": "[Hook ngắn]",
-  "features": ["[Điểm bán 1]", "[Điểm bán 2]", "[Điểm bán 3]"],
-  "price": "[Giá hoặc chuỗi rỗng]",
-  "cta": "[Kêu gọi hành động]",
-  "handle": "[@page/liên hệ]"
+  "title": "Tên sản phẩm",
+  "tagline": "Hook ngắn",
+  "features": ["Lợi ích 1", "Lợi ích 2", "Lợi ích 3"],
+  "price": "299.000₫",
+  "cta": "Nhắn tin đặt hàng",
+  "handle": "@ten_page"
 }
-```
-````
-
-Đường dẫn phải tuyệt đối và trỏ tới PNG đã tách nền. Chưa có file thì tự dùng
-công cụ cắt ảnh trước.
-
-## Ví dụ output ĐÚNG — chế độ A
-
-```
-IMAGE PROMPT
-Create a professional Vietnamese Facebook post graphic in 4:5 vertical format
-for a handmade crochet shop called "Chàng Dev Tập Móc". Use a warm cream and
-brown layout. Render the title "Chàng Dev Tập Móc", three concise feature cards,
-a central crocheted bear product scene, and a dark footer bar reading "Nhắn tin
-để đặt hàng ngay!". Use friendly rounded typography and small stitch motifs.
-
-TỶ LỆ
-4:5
 ```
 
 ## Ví dụ output ĐÚNG — chế độ B
 
-````text
+```text
 IMAGE PROMPT
-Create an empty premium product photography backdrop in 4:5 vertical format.
-Warm cream-to-beige gradient, soft diffused light from above, a subtle shallow
-arch painted into the back wall and a smooth low studio plinth near the lower
-third. Add only a very faint paper texture and restrained ambient shadows. Keep
-the composition calm and spacious around the center. Background decoration only:
-no products, toys, yarn balls, baskets, people, hands or mannequins. Absolutely
-no text, letters, numbers, logos, signage or watermarks anywhere in the image.
+Create a polished Vietnamese 4:5 social poster using the giua-khung template for
+a tall, narrow handmade ostrich keychain. Use a warm cream and apricot palette,
+playful editorial typography, one restrained handwritten script accent, rounded
+feature cards, a small star sticker and thin hand-drawn arrows. Render the exact
+Vietnamese title "Đà Điểu Len Vui Nhộn" across the top band and the tagline "Nhìn
+là muốn ôm" beneath it. Below the reserved product area, render three distinct
+benefit cards: "Quà nhỏ khiến người nhận bật cười", "Treo balo nhẹ tênh mỗi ngày",
+and "Sợi mềm bền màu, dùng lâu vẫn xinh". Add the CTA "Nhắn tin đặt hàng" in the
+bottom bar and "@chang_dev_tap_moc" in small type.
+
+Reserve the exact rectangle x=30% to 70%, y=22% to 74% for a real cut-out product
+photograph that will be pasted there afterward. This rectangle must be genuinely
+empty: no product, toy, animal, silhouette, placeholder, person, hand, prop, card,
+badge, icon, lettering or strong pattern inside it. Keep every typography and
+decoration outside it. Only the continuous cream gradient, soft studio lighting
+and a subtle grounding plane may pass through the reserved rectangle.
 
 TỶ LỆ
 4:5
@@ -206,34 +198,22 @@ TỶ LỆ
 ẢNH SẢN PHẨM
 D:\xanax\data\assets\76da0bf8_IMG_2981_cut.png
 
-POSTER
-```json
-{
-  "title": "Chàng Dev Tập Móc",
-  "tagline": "Móc từng mũi nhỏ – Gửi trọn yêu thương",
-  "features": [
-    "100% handmade – móc tay tỉ mỉ",
-    "Sợi mềm mại, an toàn cho bé",
-    "Quà tặng ý nghĩa mọi dịp"
-  ],
-  "price": "299.000₫",
-  "cta": "Nhắn tin để đặt hàng ngay!",
-  "handle": "@chang_dev_tap_moc"
-}
+TEMPLATE
+giua-khung
 ```
-````
 
 ## Ví dụ output SAI
 
-- ❌ Chế độ B có bất kỳ chữ/logo/watermark nào trong IMAGE PROMPT.
-- ❌ Chế độ B tả lại món hàng, người hoặc vật thể cạnh tranh.
-- ❌ Quên `ẢNH SẢN PHẨM` hoặc `POSTER` khi có ảnh thật.
-- ❌ Dùng tên field khác contract (`feature_1`, `cta_text`, `website_text`).
-- ❌ Vẫn bắt model chừa cứng vùng 17–93%; vùng này nay do code đo động.
-- ❌ Viết caption hoặc giải thích ngoài format.
+- Chế độ B chỉ tả nền hoặc cấm mọi chữ; model phải thiết kế cả poster và typography.
+- Chế độ B vẽ món hàng, placeholder hoặc sticker lọt vào vùng sản phẩm.
+- Prompt nói “chừa chỗ ở giữa” nhưng không ghi phần trăm x/y chính xác.
+- Quên `ẢNH SẢN PHẨM` hoặc `TEMPLATE` khi có ảnh thật.
+- Xuất `POSTER` theo thói quen dù không có chủ ý dùng fallback.
+- Lặp keyword giữa tiêu đề, tagline và thẻ; hoặc dùng thẻ tả bộ phận thay vì lợi ích.
+- Viết caption hay lời giải thích ngoài format.
 
 ## Lưu ý
 
-- Chế độ A vẫn cần text cụ thể trong prompt vì model vẽ toàn bộ thiết kế.
-- Chế độ B tuyệt đối không có text trong prompt; JSON giữ nguyên tiếng Việt.
 - Facebook Feed dùng 4:5; Story/TikTok dùng 9:16; square dùng 1:1.
+- Code sẽ đo vùng chừa sau khi sinh. Không đạt thì tự sinh lại đúng một lần với
+  prompt siết mạnh; lần hai vẫn không đạt thì vẫn ghép và ghi cảnh báo có số đo.

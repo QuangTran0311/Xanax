@@ -206,16 +206,13 @@ async def _stream_student(ws: WebSocket, agent: dict, history: list[dict],
         "bằng công cụ), hãy thêm khối này ngay sau TỶ LỆ:\n"
         "  ẢNH SẢN PHẨM\n"
         "  <đường dẫn tuyệt đối tới file .png đã tách nền>\n"
-        "  Lúc đó IMAGE PROMPT chỉ mô tả CÁI NỀN — đừng tả món hàng nữa, vì sản "
-        "phẩm sẽ được dán vào giữa nền bằng chính ảnh chụp thật. Tả nền, ánh sáng, "
-        "chất liệu mặt phẳng, chỗ trống để đặt chữ. Chừa khoảng giữa cho sản phẩm.\n"
-        "- Muốn tự chỉnh cỡ và chỗ đặt món hàng thì thêm khối này sau ẢNH SẢN PHẨM:\n"
-        "  VỊ TRÍ SẢN PHẨM\n"
-        "  cao: 0.78\n"
-        "  xuống: 0.02\n"
-        "  `cao` là chiều cao món hàng so với chiều cao ảnh, `xuống` là đẩy xuống "
-        "dưới tâm. Không khai báo thì dùng mặc định 0.68 / 0.04. Đổi số thì vùng "
-        "phải chừa trống cũng đổi theo — xem công thức trong kỹ năng tạo ảnh.",
+        "  Lúc đó IMAGE PROMPT mô tả TOÀN BỘ thiết kế poster và chữ tiếng Việt, "
+        "nhưng đừng tả/vẽ món hàng vì ảnh chụp thật sẽ được dán vào sau.\n"
+        "- Thêm khối TEMPLATE sau ẢNH SẢN PHẨM và chọn mã theo kỹ năng. Prompt phải "
+        "ghi đúng phần trăm x/y của vùng sản phẩm, nói rõ ảnh thật sẽ dán vào đó, "
+        "và giữ riêng vùng ấy sạch vật thể, chữ, card, badge, icon hay pattern mạnh.\n"
+        "- Mặc định không xuất POSTER. Chỉ thêm POSTER khi chủ ý dùng đường Pillow "
+        "dự phòng; lúc đó prompt mới là nền không chữ để tránh chồng chữ.",
         photo_note,
         tools_note,
     ]))
@@ -350,7 +347,8 @@ async def _maybe_draw_in_class(ws, agent: dict, session_id: int, full: str,
 
     from core.image_gen import (
         extract_image_prompt, extract_image_ratio, extract_poster, extract_product_image,
-        extract_product_placement, generate_with_agent_models, safe_product_path,
+        extract_product_placement, extract_template_code, generate_with_agent_models,
+        safe_product_path,
     )
 
     prompt = extract_image_prompt(full)
@@ -370,8 +368,11 @@ async def _maybe_draw_in_class(ws, agent: dict, session_id: int, full: str,
 
     generate_kwargs = {}
     poster = extract_poster(full)
-    if overlay and poster:
-        generate_kwargs["poster"] = poster
+    if overlay:
+        generate_kwargs["composition_mode"] = "fallback" if poster else "template"
+        generate_kwargs["template_code"] = extract_template_code(full)
+        if poster:
+            generate_kwargs["poster"] = poster
     err = await generate_with_agent_models(
         prompt=prompt, ratio=extract_image_ratio(full),
         model_pool_ids=model_pool_ids or [], save_path=save_dir / name, notify=_notice,

@@ -13,8 +13,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageChops, ImageFilter, ImageMath, ImageStat
+
+if TYPE_CHECKING:
+    from core.poster_templates import NormalizedRegion
 
 logger = logging.getLogger("xanax.image_compose")
 
@@ -129,7 +133,7 @@ def decontaminate_edge(product: Image.Image) -> Image.Image:
 def compose_on_background(
     product_path: str | Path, background_path: str | Path, output_path: str | Path,
     *, scale: float = _DEFAULT_SCALE, y_offset: float = _DEFAULT_Y_OFFSET,
-    shadow: bool = True,
+    shadow: bool = True, product_region: "NormalizedRegion | None" = None,
 ) -> Path:
     """Dán sản phẩm (PNG có alpha) vào giữa tấm nền, kèm bóng đổ mềm.
 
@@ -137,6 +141,9 @@ def compose_on_background(
     `y_offset` — đẩy xuống dưới tâm bao nhiêu phần chiều cao nền. Đặt sản phẩm
                  đúng tâm hình học trông bị "trôi lên", vì mắt người coi khoảng
                  trống phía trên là một phần của bố cục.
+    `product_region` — nếu có thì thắng scale/y_offset: đặt ảnh vừa khít cả chiều
+                       rộng lẫn cao của ô, giữ tỷ lệ, canh ngang giữa và canh đáy.
+                       Canh đáy khiến món hàng có cảm giác đứng trên mặt phẳng.
     """
     product = Image.open(product_path).convert("RGBA")
     background = Image.open(background_path).convert("RGBA")
@@ -159,15 +166,27 @@ def compose_on_background(
         product = product.crop(bbox)
 
     bg_w, bg_h = background.size
-    target_h = max(1, int(bg_h * scale))
-    target_w = max(1, int(product.width * target_h / product.height))
-    if target_w > bg_w * _MAX_WIDTH_RATIO:
-        target_w = int(bg_w * _MAX_WIDTH_RATIO)
-        target_h = max(1, int(product.height * target_w / product.width))
+    if product_region is not None:
+        left = round(product_region.left * bg_w)
+        top = round(product_region.top * bg_h)
+        right = round(product_region.right * bg_w)
+        bottom = round(product_region.bottom * bg_h)
+        region_w = max(1, right - left)
+        region_h = max(1, bottom - top)
+        fit = min(region_w / product.width, region_h / product.height)
+        target_w = max(1, round(product.width * fit))
+        target_h = max(1, round(product.height * fit))
+        x = left + (region_w - target_w) // 2
+        y = bottom - target_h
+    else:
+        target_h = max(1, int(bg_h * scale))
+        target_w = max(1, int(product.width * target_h / product.height))
+        if target_w > bg_w * _MAX_WIDTH_RATIO:
+            target_w = int(bg_w * _MAX_WIDTH_RATIO)
+            target_h = max(1, int(product.height * target_w / product.width))
+        x = (bg_w - target_w) // 2
+        y = int((bg_h - target_h) / 2 + bg_h * y_offset)
     product = product.resize((target_w, target_h), Image.LANCZOS)
-
-    x = (bg_w - target_w) // 2
-    y = int((bg_h - target_h) / 2 + bg_h * y_offset)
 
     canvas = background.copy()
     if shadow:

@@ -804,7 +804,8 @@ async def _maybe_generate_image(
 
     from core.image_gen import (
         extract_image_prompt, extract_image_ratio, extract_poster, extract_product_image,
-        extract_product_placement, generate_with_agent_models, safe_product_path,
+        extract_product_placement, extract_template_code, generate_with_agent_models,
+        safe_product_path,
     )
     from core.project_storage import get_or_create_run_dir
     from core.slugify import slugify
@@ -840,10 +841,13 @@ async def _maybe_generate_image(
 
     generate_kwargs = {}
     poster = extract_poster(full_output)
-    # Chỉ truyền keyword mới khi thật sự có POSTER: output cũ và các adapter cũ
-    # giữ nguyên contract, còn chế độ A không có ảnh thật cũng không bị vẽ chồng.
-    if overlay and poster:
-        generate_kwargs["poster"] = poster
+    if overlay:
+        # Có POSTER là yêu cầu tường minh đi đường Pillow dự phòng. Không có thì
+        # template là mặc định mới và model đã tự vẽ toàn bộ typography.
+        generate_kwargs["composition_mode"] = "fallback" if poster else "template"
+        generate_kwargs["template_code"] = extract_template_code(full_output)
+        if poster:
+            generate_kwargs["poster"] = poster
     err = await generate_with_agent_models(
         prompt=img_prompt, ratio=ratio, model_pool_ids=model_pool_ids or [],
         save_path=save_path, notify=_notice, product_overlay=overlay,

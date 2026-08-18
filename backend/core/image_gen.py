@@ -80,6 +80,20 @@ def extract_image_prompt(llm_output: str) -> str | None:
     return None
 
 
+def extract_template_code(llm_output: str) -> str:
+    """Đọc mã trong khối TEMPLATE; thiếu/lạ đều dùng template mặc định.
+
+    Việc lùi an toàn nằm ở module dữ liệu thay vì rải danh sách mã trong parser,
+    nên thêm template mới không phải sửa hàm này.
+    """
+    match = re.search(
+        r"^\s*TEMPLATE\s*:?\s*(?:\n\s*)?([^\s`]+)",
+        llm_output or "", re.MULTILINE | re.IGNORECASE,
+    )
+    from core.poster_templates import get_template
+    return get_template(match.group(1) if match else None).code
+
+
 def extract_product_image(llm_output: str) -> str | None:
     """Đường dẫn ảnh sản phẩm đã tách nền, nếu nhân viên khai báo.
 
@@ -193,11 +207,10 @@ def photo_mode_note(images: list[str], *, da_cat: bool = False) -> str:
         "đưa đường dẫn, đặt tên file, chọn thông số hay nhắc tên chế độ.\n"
         "Tự làm đủ các bước:\n"
         + buoc_mot +
-        "2. IMAGE PROMPT chỉ tả CÁI NỀN — tuyệt đối không tả món hàng, vì món hàng "
-        "là ảnh chụp thật sẽ được dán vào giữa nền.\n"
+        "2. IMAGE PROMPT tả TOÀN BỘ thiết kế poster kể cả chữ tiếng Việt, nhưng "
+        "không vẽ món hàng; chừa đúng vùng sản phẩm của template vì ảnh thật sẽ dán vào đó.\n"
         "3. Kèm khối ẢNH SẢN PHẨM trỏ tới file .png đã cắt.\n"
-        "4. IMAGE PROMPT tuyệt đối không chứa chữ; xuất nội dung chữ riêng trong "
-        "khối POSTER để code đo và vẽ sau khi ghép sản phẩm."
+        "4. Kèm khối TEMPLATE. Chỉ xuất POSTER nếu chủ ý dùng đường Pillow dự phòng."
         + ket
     )
 
@@ -439,6 +452,8 @@ async def generate_with_agent_models(
     placement: tuple[float, float] | None = None,
     poster: Mapping | None = None,
     poster_palette: Mapping | None = None,
+    template_code: str | None = None,
+    composition_mode: str | None = None,
 ) -> str | None:
     """Sinh ảnh bằng đúng dàn model đã cấu hình cho nhân viên. Trả None nếu xong,
     hoặc chuỗi lỗi đã diễn giải sẵn cho người đọc nếu thất bại.
@@ -460,15 +475,29 @@ async def generate_with_agent_models(
         if notify:
             await notify(text)
 
-    # Có ảnh sản phẩm thật thì model chỉ vẽ NỀN, rồi dán sản phẩm lên. Vẽ ra một
-    # tấm rồi ghép đè: nền được sinh ở đúng kích thước cuối nên không phải co kéo.
+    # TEMPLATE là đường mặc định. POSTER cũ tự chọn fallback để output 2.10.x và
+    # các adapter chưa nâng cấp vẫn chạy; nơi gọi cũng có thể ép tường minh bằng
+    # composition_mode="template" hoặc "fallback".
+    if composition_mode is None:
+        resolved_mode = "fallback" if poster else "template"
+    else:
+        resolved_mode = composition_mode.strip().lower()
+        if resolved_mode not in {"template", "fallback"}:
+            logger.warning("Chế độ ghép %r không hợp lệ — dùng template", composition_mode)
+            resolved_mode = "template"
+
+    from core.poster_templates import get_template
+    selected_template = get_template(template_code)
+
+    # Có ảnh sản phẩm thật thì model thiết kế poster (kể cả chữ), rồi dán sản phẩm
+    # vào đúng vùng chừa. Nền sinh ở kích thước cuối nên không phải co kéo.
     def _compose_if_needed() -> None:
         if not product_overlay:
             return
         from core.image_compose import compose_on_background
         layout = None
         effective_placement = placement
-        if poster:
+        if resolved_mode == "fallback" and poster:
             from PIL import Image
             from core.poster_layer import build_poster_layout
             with Image.open(save_path) as background:
@@ -479,7 +508,12 @@ async def generate_with_agent_models(
             # giữ nguyên (sau khi kẹp an toàn), đúng quyền ưu tiên của người dùng.
             effective_placement = (layout.product_scale, layout.product_y_offset)
 
-        if effective_placement:
+        if resolved_mode == "template":
+            compose_on_background(
+                product_overlay, save_path, save_path,
+                product_region=selected_template.product_region,
+            )
+        elif effective_placement:
             scale, y_offset = effective_placement
             compose_on_background(
                 product_overlay, save_path, save_path, scale=scale, y_offset=y_offset)
@@ -492,6 +526,51 @@ async def generate_with_agent_models(
             with Image.open(save_path) as composed:
                 rendered = render_poster_layer(composed, layout, palette=poster_palette)
             rendered.save(save_path, "PNG", optimize=True)
+
+    async def _run_image_model(pool_entry: Mapping, image_prompt: str, target: Path,
+                               usage_state: dict) -> None:
+        """Một lần gọi thật, dùng chung cho lần đầu và lần siết vùng trống."""
+        if (pool_entry.get("api_style") or "") == "codex_cli":
+            from core.cli_provider import generate_image_via_codex
+            await generate_image_via_codex(
+                prompt=image_prompt, save_path=target,
+                model_id=pool_entry["model_id"],
+                codex_home=(pool_entry.get("cli_config_dir") or "").strip() or None,
+                ratio=ratio,
+            )
+        else:
+            await generate_image(
+                prompt=image_prompt, base_url=pool_entry["base_url"],
+                api_key=pool_entry["api_key"], model=pool_entry["model_id"],
+                save_path=target, ratio=ratio, usage_state=usage_state,
+            )
+
+    async def _record_usage(pool_entry: Mapping, usage_state: dict, model_label: str) -> None:
+        for record in (record_model_usage, record_model_usage_hourly, record_model_call_log):
+            try:
+                await record(pool_entry["id"], usage_state["tokens_in"],
+                             usage_state["tokens_out"], usage_state["tokens_cache"])
+            except Exception:
+                logger.exception("Không ghi được usage cho lần tạo ảnh bằng %s", model_label)
+
+    def _measure_background(path: Path):
+        from PIL import Image
+        from core.poster_background import measure_empty_product_region
+        with Image.open(path) as image:
+            return measure_empty_product_region(image, selected_template.product_region)
+
+    def _strict_empty_prompt(original: str) -> str:
+        r = selected_template.product_region
+        return original.rstrip() + (
+            "\n\nCRITICAL RETRY CORRECTION: The rectangular product reservation from "
+            f"x={r.left:.0%} to {r.right:.0%} and y={r.top:.0%} to {r.bottom:.0%} "
+            "must be genuinely empty background. A real cut-out product photograph will be "
+            "pasted over this exact rectangle. Remove every product, prop, character, icon, "
+            "badge, card, lettering, strong pattern and decorative object from inside it. "
+            "Do not draw a placeholder or silhouette there. Keep all typography and design "
+            "elements strictly outside this rectangle. Only a smooth continuous backdrop "
+            "and subtle lighting may pass through it."
+        )
 
     ratio_str = f"{ratio[0]}:{ratio[1]}"
     attempt_errors: list[str] = []
@@ -523,22 +602,7 @@ async def generate_with_agent_models(
             attempted_any = True
             usage_state = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
             try:
-                if api_style == "codex_cli":
-                    # Codex tự chọn nơi lưu rồi ta copy về; không trả usage nên
-                    # bảng chi phí ghi 0 — đúng bản chất, ảnh nằm trong gói thuê bao.
-                    from core.cli_provider import generate_image_via_codex
-                    await generate_image_via_codex(
-                        prompt=prompt, save_path=save_path,
-                        model_id=pool_entry["model_id"],
-                        codex_home=(pool_entry.get("cli_config_dir") or "").strip() or None,
-                        ratio=ratio,
-                    )
-                else:
-                    await generate_image(
-                        prompt=prompt, base_url=pool_entry["base_url"],
-                        api_key=pool_entry["api_key"], model=pool_entry["model_id"],
-                        save_path=save_path, ratio=ratio, usage_state=usage_state,
-                    )
+                await _run_image_model(pool_entry, prompt, save_path, usage_state)
             except ImageGenError as img_err:
                 logger.warning("Tạo ảnh bằng model %s thất bại ở vòng %s: %s",
                                model_label, round_index + 1, img_err)
@@ -546,12 +610,45 @@ async def generate_with_agent_models(
                 failed_label = model_label
                 continue
 
-            for record in (record_model_usage, record_model_usage_hourly, record_model_call_log):
-                try:
-                    await record(pool_entry["id"], usage_state["tokens_in"],
-                                 usage_state["tokens_out"], usage_state["tokens_cache"])
-                except Exception:
-                    logger.exception("Không ghi được usage cho lần tạo ảnh bằng %s", model_label)
+            await _record_usage(pool_entry, usage_state, model_label)
+
+            # Chỉ template mới cần vùng rỗng. Fallback vẽ chữ bằng Pillow trên nền
+            # trống cũ nên giữ nguyên hành vi 2.10.x và không phát sinh lần gọi model.
+            if product_overlay and resolved_mode == "template":
+                first_measurement = _measure_background(save_path)
+                logger.info(
+                    "Đo vùng chừa template %s lần 1: %s",
+                    selected_template.code, first_measurement.log_summary(),
+                )
+                if not first_measurement.empty:
+                    await _say("⚠️ Model chưa chừa sạch vùng sản phẩm, đang siết prompt và vẽ lại một lần...")
+                    retry_path = save_path.with_name(save_path.stem + "-empty-retry.png")
+                    retry_usage = {"tokens_in": 0, "tokens_out": 0, "tokens_cache": 0}
+                    try:
+                        await _run_image_model(
+                            pool_entry, _strict_empty_prompt(prompt), retry_path, retry_usage)
+                        await _record_usage(pool_entry, retry_usage, model_label)
+                        retry_path.replace(save_path)
+                        second_measurement = _measure_background(save_path)
+                    except Exception as retry_exc:
+                        # Giữ ảnh lần một: retry là lớp bảo vệ chất lượng, không
+                        # được biến một lần retry lỗi thành mất luôn poster đã có.
+                        logger.warning(
+                            "Sinh lại vùng chừa template %s thất bại; vẫn ghép ảnh lần 1: %s; số đo: %s",
+                            selected_template.code, retry_exc, first_measurement.log_summary(),
+                        )
+                    else:
+                        logger.info(
+                            "Đo vùng chừa template %s lần 2: %s",
+                            selected_template.code, second_measurement.log_summary(),
+                        )
+                        if not second_measurement.empty:
+                            logger.warning(
+                                "Model vẫn không chừa sạch vùng sản phẩm sau 2 lần; vẫn ghép để có poster. "
+                                "template=%s; lần_1={%s}; lần_2={%s}",
+                                selected_template.code, first_measurement.log_summary(),
+                                second_measurement.log_summary(),
+                            )
 
             if product_overlay:
                 await _say("🧩 Đang ghép ảnh sản phẩm lên nền...")
