@@ -3,10 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { apiClient } from "../../api/client";
 import { enqueueToast, setToastAnimations } from "../../components/Toast";
 import { STORAGE_KEYS } from "../../store/keys";
+import { useWebSocket } from "../../ws/useWebSocket";
 import type {
   AgentRecord,
   MeetingRecord,
   ModelRecord,
+  NotificationRecord,
   ProjectRecord,
   ProjectSubtab,
   SkillRecord,
@@ -39,6 +41,15 @@ interface HubContextValue extends HubCollections {
   refreshMeetings: () => Promise<void>;
   refreshModelPool: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  notifications: NotificationRecord[];
+  unreadNotificationCount: number;
+  selectedNotification: NotificationRecord | null;
+  openNotification: (notification: NotificationRecord) => void;
+  closeNotification: () => void;
+  refreshNotifications: () => Promise<void>;
+  markNotificationRead: (id: number) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  resolveNotification: (id: number) => Promise<void>;
   toast: (message: string, kind?: ToastKind) => void;
   confirm: (message: string) => Promise<boolean>;
   confirmState: ConfirmState | null;
@@ -46,6 +57,12 @@ interface HubContextValue extends HubCollections {
 }
 
 const HubContext = createContext<HubContextValue | null>(null);
+
+interface NotificationWsEvent {
+  type: string;
+  unread_count?: number;
+  notification?: NotificationRecord;
+}
 
 export function HubProvider({ children }: { children: React.ReactNode }) {
   const [collections, setCollections] = useState<HubCollections>({ agents: [], skills: [], projects: [], meetings: [], modelPool: [] });
@@ -56,6 +73,9 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
   const [sidebarCompact, setSidebarCompactState] = useState(() => localStorage.getItem(STORAGE_KEYS.sidebarIconMode) === "1");
   const [animations, setAnimationsState] = useState(() => localStorage.getItem(STORAGE_KEYS.animations) !== "0");
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [selectedNotification, setSelectedNotification] = useState<NotificationRecord | null>(null);
 
   const update = useCallback(<K extends keyof HubCollections>(key: K, value: HubCollections[K]) => {
     setCollections((current) => ({ ...current, [key]: value }));
@@ -70,6 +90,77 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
   const refreshAll = useCallback(async () => {
     await Promise.allSettled([refreshAgents(), refreshSkills(), refreshProjects(), refreshMeetings(), refreshModelPool()]);
   }, [refreshAgents, refreshMeetings, refreshModelPool, refreshProjects, refreshSkills]);
+
+  const refreshNotifications = useCallback(async () => {
+    const [list, count] = await Promise.all([
+      apiClient.get<{ notifications: NotificationRecord[] }>("/notifications?limit=30"),
+      apiClient.get<{ count: number }>("/notifications/unread-count"),
+    ]);
+    setNotifications(list.notifications || []);
+    setUnreadNotificationCount(Number(count.count || 0));
+    setSelectedNotification((current) => current
+      ? (list.notifications || []).find((item) => item.id === current.id) || current
+      : null);
+  }, []);
+
+  const onNotificationMessage = useCallback((event: NotificationWsEvent) => {
+    if (typeof event.unread_count === "number") setUnreadNotificationCount(event.unread_count);
+    if (event.type === "notification.created" && event.notification) {
+      enqueueToast(
+        event.notification.title,
+        event.notification.severity === "error" ? "error" : "info",
+      );
+    }
+    if (event.type !== "pong") void refreshNotifications();
+  }, [refreshNotifications]);
+
+  const notificationSocket = useWebSocket<NotificationWsEvent>({
+    path: "/ws/notifications",
+    onMessage: onNotificationMessage,
+    onOpen: () => { void refreshNotifications(); },
+  });
+
+  useEffect(() => {
+    void refreshNotifications().catch(() => undefined);
+  }, [refreshNotifications]);
+
+  useEffect(() => {
+    if (notificationSocket.state === "open" || notificationSocket.state === "auth-error") return;
+    const timer = window.setInterval(() => {
+      void refreshNotifications().catch(() => undefined);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [notificationSocket.state, refreshNotifications]);
+
+  const markNotificationRead = useCallback(async (id: number) => {
+    const updated = await apiClient.post<NotificationRecord>(`/notifications/${id}/read`);
+    setNotifications((current) => current.map((item) => item.id === id ? updated : item));
+    setSelectedNotification((current) => current?.id === id ? updated : current);
+    setUnreadNotificationCount((current) => Math.max(0, current - 1));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(async () => {
+    await apiClient.post("/notifications/read-all");
+    setNotifications((current) => current.map((item) => item.status === "unread"
+      ? { ...item, status: "read" as const, read_at: new Date().toISOString() }
+      : item));
+    setSelectedNotification((current) => current?.status === "unread"
+      ? { ...current, status: "read" as const, read_at: new Date().toISOString() }
+      : current);
+    setUnreadNotificationCount(0);
+  }, []);
+
+  const resolveNotification = useCallback(async (id: number) => {
+    const updated = await apiClient.post<NotificationRecord>(`/notifications/${id}/resolve`);
+    setNotifications((current) => current.map((item) => item.id === id ? updated : item));
+    setSelectedNotification((current) => current?.id === id ? updated : current);
+    void refreshNotifications();
+  }, [refreshNotifications]);
+
+  const openNotification = useCallback((notification: NotificationRecord) => {
+    setSelectedNotification(notification);
+  }, []);
+  const closeNotification = useCallback(() => setSelectedNotification(null), []);
 
   useEffect(() => {
     let active = true;
@@ -103,8 +194,11 @@ export function HubProvider({ children }: { children: React.ReactNode }) {
     currentProjectSubtab, setCurrentProjectSubtab,
     sidebarCompact, setSidebarCompact, animations, setAnimations,
     refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll,
+    notifications, unreadNotificationCount, selectedNotification,
+    openNotification, closeNotification, refreshNotifications,
+    markNotificationRead, markAllNotificationsRead, resolveNotification,
     toast, confirm, confirmState, answerConfirm,
-  }), [collections, username, loading, currentProjectId, currentProjectSubtab, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, toast, confirm, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
+  }), [collections, username, loading, currentProjectId, currentProjectSubtab, sidebarCompact, animations, refreshAgents, refreshSkills, refreshProjects, refreshMeetings, refreshModelPool, refreshAll, notifications, unreadNotificationCount, selectedNotification, openNotification, closeNotification, refreshNotifications, markNotificationRead, markAllNotificationsRead, resolveNotification, toast, confirm, confirmState, answerConfirm, setSidebarCompact, setAnimations]);
 
   return <HubContext.Provider value={value}>{children}</HubContext.Provider>;
 }

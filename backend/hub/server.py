@@ -105,6 +105,15 @@ async def lifespan(_app: FastAPI):
     from core.scheduler import task_scheduler
     await orchestrator.start()
     await task_scheduler.start()
+    if settings.notification_cli_auth_check_enabled:
+        from core.notifications import check_cli_auth_notifications
+        task_scheduler.schedule_interval(
+            "notification_cli_auth_check",
+            check_cli_auth_notifications,
+            seconds=settings.notification_cli_auth_check_interval_seconds,
+            max_instances=1,
+            coalesce=True,
+        )
 
     from api.routes.workflow import restore_schedules, recover_interrupted_runs
     await recover_interrupted_runs()
@@ -214,6 +223,7 @@ def create_app() -> FastAPI:
     from api.routes.ops            import router as ops_router
     from api.routes.assets         import router as assets_router
     from api.routes.experiments    import router as experiments_router
+    from api.routes.notifications  import router as notifications_router
     from api.websocket            import router as ws_router
     from api.websocket_training   import router as ws_training_router
     from api.websocket_task       import router as ws_task_router
@@ -222,6 +232,7 @@ def create_app() -> FastAPI:
     from api.websocket_workflow   import router as ws_workflow_router
     from api.websocket_experiment import router as ws_experiment_router
     from api.websocket_cli_login  import router as ws_cli_login_router
+    from api.websocket_notifications import router as ws_notifications_router
 
     # Hâm cache khi tạo app để không chạy tiến trình Git ở request đầu tiên.
     # Lỗi/không có .git đã được chuyển thành None, phù hợp bản deploy từ tarball.
@@ -248,6 +259,7 @@ def create_app() -> FastAPI:
     app.include_router(ops_router,           prefix="/api/ops",            tags=["Project Ops"])
     app.include_router(assets_router,        prefix="/api/assets",         tags=["Assets"])
     app.include_router(experiments_router,   prefix="/api/experiments",    tags=["Experiments"])
+    app.include_router(notifications_router, prefix="/api/notifications",  tags=["Notifications"])
     app.include_router(ws_router,                                          tags=["WebSocket"])
     app.include_router(ws_training_router,                                 tags=["WebSocket"])
     app.include_router(ws_task_router,                                     tags=["WebSocket"])
@@ -256,6 +268,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_workflow_router,                                 tags=["WebSocket"])
     app.include_router(ws_experiment_router,                               tags=["WebSocket"])
     app.include_router(ws_cli_login_router,                                tags=["WebSocket"])
+    app.include_router(ws_notifications_router,                            tags=["WebSocket"])
 
     # ── React production build ────────────────────────────────
     # Hashed Vite assets may be cached in production. During local development,

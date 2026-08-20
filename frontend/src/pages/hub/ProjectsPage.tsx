@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import { Icon } from "../../components/Icon";
@@ -248,6 +249,8 @@ function ProjectDashboard({
   confirm: (message: string) => Promise<boolean>;
 }) {
   const tooltip = useTooltipText();
+  const location = useLocation();
+  const focusedWorkItemId = Number(new URLSearchParams(location.search).get("work_item") || 0) || null;
   const [ops, setOps] = useState<OpsItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -410,6 +413,7 @@ function ProjectDashboard({
           items={items}
           agents={agents}
           vi={vi}
+          focusedWorkItemId={focusedWorkItemId}
           onEdit={setWorkDraft}
           onDelete={removeWork}
         />
@@ -700,12 +704,14 @@ function WorkItems({
   items,
   agents,
   vi,
+  focusedWorkItemId,
   onEdit,
   onDelete,
 }: {
   items: WorkItem[];
   agents: AgentRecord[];
   vi: boolean;
+  focusedWorkItemId: number | null;
   onEdit: (item: Partial<WorkItem>) => void;
   onDelete: (item: WorkItem) => Promise<void>;
 }) {
@@ -731,7 +737,7 @@ function WorkItems({
             {items
               .filter((item) => item.status === status)
               .map((item) => (
-                <article key={item.id}>
+                <article key={item.id} className={item.id === focusedWorkItemId ? c("workItemHighlighted") : ""}>
                   <strong>{item.title}</strong>
                   <p>{item.description}</p>
                   <small>

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 export const ICONS = {
+  bell: '<path d="M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
   home: '<path d="M4 11L12 4l8 7" /><path d="M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9" /><rect x="10" y="14" width="4" height="6" rx="1" fill="currentColor" stroke="none"/>',
   bot: '<rect x="5" y="7" width="14" height="12" rx="5" /><circle cx="9.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 16c.8.6 3.2.6 4 0" /><line x1="12" y1="7" x2="12" y2="4.5"/><circle cx="12" cy="4" r="1" fill="currentColor" stroke="none"/>',
   sliders: '<line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="13" x2="20" y2="13"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><line x1="4" y1="19" x2="20" y2="19"/><circle cx="7" cy="19" r="2" fill="currentColor" stroke="none"/>',

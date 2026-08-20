@@ -551,6 +551,48 @@ async def delete_task_session(session_id: int) -> bool:
 
 # ── Agent Configs ────────────────────────────────────────────────────────────
 
+async def _backfill_task_alert_notifications(db) -> None:
+    """Đưa cảnh báo cũ còn mở vào nguồn chung đúng một lần.
+
+    Không broadcast trong migration: client sẽ lấy snapshot sau khi server sẵn sàng.
+    Chỉ kiểm tra sự tồn tại của source (mọi status) để một cảnh báo đã đọc không bị
+    biến lại thành chưa đọc sau mỗi lần khởi động.
+    """
+    db.row_factory = aiosqlite.Row
+    rows = await (await db.execute(
+        "SELECT work_item_id, project_id, title, reason, suggestions_json, created_at "
+        "FROM task_alerts WHERE status = 'open'"
+    )).fetchall()
+    for row in rows:
+        exists = await (await db.execute(
+            "SELECT 1 FROM notifications WHERE source_type='work_item' AND source_id=? LIMIT 1",
+            (str(row["work_item_id"]),),
+        )).fetchone()
+        if exists:
+            continue
+        try:
+            suggestions = json.loads(row["suggestions_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            suggestions = []
+        payload = json.dumps({
+            "work_item_id": row["work_item_id"],
+            "project_id": row["project_id"],
+            "reason": row["reason"],
+            "suggestions": suggestions,
+        }, ensure_ascii=False)
+        await db.execute(
+            """INSERT INTO notifications
+               (kind,severity,title,body,payload_json,link,source_type,source_id,status,created_at)
+               VALUES ('work_item_unmatched','warning',?,?,?,?,?,?,'unread',?)""",
+            (
+                row["title"], row["reason"], payload,
+                f"/hub/tasks?work_item={row['work_item_id']}",
+                "work_item", str(row["work_item_id"]), row["created_at"],
+            ),
+        )
+    await db.commit()
+
+
 async def _run_migrations(db) -> None:
     """Add new tables if they don't exist (safe to run multiple times)."""
     await db.execute("""
@@ -761,6 +803,30 @@ async def _run_migrations(db) -> None:
         )
     """)
     await db.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind         TEXT    NOT NULL,
+            severity     TEXT    NOT NULL DEFAULT 'info',
+            title        TEXT    NOT NULL,
+            body         TEXT    NOT NULL DEFAULT '',
+            payload_json TEXT    NOT NULL DEFAULT '{}',
+            link         TEXT    NOT NULL DEFAULT '',
+            source_type  TEXT    NOT NULL DEFAULT '',
+            source_id    TEXT    NOT NULL DEFAULT '',
+            status       TEXT    NOT NULL DEFAULT 'unread',
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+            read_at      TEXT
+        )
+    """)
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_status_created "
+        "ON notifications(status, created_at DESC, id DESC)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_source "
+        "ON notifications(source_type, source_id, status)"
+    )
+    await db.execute("""
         CREATE TABLE IF NOT EXISTS workflow_tasks (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
             name             TEXT    NOT NULL,
@@ -924,6 +990,7 @@ async def _run_migrations(db) -> None:
         )
     """)
     await db.commit()
+    await _backfill_task_alert_notifications(db)
     # Migrations: add match columns to work_items if not exist
     for col_sql in [
         "ALTER TABLE work_items ADD COLUMN match_score REAL NOT NULL DEFAULT 0.0",
@@ -2036,6 +2103,140 @@ async def get_open_alert_count() -> int:
             return row[0] if row else 0
 
 
+# ── Notifications ────────────────────────────────────────────────────────────
+
+async def upsert_notification(
+    *, kind: str, severity: str, title: str, body: str = "",
+    payload_json: str = "{}", link: str = "", source_type: str = "",
+    source_id: str = "",
+) -> tuple[dict, bool]:
+    """Tạo notification hoặc cập nhật source đang unread để chống spam.
+
+    ``BEGIN IMMEDIATE`` giữ thao tác tìm-và-ghi nguyên tử khi hai nguồn nền cùng
+    phát một sự kiện. Giá trị bool cho biết đây là dòng mới hay dòng được cập nhật.
+    """
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        row = None
+        if source_type and source_id:
+            row = await (await db.execute(
+                """SELECT id FROM notifications
+                   WHERE source_type=? AND source_id=? AND status='unread'
+                   ORDER BY id DESC LIMIT 1""",
+                (source_type, source_id),
+            )).fetchone()
+        created = row is None
+        if row:
+            notification_id = int(row["id"])
+            await db.execute(
+                """UPDATE notifications
+                   SET kind=?,severity=?,title=?,body=?,payload_json=?,link=?,
+                       created_at=datetime('now'),read_at=NULL
+                   WHERE id=?""",
+                (kind, severity, title, body, payload_json, link, notification_id),
+            )
+        else:
+            cur = await db.execute(
+                """INSERT INTO notifications
+                   (kind,severity,title,body,payload_json,link,source_type,source_id)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (kind, severity, title, body, payload_json, link, source_type, source_id),
+            )
+            notification_id = int(cur.lastrowid)
+        await db.commit()
+        result = await (await db.execute(
+            "SELECT * FROM notifications WHERE id=?", (notification_id,),
+        )).fetchone()
+        return dict(result), created
+
+
+async def get_notification(notification_id: int) -> dict | None:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute(
+            "SELECT * FROM notifications WHERE id=?", (notification_id,),
+        )).fetchone()
+        return dict(row) if row else None
+
+
+async def list_notifications(
+    *, status: str | None = None, limit: int = 30, offset: int = 0,
+) -> tuple[list[dict], int]:
+    where = "WHERE status=?" if status else ""
+    params: list = [status] if status else []
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        total_row = await (await db.execute(
+            f"SELECT COUNT(*) AS total FROM notifications {where}", params,
+        )).fetchone()
+        rows = await (await db.execute(
+            f"SELECT * FROM notifications {where} "
+            "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        )).fetchall()
+        return [dict(row) for row in rows], int(total_row["total"] if total_row else 0)
+
+
+async def get_unread_notification_count() -> int:
+    async with connect() as db:
+        row = await (await db.execute(
+            "SELECT COUNT(*) FROM notifications WHERE status='unread'"
+        )).fetchone()
+        return int(row[0] if row else 0)
+
+
+async def mark_notification_read(notification_id: int) -> dict | None:
+    async with connect() as db:
+        await db.execute(
+            """UPDATE notifications SET status='read',read_at=COALESCE(read_at,datetime('now'))
+               WHERE id=? AND status='unread'""",
+            (notification_id,),
+        )
+        await db.commit()
+    return await get_notification(notification_id)
+
+
+async def mark_all_notifications_read() -> int:
+    async with connect() as db:
+        cur = await db.execute(
+            "UPDATE notifications SET status='read',read_at=datetime('now') WHERE status='unread'"
+        )
+        await db.commit()
+        return cur.rowcount
+
+
+async def resolve_notification(notification_id: int) -> dict | None:
+    async with connect() as db:
+        await db.execute(
+            """UPDATE notifications
+               SET status='resolved',read_at=COALESCE(read_at,datetime('now')) WHERE id=?""",
+            (notification_id,),
+        )
+        await db.commit()
+    return await get_notification(notification_id)
+
+
+async def resolve_notifications_for_source(source_type: str, source_id: str) -> list[dict]:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(
+            """SELECT id FROM notifications
+               WHERE source_type=? AND source_id=? AND status!='resolved'""",
+            (source_type, source_id),
+        )).fetchall()
+        ids = [int(row["id"]) for row in rows]
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            await db.execute(
+                f"""UPDATE notifications SET status='resolved',
+                    read_at=COALESCE(read_at,datetime('now')) WHERE id IN ({placeholders})""",
+                ids,
+            )
+            await db.commit()
+    return [item for notification_id in ids if (item := await get_notification(notification_id))]
+
+
 # ── Workflow Tasks ────────────────────────────────────────────────────────────
 
 async def create_workflow_task(
@@ -2236,6 +2437,14 @@ async def update_workflow_run_status(
     async with connect() as db:
         await db.execute(f"UPDATE workflow_runs SET {', '.join(fields)} WHERE id=?", values)
         await db.commit()
+    if status == "failed":
+        try:
+            # Import muộn để database vẫn là lớp lưu trữ thuần và không tạo vòng
+            # import với service notifications.
+            from core.notifications import notify_workflow_run_failed
+            await notify_workflow_run_failed(run_id)
+        except Exception:
+            logger.exception("Không phát được notification cho workflow run %s", run_id)
 
 
 async def delete_workflow_run(run_id: int) -> bool:

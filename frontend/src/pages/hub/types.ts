@@ -9,6 +9,24 @@ export interface HubRecord {
   [key: string]: unknown;
 }
 
+export type NotificationSeverity = "info" | "warning" | "error";
+export type NotificationStatus = "unread" | "read" | "resolved";
+
+export interface NotificationRecord {
+  id: number;
+  kind: string;
+  severity: NotificationSeverity;
+  title: string;
+  body: string;
+  payload: Record<string, unknown>;
+  link: string;
+  source_type: string;
+  source_id: string;
+  status: NotificationStatus;
+  created_at: string;
+  read_at?: string | null;
+}
+
 export interface AgentRecord extends HubRecord {
   role?: string;
   avatar_color?: string;

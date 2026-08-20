@@ -182,6 +182,7 @@ function triggerConfig(triggers: TriggerMap): Record<string, unknown> {
 export function WorkflowEditor(props: {
   taskId: number;
   runOnOpen: boolean;
+  initialRunId?: number | null;
   onBack: () => void;
   onSaved: () => Promise<void>;
   onOpenProject?: (projectId: number, subtab: ProjectSubtab) => void;
@@ -190,9 +191,10 @@ export function WorkflowEditor(props: {
   return <ReactFlowProvider><WorkflowEditorInner {...props} /></ReactFlowProvider>;
 }
 
-function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, onOpenProject, toast }: {
+function WorkflowEditorInner({ taskId, runOnOpen, initialRunId, onBack, onSaved, onOpenProject, toast }: {
   taskId: number;
   runOnOpen: boolean;
+  initialRunId?: number | null;
   onBack: () => void;
   onSaved: () => Promise<void>;
   onOpenProject?: (projectId: number, subtab: ProjectSubtab) => void;
@@ -294,11 +296,12 @@ function WorkflowEditorInner({ taskId, runOnOpen, onBack, onSaved, onOpenProject
       setNodes(toFlowNodes(graph)); setEdges(toFlowEdges(graph, textRef.current));
       setAgents(agentData.agents || []); setSkills(skillData.skills || []); setTools(toolData.tools || []); setProjects(projectData.projects || []); setAllTasks(taskData.tasks || []);
       const stored = Number(localStorage.getItem(taskRunKey(taskId)) || 0);
-      if (stored) { setRunId(stored); setRunning(true); }
+      const runToAttach = Number(initialRunId || 0) || stored;
+      if (runToAttach) { setRunId(runToAttach); setRunning(true); }
       if (runOnOpenRef.current) { runOnOpenRef.current = false; setInputModal({ test: false }); }
     }).catch((error: unknown) => toast(error instanceof Error ? error.message : textRef.current("editor.load_error"), "error"));
     return () => { disposed = true; };
-  }, [setRunId, taskId, toast]);
+  }, [initialRunId, setRunId, taskId, toast]);
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => setNodes((current) => applyNodeChanges(changes, current)), []);
   const onEdgesChange = useCallback((changes: EdgeChange<FlowEdge>[]) => setEdges((current) => applyEdgeChanges(changes, current)), []);

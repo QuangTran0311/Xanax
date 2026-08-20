@@ -118,6 +118,7 @@ export function TaskrunnerPage({
         <WorkflowEditor
           taskId={taskId}
           runOnOpen={new URLSearchParams(location.search).get("run") === "1"}
+          initialRunId={Number(new URLSearchParams(location.search).get("attachRun") || 0) || null}
           onBack={goBack}
           onSaved={loadTasks}
           onOpenProject={onOpenProject}

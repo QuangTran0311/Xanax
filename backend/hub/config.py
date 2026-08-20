@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     # Tiến trình Claude/Codex CLI được phép chạy tối đa trước khi thu hoạch.
     cli_timeout_seconds: int = Field(default=600, ge=1)
 
+    # Probe auth của các model chạy qua CLI. Mặc định 30 phút/lần; có thể tắt
+    # hoàn toàn bằng HUB_NOTIFICATION_CLI_AUTH_CHECK_ENABLED=false.
+    notification_cli_auth_check_enabled: bool = True
+    notification_cli_auth_check_interval_seconds: int = Field(default=1800, ge=60)
+
     # LLM Backend (optional)
     llm_api_base: str = "http://localhost:11434"
     llm_model: str = "hermes3"

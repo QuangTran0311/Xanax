@@ -20,6 +20,7 @@ import { avatarColor } from "./avatarColors";
 import { shapePath } from "./avatarShapes";
 import { useHub } from "./HubContext";
 import { hubText } from "./i18n";
+import { notificationBody } from "./notifications";
 import type { AgentRecord, CostReport, HubRecord } from "./types";
 import styles from "./HubPage.module.css";
 
@@ -37,14 +38,6 @@ interface RecentRoom {
   last_content?: string;
   last_created_at?: string;
   message_count?: number;
-}
-
-interface Alert {
-  id?: number;
-  title?: string;
-  reason?: string;
-  status?: string;
-  created_at?: string;
 }
 
 interface CostOverview {
@@ -90,11 +83,10 @@ function formatRelative(value: string | undefined, vi: boolean): string {
 export function OverviewPage() {
   const { language } = useLanguage();
   const { theme } = useTheme();
-  const { agents, skills, meetings } = useHub();
+  const { agents, skills, meetings, notifications, openNotification } = useHub();
   const vi = language === "vi";
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [rooms, setRooms] = useState<RecentRoom[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [overview, setOverview] = useState<CostOverview | null>(null);
   const [costReport, setCostReport] = useState<CostReport | null>(null);
 
@@ -109,23 +101,15 @@ export function OverviewPage() {
       apiClient
         .get<{ rooms: RecentRoom[] }>("/meetings/messages/recent?limit=8")
         .catch(() => ({ rooms: [] })),
-      apiClient
-        .get<{ alerts: Alert[] }>("/projects/items/alerts")
-        .catch(() => ({ alerts: [] })),
       apiClient.get<CostOverview>("/model-pool/cost/overview").catch(() => null),
       apiClient
         .get<CostReport>(
           `/model-pool/cost/report?period=day&date_from=${isoLocal(start)}&date_to=${isoLocal(end)}`,
         )
         .catch(() => null),
-    ]).then(([runData, roomData, alertData, costOverview, report]) => {
+    ]).then(([runData, roomData, costOverview, report]) => {
       setRuns(runData.runs || []);
       setRooms(roomData.rooms || []);
-      setAlerts(
-        (alertData.alerts || []).filter(
-          (item) => !item.status || item.status === "open",
-        ),
-      );
       setOverview(costOverview);
       setCostReport(report);
     });
@@ -141,6 +125,7 @@ export function OverviewPage() {
   );
   const completed = finished.filter((run) => run.status === "completed").length;
   const running = runs.filter((run) => run.status === "running");
+  const alerts = notifications.filter((notification) => notification.status !== "resolved");
 
   const chartData = useMemo(() => {
     const byDate: Record<string, number> = {};
@@ -335,20 +320,24 @@ export function OverviewPage() {
           <PanelHeader
             icon="warning"
             title={hubText(language, "overview.alerts")}
-            action={{ label: vi ? "Xem tất cả" : "View all", to: "/hub/tasks" }}
           />
           {alerts.length ? (
             <div className={c("overviewList")}>
-              {alerts.slice(0, 3).map((alert, index) => (
-                <div key={alert.id || index} className={c("overviewListRow")}>
-                  <span className={`${c("activityMarker")} ${c("warningMarker")}`}>
-                    <Icon name="warning" />
+              {alerts.slice(0, 3).map((alert) => (
+                <button
+                  key={alert.id}
+                  type="button"
+                  className={`${c("overviewListRow")} ${c("overviewNotificationRow")}`}
+                  onClick={() => openNotification(alert)}
+                >
+                  <span className={`${c("activityMarker")} ${c(alert.severity === "error" ? "warningMarker" : "conversationMarker")}`}>
+                    <Icon name={alert.severity === "error" ? "warning" : "bell"} />
                   </span>
                   <div>
                     <strong>{alert.title || (vi ? "Công việc" : "Task")}</strong>
-                    <small>{alert.reason || (vi ? "Cần chú ý" : "Needs attention")}</small>
+                    <small>{notificationBody(alert, language) || (vi ? "Cần chú ý" : "Needs attention")}</small>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (

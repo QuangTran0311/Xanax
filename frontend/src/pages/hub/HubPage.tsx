@@ -9,6 +9,7 @@ import { sessionApi } from "../../store/session";
 import { useTheme } from "../../store/theme";
 import { HubProvider, useHub } from "./HubContext";
 import { HubOverlays } from "./HubOverlays";
+import { NotificationCenter } from "./NotificationCenter";
 import { hubText } from "./i18n";
 import { hubNavigation as navigation, validHubTabs as validTabs, type HubTab } from "./navigation";
 import type { ProjectSubtab } from "./types";
@@ -182,6 +183,7 @@ function HubShell() {
             </span>
           </div>
           <div className={c("topbarActions")}>
+            <NotificationCenter />
             <Tooltip label={tooltip(theme === "light" ? "tooltip.hub.theme_dark" : "tooltip.hub.theme_light")}>
               <button
                 className={c("topbarIconButton")}

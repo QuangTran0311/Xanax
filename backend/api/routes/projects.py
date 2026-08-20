@@ -1,6 +1,7 @@
 """API Routes – Projects and Work Items (kanban) CRUD + smart agent-task matching"""
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -16,13 +17,38 @@ from hub.database import (
     get_open_alert_count,
 )
 from core.matcher import match_agent_for_task, match_result_to_dict
+from core.notifications import create_notification, reason_text, resolve_source_notifications
 from core.project_storage import PROJECTS_DATA_DIR
 
 router = APIRouter()
+logger = logging.getLogger("xanax.routes.projects")
 
 
 def _emit_data_changed():
     asyncio.create_task(event_bus.emit_simple(EventType.DATA_CHANGED, "projects"))
+
+
+async def _notify_unmatched_work_item(
+    work_item_id: int, project_id: int, title: str, reason: str, suggestions: list,
+) -> None:
+    try:
+        await create_notification(
+            kind="work_item_unmatched",
+            severity="warning",
+            title=title,
+            body=reason_text(reason, "vi"),
+            payload={
+                "work_item_id": work_item_id,
+                "project_id": project_id,
+                "reason": reason,
+                "suggestions": suggestions,
+            },
+            link=f"/hub/tasks?work_item={work_item_id}",
+            source_type="work_item",
+            source_id=work_item_id,
+        )
+    except Exception:
+        logger.exception("Không phát được notification cho work item %s", work_item_id)
 
 
 class ProjectCreate(BaseModel):
@@ -195,6 +221,10 @@ async def create_item(project_id: int, body: WorkItemCreate):
                 reason="no_matching_agent",
                 suggestions_json=suggestions,
             )
+            await _notify_unmatched_work_item(
+                item_id, project_id, body.title, "no_matching_agent",
+                match_dict["suggestions"],
+            )
 
     items = await list_work_items(project_id)
     item = next((i for i in items if i["id"] == item_id), {})
@@ -216,6 +246,7 @@ async def patch_item(item_id: int, body: WorkItemUpdate):
     # Resolve alert when agent is explicitly assigned
     if kwargs.get("assigned_agent_id"):
         await resolve_task_alert(item_id)
+        await resolve_source_notifications("work_item", item_id)
 
     # Re-run matcher when content fields change
     match_dict = None
@@ -242,8 +273,13 @@ async def patch_item(item_id: int, body: WorkItemUpdate):
                     reason="no_matching_agent",
                     suggestions_json=suggestions,
                 )
+                await _notify_unmatched_work_item(
+                    item_id, current["project_id"], current["title"],
+                    "no_matching_agent", match_dict["suggestions"],
+                )
             elif result.has_match or assigned:
                 await resolve_task_alert(item_id)
+                await resolve_source_notifications("work_item", item_id)
 
     _emit_data_changed()
     return {"ok": True, "match": match_dict}
@@ -252,6 +288,7 @@ async def patch_item(item_id: int, body: WorkItemUpdate):
 @router.delete("/items/{item_id}", status_code=204)
 async def remove_item(item_id: int):
     await delete_task_alert_for_item(item_id)
+    await resolve_source_notifications("work_item", item_id)
     ok = await delete_work_item(item_id)
     if not ok:
         raise HTTPException(404, "Work item not found")

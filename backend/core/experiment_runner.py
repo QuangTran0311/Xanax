@@ -24,6 +24,7 @@ from core.agent_prompt import (
     load_agent_prompt_context,
 )
 from core.model_pool_bridge import stream_from_pool
+from core.notifications import notify_experiment_finished
 from hub.database import (
     cancel_unfinished_experiment_trials,
     claim_experiment_run,
@@ -455,6 +456,15 @@ class ExperimentRunnerManager:
             await self.broadcast(experiment_id, {
                 "type": "error", "experiment_id": experiment_id, "message": str(exc),
             })
+            try:
+                experiment = await get_experiment(experiment_id)
+                await notify_experiment_finished(
+                    experiment_id,
+                    str((experiment or {}).get("name") or f"Experiment #{experiment_id}"),
+                    "failed",
+                )
+            except Exception:
+                logger.exception("Không phát được notification cho thí nghiệm %s", experiment_id)
 
     async def _run_inner(self, experiment_id: int) -> None:
         experiment = await get_experiment(experiment_id)
@@ -627,6 +637,17 @@ class ExperimentRunnerManager:
             "type": "complete", "experiment_id": experiment_id, "status": status,
             "summary": calculate_experiment_summary(final_trials), **progress,
         })
+        try:
+            await notify_experiment_finished(
+                experiment_id,
+                str(experiment.get("name") or f"Experiment #{experiment_id}"),
+                status,
+                judge_error_count=sum(
+                    1 for trial in final_trials if trial.get("status") == "judge_error"
+                ),
+            )
+        except Exception:
+            logger.exception("Không phát được notification cho thí nghiệm %s", experiment_id)
 
     async def _judge_batch(
         self,
