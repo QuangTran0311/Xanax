@@ -190,9 +190,9 @@ def test_tong_hop_chi_bat_co_khi_chenh_lech_vuot_ngoai_nhieu():
 
     trials = []
     scores = {
-        "khong_soul": [4, 6, 4, 6],
-        "soul_nhan_vien": [8, 10, 8, 10],
-        "them_ky_nang": [4.5, 6.5, 4.5, 6.5],
+        "khong_soul": [4, 6] * 5,
+        "soul_nhan_vien": [8, 10] * 5,
+        "them_ky_nang": [4.5, 6.5] * 5,
     }
     for condition, values in scores.items():
         trials.extend({"condition": condition, "score": value} for value in values)
@@ -202,13 +202,87 @@ def test_tong_hop_chi_bat_co_khi_chenh_lech_vuot_ngoai_nhieu():
     trong_nhieu = summary["conditions"][2]
 
     assert ro_rang["delta_vs_control"] == 4.0
-    assert ro_rang["delta_standard_error"] == pytest.approx(0.8165)
-    assert ro_rang["delta_confidence_margin_95"] == pytest.approx(1.6003)
+    assert ro_rang["delta_standard_error"] == pytest.approx(0.4714)
+    assert ro_rang["delta_confidence_df"] == pytest.approx(18.0)
+    assert ro_rang["delta_confidence_margin_95"] == pytest.approx(0.9904)
+    assert ro_rang["delta_confidence_margin_95"] >= 1.96 * ro_rang["delta_standard_error"]
+    assert ro_rang["stats_reliable"] is True
+    assert ro_rang["cohens_d"] == pytest.approx(3.7947)
     assert ro_rang["delta_distinguishable"] is True, "hiệu vượt biên 95% phải bật cờ"
 
     assert trong_nhieu["delta_vs_control"] == 0.5
-    assert trong_nhieu["delta_confidence_margin_95"] == pytest.approx(1.6003)
+    assert trong_nhieu["delta_confidence_margin_95"] == pytest.approx(0.9904)
     assert trong_nhieu["delta_distinguishable"] is False, "hiệu nhỏ trong nhiễu phải tắt cờ"
+
+
+def test_tong_hop_bao_cao_song_song_answered_only_va_toan_bo_luot_da_cham():
+    from core.experiment_runner import calculate_experiment_summary
+
+    trials = [
+        {
+            "condition": "khong_soul", "score": score, "case_index": 0,
+            "response_classification": classification,
+        }
+        for score, classification in [
+            (8, "answered"), (10, "answered"), (0, "conflict"), (0.5, "clarify"),
+        ]
+    ]
+    trials.extend({
+        "condition": "soul_nhan_vien", "score": 6, "case_index": 0,
+        "response_classification": "answered",
+    } for _ in range(10))
+
+    summary = calculate_experiment_summary(trials)
+    control, employee = summary["conditions"][:2]
+    case_control = summary["cases"][0]["conditions"][0]
+
+    assert control["mean"] == 9.0 and control["n"] == 2
+    assert control["all_scored"]["mean"] == 4.625
+    assert control["all_scored"]["n"] == 4
+    assert employee["delta_vs_control"] == -3.0
+    assert employee["all_scored"]["delta_vs_control"] == 1.375
+    assert case_control["all_scored"] == control["all_scored"]
+    assert summary["score_population"] == "answered_only"
+    assert summary["secondary_score_population"] == "all_scored"
+
+
+def test_tong_hop_mau_sau_luot_giu_mo_ta_nhung_chan_suy_luan():
+    from core.experiment_runner import calculate_experiment_summary
+
+    trials = []
+    for condition, values in {
+        "khong_soul": [4, 6] * 3,
+        "soul_nhan_vien": [8, 10] * 3,
+    }.items():
+        trials.extend({"condition": condition, "score": value} for value in values)
+
+    control, employee = calculate_experiment_summary(trials)["conditions"][:2]
+
+    assert control["mean"] == 5.0 and control["cohens_d"] is None
+    assert control["stats_reliable"] is False
+    assert control["unreliable_reason"] == "n=6 < ngưỡng 10"
+    assert employee["mean"] == 9.0 and employee["delta_vs_control"] == 4.0
+    assert employee["delta_confidence_margin_95"] is not None
+    assert employee["cohens_d"] is None
+    assert employee["delta_distinguishable"] is False
+    assert employee["stats_reliable"] is False
+
+
+def test_bang_tra_t_hai_phia_95_dung_cac_moc_cong_bo():
+    from core.experiment_runner import _t_critical_two_sided_95
+
+    assert _t_critical_two_sided_95(1) == 12.706
+    assert _t_critical_two_sided_95(2) == 4.303
+    assert _t_critical_two_sided_95(10) == 2.228
+    assert _t_critical_two_sided_95(30) == 2.042
+
+
+def test_bang_tra_t_hai_phia_95_lam_tron_xuong_tai_bien_tren():
+    from core.experiment_runner import _t_critical_two_sided_95
+
+    assert _t_critical_two_sided_95(30.5) == 2.042
+    assert _t_critical_two_sided_95(30.9) == 2.042
+    assert _t_critical_two_sided_95(31.0) == 1.96
 
 
 def test_tong_hop_mau_don_hoac_thieu_du_lieu_khong_chia_cho_khong():

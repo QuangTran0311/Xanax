@@ -53,11 +53,26 @@ CONDITIONS: dict[str, PromptLayerFlags] = {
 
 RESPONSE_CLASSIFICATIONS = frozenset({"answered", "clarify", "conflict"})
 MIN_ANSWERED_TRIALS = 10
-NORMAL_95_Z = 1.96
+# Bảng t Student hai phía 95% được ghi tường minh để người đọc có thể đối chiếu
+# từng bậc tự do khi bảo vệ luận văn, đồng thời không kéo scipy vào chỉ cho 30 số cố định.
+T_CRITICAL_TWO_SIDED_95 = (
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+    2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+    2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+)
 TRIAL_RESPONSE_INSTRUCTION = (
     "Hãy trả lời bằng kiến thức và bối cảnh HIỆN CÓ, không hỏi ngược chỉ vì thiếu "
     "thông tin; nếu thiếu thông tin, hãy tự đưa ra giả định hợp lý và nói rõ giả định đó."
 )
+
+
+def _t_critical_two_sided_95(df: float) -> float:
+    """Tra t hai phía 95%; bậc tự do hữu hạn luôn làm tròn xuống thận trọng."""
+    floored_df = math.floor(df)
+    if floored_df > len(T_CRITICAL_TWO_SIDED_95):
+        return 1.96
+    return T_CRITICAL_TWO_SIDED_95[max(1, floored_df) - 1]
+
 
 JUDGE_SYSTEM = """Bạn là giám khảo độc lập, nghiêm khắc cho một nghiên cứu AI.
 Chấm MỖI câu trả lời độc lập theo đúng đề bài và tiêu chí được cung cấp, thang 0-10.
@@ -151,41 +166,31 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         )
 
     def summarize(
-        condition_trials: list[dict], condition: str,
+        condition_trials: list[dict],
+        condition: str,
+        score_filter,
     ) -> tuple[dict, float | None, float | None]:
         scored = [trial for trial in condition_trials
                   if trial.get("condition") == condition and trial.get("score") is not None]
-        classifications = [classification_of(trial) for trial in scored]
-        answered_scores = [
-            float(trial["score"])
-            for trial, classification in zip(scored, classifications)
-            if classification == "answered"
-        ]
-        mean = statistics.fmean(answered_scores) if answered_scores else None
+        population_scores = [float(trial["score"]) for trial in scored if score_filter(trial)]
+        mean = statistics.fmean(population_scores) if population_scores else None
         stddev = (
-            statistics.stdev(answered_scores) if len(answered_scores) >= 2
-            else (0.0 if answered_scores else None)
+            statistics.stdev(population_scores) if len(population_scores) >= 2
+            else (0.0 if population_scores else None)
         )
-        total_n = len(scored)
-        clarify_n = classifications.count("clarify")
-        conflict_n = classifications.count("conflict")
         return ({
             "condition": condition,
             "mean": round(mean, 4) if mean is not None else None,
             "stddev": round(stddev, 4) if stddev is not None else None,
-            # n là mẫu thực sự đi vào mean/stddev, không phải tổng số lượt đã chấm.
-            "n": len(answered_scores),
-            "total_n": total_n,
-            "clarify_n": clarify_n,
-            "clarify_rate": round(clarify_n / total_n, 4) if total_n else 0.0,
-            "conflict_n": conflict_n,
-            "conflict_rate": round(conflict_n / total_n, 4) if total_n else 0.0,
-            "insufficient_answered": 0 < total_n and len(answered_scores) < MIN_ANSWERED_TRIALS,
+            "n": len(population_scores),
             "delta_vs_control": None,
             "delta_standard_error": None,
             "delta_confidence_margin_95": None,
+            "delta_confidence_df": None,
             "delta_distinguishable": False,
             "cohens_d": None,
+            "stats_reliable": False,
+            "unreliable_reason": "",
         }, mean, stddev)
 
     def add_control_comparisons(
@@ -195,8 +200,13 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         control_mean, control_stddev, control_n = stats["khong_soul"]
         for row in summary_rows:
             mean, stddev, n = stats[row["condition"]]
-            if row["condition"] == "khong_soul":
-                row["cohens_d"] = 0.0
+            row["stats_reliable"] = (
+                n >= MIN_ANSWERED_TRIALS and control_n >= MIN_ANSWERED_TRIALS
+            )
+            if n < MIN_ANSWERED_TRIALS:
+                row["unreliable_reason"] = f"n={n} < ngưỡng {MIN_ANSWERED_TRIALS}"
+            elif control_n < MIN_ANSWERED_TRIALS:
+                row["unreliable_reason"] = f"n={control_n} < ngưỡng {MIN_ANSWERED_TRIALS}"
             if control_mean is None or mean is None:
                 continue
 
@@ -205,6 +215,8 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             if row["condition"] == "khong_soul":
                 row["delta_standard_error"] = 0.0
                 row["delta_confidence_margin_95"] = 0.0
+                if row["stats_reliable"]:
+                    row["cohens_d"] = 0.0
                 continue
 
             # Với n < 2, độ lệch chuẩn mẫu chưa được ước lượng. Giữ kết quả trung
@@ -220,9 +232,27 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
             standard_error = math.sqrt(
                 (stddev ** 2 / n) + (control_stddev ** 2 / control_n)
             )
-            confidence_margin = NORMAL_95_Z * standard_error
             row["delta_standard_error"] = round(standard_error, 4)
+            condition_variance = stddev ** 2 / n
+            control_variance = control_stddev ** 2 / control_n
+            df_denominator = (
+                condition_variance ** 2 / (n - 1)
+                + control_variance ** 2 / (control_n - 1)
+            )
+            # Khi cả hai độ lệch chuẩn bằng 0, mẫu số Welch bằng 0. Không gắn một
+            # khoảng tin cậy giả tạo vào dữ liệu hoàn toàn không có ước lượng nhiễu.
+            if df_denominator == 0:
+                continue
+            confidence_df = (
+                (condition_variance + control_variance) ** 2 / df_denominator
+            )
+            confidence_margin = (
+                _t_critical_two_sided_95(confidence_df) * standard_error
+            )
+            row["delta_confidence_df"] = round(confidence_df, 4)
             row["delta_confidence_margin_95"] = round(confidence_margin, 4)
+            if not row["stats_reliable"]:
+                continue
             row["delta_distinguishable"] = abs(difference) > confidence_margin
 
             pooled_sd = math.sqrt(
@@ -238,13 +268,50 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
                 continue
             row["cohens_d"] = round(difference / pooled_sd, 4)
 
-    rows: list[dict] = []
-    stats: dict[str, tuple[float | None, float | None, int]] = {}
-    for condition in CONDITIONS:
-        row, mean, stddev = summarize(trials, condition)
-        stats[condition] = (mean, stddev, row["n"])
-        rows.append(row)
-    add_control_comparisons(rows, stats)
+    def summarize_population(condition_trials: list[dict], score_filter):
+        population_rows: list[dict] = []
+        population_stats: dict[str, tuple[float | None, float | None, int]] = {}
+        for condition in CONDITIONS:
+            row, mean, stddev = summarize(condition_trials, condition, score_filter)
+            population_stats[condition] = (mean, stddev, row["n"])
+            population_rows.append(row)
+        add_control_comparisons(population_rows, population_stats)
+        return population_rows, population_stats
+
+    def is_answered(trial: dict) -> bool:
+        return classification_of(trial) == "answered"
+
+    def is_scored(_trial: dict) -> bool:
+        return True
+
+    def add_behavior_counts(row: dict, condition_trials: list[dict]) -> None:
+        scored = [trial for trial in condition_trials
+                  if trial.get("condition") == row["condition"]
+                  and trial.get("score") is not None]
+        classifications = [classification_of(trial) for trial in scored]
+        total_n = len(scored)
+        clarify_n = classifications.count("clarify")
+        conflict_n = classifications.count("conflict")
+        row.update({
+            "total_n": total_n,
+            "clarify_n": clarify_n,
+            "clarify_rate": round(clarify_n / total_n, 4) if total_n else 0.0,
+            "conflict_n": conflict_n,
+            "conflict_rate": round(conflict_n / total_n, 4) if total_n else 0.0,
+            "insufficient_answered": 0 < total_n and row["n"] < MIN_ANSWERED_TRIALS,
+        })
+
+    def combined_population_rows(condition_trials: list[dict]):
+        answered_rows, answered_stats = summarize_population(condition_trials, is_answered)
+        all_scored_rows, _ = summarize_population(condition_trials, is_scored)
+        for row, all_scored_row in zip(answered_rows, all_scored_rows):
+            add_behavior_counts(row, condition_trials)
+            row["all_scored"] = {
+                key: value for key, value in all_scored_row.items() if key != "condition"
+            }
+        return answered_rows, answered_stats
+
+    rows, stats = combined_population_rows(trials)
 
     def delta(after: str, before: str) -> float | None:
         a, b = stats[after][0], stats[before][0]
@@ -254,13 +321,7 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
     case_indices = sorted({int(t["case_index"]) for t in trials if t.get("case_index") is not None})
     for case_index in case_indices:
         case_trials = [t for t in trials if int(t.get("case_index", -1)) == case_index]
-        case_stats: dict[str, tuple[float | None, float | None, int]] = {}
-        condition_rows: list[dict] = []
-        for condition in CONDITIONS:
-            row, mean, stddev = summarize(case_trials, condition)
-            case_stats[condition] = (mean, stddev, row["n"])
-            condition_rows.append(row)
-        add_control_comparisons(condition_rows, case_stats)
+        condition_rows, _ = combined_population_rows(case_trials)
         case_summaries.append({
             "case_index": case_index,
             "prompt": case_trials[0].get("prompt", "") if case_trials else "",
@@ -288,11 +349,12 @@ def calculate_experiment_summary(trials: list[dict]) -> dict:
         # Không gộp conflict thành điểm 0: làm vậy sẽ phạt đúng hành vi ta muốn
         # giữ — phát hiện lệnh mới đá luật cũ và hỏi lại thay vì âm thầm vi phạm.
         "score_population": "answered_only",
+        "secondary_score_population": "all_scored",
         "minimum_answered": MIN_ANSWERED_TRIALS,
         "stddev_method": "sample_n_minus_1",
         "effect_size_method": "cohens_d_pooled",
         "delta_confidence_level": 0.95,
-        "delta_confidence_z": NORMAL_95_Z,
+        "delta_confidence_method": "welch_t_two_sided_95",
     }
 
 

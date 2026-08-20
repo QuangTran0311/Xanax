@@ -100,7 +100,7 @@ def _config() -> dict:
     }
 
 
-def test_cohens_d_dung_va_ap_dung_cho_tung_de():
+def test_cohens_d_bi_chan_o_ca_tong_hop_va_tung_de_khi_mau_nho():
     trials = []
     for condition, scores in {
         "khong_soul": [2, 4],
@@ -112,10 +112,14 @@ def test_cohens_d_dung_va_ap_dung_cho_tung_de():
 
     summary = calculate_experiment_summary(trials)
 
-    assert summary["conditions"][0]["cohens_d"] == 0.0
-    assert summary["conditions"][1]["cohens_d"] == pytest.approx(1.3416)
-    assert summary["cases"][0]["conditions"][1]["cohens_d"] == pytest.approx(1.3416)
+    assert summary["conditions"][0]["cohens_d"] is None
+    assert summary["conditions"][1]["cohens_d"] is None
+    assert summary["conditions"][1]["stats_reliable"] is False
+    assert summary["conditions"][1]["unreliable_reason"] == "n=2 < ngưỡng 10"
+    assert summary["cases"][0]["conditions"][1]["cohens_d"] is None
     assert summary["effect_size_method"] == "cohens_d_pooled"
+    assert summary["delta_confidence_method"] == "welch_t_two_sided_95"
+    assert "delta_confidence_z" not in summary
 
 
 def test_cohens_d_giu_none_khi_mau_nho_hoac_pooled_sd_bang_khong():
@@ -124,10 +128,8 @@ def test_cohens_d_giu_none_khi_mau_nho_hoac_pooled_sd_bang_khong():
         {"condition": "soul_nhan_vien", "score": 9},
     ])
     zero_pooled_sd = calculate_experiment_summary([
-        {"condition": "khong_soul", "score": 5},
-        {"condition": "khong_soul", "score": 5},
-        {"condition": "soul_nhan_vien", "score": 7},
-        {"condition": "soul_nhan_vien", "score": 7},
+        *({"condition": "khong_soul", "score": 5} for _ in range(10)),
+        *({"condition": "soul_nhan_vien", "score": 7} for _ in range(10)),
     ])
 
     assert small_sample["conditions"][1]["cohens_d"] is None
@@ -135,7 +137,14 @@ def test_cohens_d_giu_none_khi_mau_nho_hoac_pooled_sd_bang_khong():
 
 
 def test_workbook_mo_lai_duoc_du_sheet_bold_dung_mot_dong_va_none_la_gach_ngang():
-    summary = calculate_experiment_summary(_report_trials())
+    trials = _report_trials() + [{
+        "condition": "khong_soul",
+        "score": 0,
+        "case_index": 0,
+        "prompt": "Đề có lượt clarify",
+        "response_classification": "clarify",
+    }]
+    summary = calculate_experiment_summary(trials)
     content = build_experiment_report_xlsx(_experiment(), summary, _config())
 
     assert isinstance(content, bytes) and content
@@ -160,6 +169,24 @@ def test_workbook_mo_lai_duoc_du_sheet_bold_dung_mot_dong_va_none_la_gach_ngang(
     assert comparison["B6"].value == "—"
     assert comparison["C6"].value == "—"
     assert comparison["H6"].value == "—"
+    assert comparison["G4"].value == "—", "đối chứng thiếu mẫu cũng không được kết luận Không"
+    assert comparison["H4"].value == "—", "đối chứng thiếu mẫu không được gán d = 0"
+    assert "n=2 < ngưỡng 10" in comparison["A9"].value
+    assert comparison["A11"].value == (
+        "BẢNG 1B - ĐỐI CHIẾU QUẦN THỂ ĐẦY ĐỦ (mọi lượt đã chấm)"
+    )
+    assert comparison["B14"].value == pytest.approx(3.3333)
+    assert comparison["D14"].value == 3
+    assert "không lọc classification" in comparison["A19"].value
+
+    environment = workbook["Moi truong"]
+    method_text = next(
+        environment.cell(row, 2).value
+        for row in range(1, environment.max_row + 1)
+        if environment.cell(row, 1).value == "Phương pháp"
+    )
+    assert "t Welch hai phía" in method_text
+    assert "z =" not in method_text
 
 
 @pytest.mark.asyncio

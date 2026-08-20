@@ -107,6 +107,8 @@ interface SummaryRow {
   delta_standard_error?: number | null;
   delta_confidence_margin_95?: number | null;
   delta_distinguishable?: boolean;
+  stats_reliable?: boolean;
+  unreliable_reason?: string;
 }
 
 interface CaseSummary {
@@ -124,7 +126,7 @@ interface ExperimentSummary {
   minimum_answered?: number;
   stddev_method?: string;
   delta_confidence_level?: number;
-  delta_confidence_z?: number;
+  delta_confidence_method?: string;
 }
 
 interface ExperimentDetail {
@@ -1239,16 +1241,21 @@ function DeltaEstimate({
     ? formatDelta(row.delta_vs_control, language)
     : `${formatDelta(row.delta_vs_control, language)} ± ${formatScore(margin, language)}`;
   const isControl = row.condition === "khong_soul";
-  const noiseLabel = margin === null || margin === undefined
-    ? t("experiment.delta.noise_unavailable")
-    : row.delta_distinguishable
-      ? t("experiment.delta.outside_noise")
-      : t("experiment.delta.inside_noise");
+  const insufficientSample = row.stats_reliable === false;
+  const noiseLabel = insufficientSample
+    ? language === "vi" ? "Không đủ mẫu" : "Insufficient sample"
+    : margin === null || margin === undefined
+      ? t("experiment.delta.noise_unavailable")
+      : row.delta_distinguishable
+        ? t("experiment.delta.outside_noise")
+        : t("experiment.delta.inside_noise");
 
   return (
     <span className={c("experimentDeltaEstimate")}>
       <span>{estimate}</span>
-      {!isControl && row.delta_vs_control !== null ? <small>{noiseLabel}</small> : null}
+      {!isControl && row.delta_vs_control !== null ? (
+        <small title={insufficientSample ? row.unreliable_reason : undefined}>{noiseLabel}</small>
+      ) : null}
     </span>
   );
 }
@@ -1271,7 +1278,12 @@ function deltaClass(row: SummaryRow): string {
   // Chỉ tô màu khi hiệu đã vượt biên nhiễu 95%. Tô xanh/đỏ một hiệu còn nằm
   // trong nhiễu là mời người đọc kết luận sai; ở đây sai lầm đó có thể dẫn tới
   // quyết định gỡ tri thức khỏi nhân viên dù dữ liệu chưa chứng minh điều gì.
-  if (!row.delta_distinguishable || row.delta_vs_control === null || row.delta_vs_control === 0) {
+  if (
+    row.stats_reliable === false
+    || !row.delta_distinguishable
+    || row.delta_vs_control === null
+    || row.delta_vs_control === 0
+  ) {
     return "";
   }
   return row.delta_vs_control > 0
