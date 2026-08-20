@@ -48,6 +48,7 @@ export interface ModelRecord extends HubRecord {
   model_id?: string;
   base_url?: string;
   cli_config_dir?: string;
+  cli_configured?: boolean;
   category?: string;
   max_requests_per_day?: number;
   max_tokens_per_day?: number;

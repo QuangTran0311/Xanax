@@ -2,7 +2,6 @@
 import asyncio
 import platform
 import logging
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -14,6 +13,7 @@ from hub.config import settings
 from hub.database import list_model_pool
 from hub.events import event_bus
 from core.model_pool_bridge import CLI_API_STYLES, test_model_connection
+from core.provider_errors import safe_provider_error
 
 router = APIRouter()
 logger = logging.getLogger("xanax.health")
@@ -75,25 +75,7 @@ async def readiness():
 
 def _safe_provider_error(message: object, entry: dict) -> str:
     """Rút gọn lỗi CLI mà không mang token/đường credential ra API."""
-    text = " ".join(str(message or "").split())
-
-    config_dir = str(entry.get("cli_config_dir") or "").strip()
-    if config_dir:
-        text = text.replace(config_dir, "<thư mục credential>")
-
-    text = re.sub(r"(?i)(bearer\s+)[^\s,;]+", r"\1<đã che>", text)
-    text = re.sub(
-        r"(?i)\b((?:[a-z0-9]+_)*(?:api[_-]?key|auth[_-]?token|token|secret|password))"
-        r"\b\s*[:=]\s*[^\s,;]+",
-        r"\1=<đã che>",
-        text,
-    )
-    text = re.sub(
-        r"(?i)(?:[a-z]:\\users\\[^\\\s]+\\|/home/[^/\s]+/)?\.(?:claude|codex)(?:[/\\][^\s,;:]*)*",
-        "<đường dẫn credential>",
-        text,
-    )
-    return text[:180] or "CLI báo lỗi nhưng không có thông điệp"
+    return safe_provider_error(message, entry)
 
 
 async def _probe_cli_provider(entry: dict) -> dict:

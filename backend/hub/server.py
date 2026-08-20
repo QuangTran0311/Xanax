@@ -138,6 +138,8 @@ async def lifespan(_app: FastAPI):
     console.print(f"[bold yellow]⏹ Shutting down {settings.xanax_name}...[/]")
     await task_scheduler.stop()
     await orchestrator.stop()
+    from core.cli_login import cli_login_manager
+    await cli_login_manager.close_all()
     # Tắt hẳn các tiến trình con MCP stdio, nếu không chúng thành tiến trình mồ côi.
     await mcp_manager.close_all()
     await event_bus.emit_simple(EventType.SYSTEM_SHUTDOWN, {"message": f"{settings.xanax_name} stopped"})
@@ -219,6 +221,7 @@ def create_app() -> FastAPI:
     from api.websocket_benchmark  import router as ws_benchmark_router
     from api.websocket_workflow   import router as ws_workflow_router
     from api.websocket_experiment import router as ws_experiment_router
+    from api.websocket_cli_login  import router as ws_cli_login_router
 
     # Hâm cache khi tạo app để không chạy tiến trình Git ở request đầu tiên.
     # Lỗi/không có .git đã được chuyển thành None, phù hợp bản deploy từ tarball.
@@ -252,6 +255,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_benchmark_router,                                tags=["WebSocket"])
     app.include_router(ws_workflow_router,                                 tags=["WebSocket"])
     app.include_router(ws_experiment_router,                               tags=["WebSocket"])
+    app.include_router(ws_cli_login_router,                                tags=["WebSocket"])
 
     # ── React production build ────────────────────────────────
     # Hashed Vite assets may be cached in production. During local development,

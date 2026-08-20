@@ -168,6 +168,18 @@
 .modelProgressWarning > i { background:var(--warning); }
 .modelProgressDanger > i { background:var(--danger); }
 .modelCategory { margin-top:13px; }
+.cliAuthRow { margin-top:15px;padding:11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:10px; }
+.cliAuthRow > div { display:grid;gap:3px;min-width:0; }
+.cliAuthRow span { color:var(--muted);font-size:calc(9px * var(--fs-scale)); }
+.cliAuthRow strong { font-size:calc(11px * var(--fs-scale)); }
+.cliAuthOk { color:var(--accent); }.cliAuthMissing { color:var(--danger); }.cliAuthUnknown { color:var(--warning); }
+.cliAuthRow .buttonGhost { min-height:34px;padding:7px 10px;font-size:calc(10px * var(--fs-scale)); }
+.cliLoginDialog { display:grid;gap:16px; }.cliLoginDialog > p { margin:0;color:var(--muted);line-height:1.55; }
+.cliLoginDialog > .primaryButton { width:max-content;max-width:100%; }
+.cliLoginWaiting { color:var(--muted); }.cliDeviceCode { display:grid;justify-items:start;gap:8px;padding:16px;border:1px solid var(--border);border-radius:11px;background:var(--surface2); }
+.cliDeviceCode span { color:var(--muted);font-size:calc(10px * var(--fs-scale)); }.cliDeviceCode strong { font:700 calc(28px * var(--fs-scale)) Quicksand,sans-serif;letter-spacing:.12em;word-break:break-all; }
+.cliLoginSuccess,.cliLoginError { min-height:130px;display:grid;place-items:center;text-align:center;gap:10px; }.cliLoginSuccess svg { width:38px;color:var(--accent); }.cliLoginError svg { width:34px;color:var(--danger); }.cliLoginError p { margin:0;line-height:1.5; }
+.cliLoginDialog .field .primaryButton { width:max-content; }.cliLoginDialog button:disabled { opacity:.55;cursor:not-allowed; }
 .modelActions { margin-top:auto;padding-top:17px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) 38px;align-items:center;gap:7px; }
 .modelActions > :global(.tooltip-trigger--boxed) { width:100%;min-width:0; }
 .modelActions > :global(.tooltip-trigger--boxed) > button { width:100%; }

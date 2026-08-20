@@ -27,6 +27,13 @@ def _local_now():
 CATEGORIES = {"general", "coding", "creative", "fast", "analysis"}
 
 
+def _public_model(entry: dict) -> dict:
+    """Do not expose the server-side credential directory through the API."""
+    result = dict(entry)
+    result["cli_configured"] = bool(str(result.pop("cli_config_dir", "") or "").strip())
+    return result
+
+
 class ModelPoolCreate(BaseModel):
     name: str = Field(..., min_length=1)
     provider: str = Field("9router")
@@ -73,7 +80,7 @@ async def list_models(enabled_only: bool = False):
     result = []
     for m in models:
         usage = await get_model_usage_today(m["id"])
-        result.append({**m, "usage_today": usage})
+        result.append({**_public_model(m), "usage_today": usage})
     return {"models": result}
 
 
@@ -96,7 +103,7 @@ async def create_model(body: ModelPoolCreate):
         currency=body.currency,
     )
     entry = await get_model_pool_entry(entry_id)
-    return entry
+    return _public_model(entry)
 
 
 @router.get("/stats")
@@ -372,7 +379,7 @@ async def get_model(entry_id: int):
     if not entry:
         raise HTTPException(404, "Model not found")
     usage = await get_model_usage_today(entry_id)
-    return {**entry, "usage_today": usage}
+    return {**_public_model(entry), "usage_today": usage}
 
 
 @router.patch("/{entry_id}")
@@ -391,7 +398,7 @@ async def update_model(entry_id: int, body: ModelPoolUpdate):
         await update_model_pool_entry(entry_id, **kwargs)
     updated = await get_model_pool_entry(entry_id)
     usage = await get_model_usage_today(entry_id)
-    return {**updated, "usage_today": usage}
+    return {**_public_model(updated), "usage_today": usage}
 
 
 @router.delete("/{entry_id}", status_code=204)
@@ -408,3 +415,32 @@ async def test_model(entry_id: int):
         raise HTTPException(404, "Model not found")
     result = await test_model_connection(entry_id)
     return result
+
+
+@router.get("/{entry_id}/cli-auth-status")
+async def cli_auth_status(entry_id: int):
+    """Read actual CLI auth state without using the unreliable codex login status."""
+    from core.cli_login import read_cli_auth_status
+    from core.provider_errors import safe_provider_error
+
+    entry = await get_model_pool_entry(entry_id)
+    if not entry:
+        raise HTTPException(404, "Model not found")
+    if entry.get("api_style") not in {"claude_cli", "codex_cli"}:
+        raise HTTPException(400, "This model does not use CLI authentication")
+    try:
+        return await read_cli_auth_status(entry)
+    except Exception as exc:
+        # The response is intentionally 200 with an explicit unknown/error state so
+        # the model-pool page can distinguish an expired login from a missing CLI.
+        logger.warning(
+            "Could not read CLI auth status for model pool %s (%s)",
+            entry_id,
+            type(exc).__name__,
+        )
+        return {
+            "api_style": entry["api_style"],
+            "logged_in": None,
+            "status": "error",
+            "error": safe_provider_error(exc, entry),
+        }

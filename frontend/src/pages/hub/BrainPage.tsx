@@ -5,6 +5,7 @@ import { Icon } from "../../components/Icon";
 import { Tooltip } from "../../components/Tooltip";
 import { useTooltipText } from "../../i18n/tooltips";
 import { useLanguage, type Language } from "../../store/language";
+import { useWebSocket } from "../../ws/useWebSocket";
 import { BenchmarkPage, type Benchmark } from "./BenchmarkPage";
 import { Dialog } from "./Dialog";
 import { ExperimentSection } from "./ExperimentSection";
@@ -57,6 +58,7 @@ interface ModelDraft {
   base_url: string;
   api_key: string;
   cli_config_dir: string;
+  cli_configured: boolean;
   category: string;
   max_requests_per_day: number;
   max_tokens_per_day: number;
@@ -68,6 +70,19 @@ interface ModelDraft {
 }
 type EditableModelRecord = ModelRecord & { api_key?: string };
 
+interface CliAuthStatus {
+  logged_in: boolean | null;
+  status: "logged_in" | "logged_out" | "error";
+  error?: string;
+}
+
+type CliLoginEvent =
+  | { type: "started"; api_style: string; verificationUrl?: string; userCode?: string; authUrl?: string }
+  | { type: "needs_code" }
+  | { type: "completed"; success: boolean; error?: string | null }
+  | { type: "cancelled"; expired?: boolean }
+  | { type: "error"; message: string };
+
 const blankModel = (): ModelDraft => ({
   name: "",
   provider: PROVIDER_SUGGESTIONS.openai_compat,
@@ -76,6 +91,7 @@ const blankModel = (): ModelDraft => ({
   base_url: "",
   api_key: "",
   cli_config_dir: "",
+  cli_configured: false,
   category: "general",
   max_requests_per_day: 0,
   max_tokens_per_day: 0,
@@ -256,11 +272,58 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
   const [testing, setTesting] = useState<Set<number>>(() => new Set());
   const [enabledOverrides, setEnabledOverrides] = useState<Record<number, boolean>>({});
   const [toggling, setToggling] = useState<Set<number>>(() => new Set());
+  const [cliStatuses, setCliStatuses] = useState<Record<number, CliAuthStatus>>({});
+  const [loginModel, setLoginModel] = useState<ModelRecord | null>(null);
   const t = (key: HubMessageKey) => hubText(language, key);
   const locale = language === "vi" ? "vi-VN" : "en-US";
   const showCategory = new Set(
     modelPool.map((model) => model.category || "general"),
   ).size >= 2;
+  const refreshCliStatus = useCallback(async (model: ModelRecord) => {
+    if (!CLI_API_STYLES.has(model.api_style || "")) return;
+    try {
+      const status = await apiClient.get<CliAuthStatus>(
+        `/model-pool/${model.id}/cli-auth-status`,
+      );
+      setCliStatuses((current) => ({ ...current, [model.id]: status }));
+    } catch (error) {
+      setCliStatuses((current) => ({
+        ...current,
+        [model.id]: {
+          logged_in: null,
+          status: "error",
+          error: error instanceof Error ? error.message : t("brain.cli_status_error"),
+        },
+      }));
+    }
+  }, [language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cliModels = modelPool.filter((model) => CLI_API_STYLES.has(model.api_style || ""));
+    void Promise.all(cliModels.map(async (model) => {
+      try {
+        const status = await apiClient.get<CliAuthStatus>(
+          `/model-pool/${model.id}/cli-auth-status`,
+        );
+        if (!cancelled) {
+          setCliStatuses((current) => ({ ...current, [model.id]: status }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCliStatuses((current) => ({
+            ...current,
+            [model.id]: {
+              logged_in: null,
+              status: "error",
+              error: error instanceof Error ? error.message : t("brain.cli_status_error"),
+            },
+          }));
+        }
+      }
+    }));
+    return () => { cancelled = true; };
+  }, [modelPool, language]);
   const open = (model?: ModelRecord) =>
     setDraft(
       model
@@ -275,6 +338,7 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
             // Giữ secret trong draft để ô bị ẩn vẫn được gửi lại nguyên giá trị khi lưu.
             api_key: String((model as EditableModelRecord).api_key ?? ""),
             cli_config_dir: String(model.cli_config_dir || ""),
+            cli_configured: model.cli_configured === true,
             category: model.category || "general",
             max_requests_per_day: Number(model.max_requests_per_day || 0),
             max_tokens_per_day: Number(model.max_tokens_per_day || 0),
@@ -303,6 +367,10 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
       model_id: draft.model_id.trim(),
     };
     delete body.id;
+    delete body.cli_configured;
+    // The backend never returns credential directory paths. An empty field while
+    // editing therefore means "keep the existing server-side value".
+    if (draft.id && !draft.cli_config_dir.trim()) delete body.cli_config_dir;
     try {
       if (draft.id) await apiClient.patch(`/model-pool/${draft.id}`, body);
       else {
@@ -394,6 +462,8 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
           const enabled = enabledOverrides[model.id] ?? isModelEnabled(model);
           const isTesting = testing.has(model.id);
           const isToggling = toggling.has(model.id);
+          const isCli = CLI_API_STYLES.has(model.api_style || "");
+          const cliStatus = cliStatuses[model.id];
           const requestCount = Number(usage.request_count || 0);
           const tokensInput = Number(usage.tokens_input || 0);
           const tokensOutput = Number(usage.tokens_output || 0);
@@ -538,6 +608,36 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
                 ) : null}
               </div>
 
+              {isCli ? (
+                <div className={c("cliAuthRow")}>
+                  <div>
+                    <span>{t("brain.cli_status_label")}</span>
+                    <strong className={c(
+                      cliStatus?.status === "logged_in"
+                        ? "cliAuthOk"
+                        : cliStatus?.status === "logged_out"
+                          ? "cliAuthMissing"
+                          : "cliAuthUnknown"
+                    )}>
+                      {cliStatus?.status === "logged_in"
+                        ? t("brain.cli_status_logged_in")
+                        : cliStatus?.status === "logged_out"
+                          ? t("brain.cli_status_logged_out")
+                          : cliStatus?.status === "error"
+                            ? t("brain.cli_status_error")
+                            : t("brain.cli_status_checking")}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    className={c("buttonGhost")}
+                    onClick={() => setLoginModel(model)}
+                  >
+                    {t("brain.cli_login_again")}
+                  </button>
+                </div>
+              ) : null}
+
               {showCategory ? (
                 <div className={c("modelCategory")}>
                   <span className={c("tag")}>{model.category || "general"}</span>
@@ -594,7 +694,136 @@ function ModelPoolPage({ createRequest }: { createRequest: number }) {
           onClose={() => setDraft(null)}
         />
       ) : null}
+      {loginModel ? (
+        <CliLoginDialog
+          model={loginModel}
+          onClose={() => setLoginModel(null)}
+          onCompleted={() => void refreshCliStatus(loginModel)}
+        />
+      ) : null}
     </>
+  );
+}
+
+function CliLoginDialog({
+  model,
+  onClose,
+  onCompleted,
+}: {
+  model: ModelRecord;
+  onClose: () => void;
+  onCompleted: () => void;
+}) {
+  const { language } = useLanguage();
+  const { toast } = useHub();
+  const t = (key: HubMessageKey) => hubText(language, key);
+  const [event, setEvent] = useState<CliLoginEvent | null>(null);
+  const [started, setStarted] = useState<Extract<CliLoginEvent, { type: "started" }> | null>(null);
+  const [code, setCode] = useState("");
+  const terminal = event?.type === "completed" || event?.type === "cancelled" || event?.type === "error";
+  const { state, send } = useWebSocket<CliLoginEvent>({
+    path: `/ws/cli-login/${model.id}`,
+    connectionKey: model.id,
+    enabled: !terminal,
+    maxReconnects: 0,
+    onMessage: (message) => {
+      if (message.type === "started") setStarted(message);
+      setEvent(message);
+      if (message.type === "completed" && message.success) {
+        toast(t("brain.cli_login_success"), "success");
+        onCompleted();
+      } else if (message.type === "completed" && !message.success) {
+        toast(message.error || t("brain.cli_login_failed"), "error");
+      } else if (message.type === "error") {
+        toast(message.message || t("brain.cli_login_failed"), "error");
+      }
+    },
+  });
+  const isClaude = model.api_style === "claude_cli";
+  const authUrl = started?.authUrl || started?.verificationUrl;
+  const completed = event?.type === "completed" && event.success;
+
+  const cancelAndClose = () => {
+    if (!terminal) send({ type: "cancel" });
+    onClose();
+  };
+  const copyCode = async () => {
+    if (!started?.userCode) return;
+    try {
+      await navigator.clipboard.writeText(started.userCode);
+      toast(t("brain.cli_code_copied"), "success");
+    } catch {
+      toast(t("brain.cli_copy_failed"), "error");
+    }
+  };
+
+  return (
+    <Dialog title={`${t("brain.cli_login_title")}: ${model.name || model.model_id}`} onClose={cancelAndClose}>
+      <div className={c("cliLoginDialog")}>
+        {completed ? (
+          <div className={c("cliLoginSuccess")}>
+            <Icon name="check" />
+            <strong>{t("brain.cli_login_success")}</strong>
+          </div>
+        ) : event?.type === "error" || (event?.type === "completed" && !event.success) ? (
+          <div className={c("cliLoginError")}>
+            <Icon name="warning" />
+            <p>{event.type === "error" ? event.message : event.error || t("brain.cli_login_failed")}</p>
+          </div>
+        ) : (
+          <>
+            <p>{t(isClaude ? "brain.cli_login_claude_help" : "brain.cli_login_codex_help")}</p>
+            {authUrl ? (
+              <a className={c("primaryButton")} href={authUrl} target="_blank" rel="noreferrer noopener">
+                {t("brain.cli_open_login")}
+              </a>
+            ) : (
+              <p className={c("cliLoginWaiting")}>
+                {state === "connecting" ? t("brain.cli_starting") : t("brain.cli_waiting")}
+              </p>
+            )}
+            {started?.userCode ? (
+              <div className={c("cliDeviceCode")}>
+                <span>{t("brain.cli_one_time_code")}</span>
+                <strong>{started.userCode}</strong>
+                <button type="button" className={c("buttonGhost")} onClick={() => void copyCode()}>
+                  {t("brain.cli_copy_code")}
+                </button>
+              </div>
+            ) : null}
+            {isClaude && authUrl ? (
+              <label className={c("field")}>
+                <span>{t("brain.cli_paste_code")}</span>
+                <input
+                  className={c("input")}
+                  value={code}
+                  autoComplete="off"
+                  onChange={(inputEvent) => setCode(inputEvent.target.value)}
+                  placeholder={t("brain.cli_code_placeholder")}
+                />
+                <button
+                  type="button"
+                  className={c("primaryButton")}
+                  disabled={!code.trim()}
+                  onClick={() => {
+                    send({ type: "submit_code", code });
+                    setCode("");
+                  }}
+                >
+                  {t("brain.cli_submit_code")}
+                </button>
+              </label>
+            ) : null}
+          </>
+        )}
+        <footer className={c("formActions")}>
+          <span />
+          <button type="button" className={c("buttonGhost")} onClick={cancelAndClose}>
+            {completed ? t("brain.cli_close") : t("common.cancel")}
+          </button>
+        </footer>
+      </div>
+    </Dialog>
   );
 }
 
@@ -843,6 +1072,9 @@ function ModelDialog({
                       <input
                         className={c("input")}
                         value={draft.cli_config_dir}
+                        placeholder={draft.id && draft.cli_configured
+                          ? t("brain.cli_config_dir_unchanged")
+                          : undefined}
                         onChange={(event) => set("cli_config_dir", event.target.value)}
                       />
                     </Tooltip>

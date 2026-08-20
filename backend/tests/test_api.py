@@ -56,6 +56,7 @@ class TestAuthGuard:
     @pytest.mark.parametrize("path", [
         "/api/skills/", "/api/agent-configs/", "/api/projects/",
         "/api/meetings/", "/api/tools/", "/api/openapi.json",
+        "/api/model-pool/1/cli-auth-status",
     ])
     async def test_api_requires_auth(self, anon_client, path):
         assert (await anon_client.get(path)).status_code == 401

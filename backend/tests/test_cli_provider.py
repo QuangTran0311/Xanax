@@ -189,7 +189,8 @@ class TestCliModelPoolApi:
         entry = r.json()
         try:
             assert entry["api_style"] in CLI_API_STYLES
-            assert entry["cli_config_dir"] == "C:/claude-accounts/acc-marketing"
+            assert "cli_config_dir" not in entry
+            assert entry["cli_configured"] is True
             assert entry["base_url"] == ""
             assert entry["api_key"] == ""
         finally:
@@ -210,7 +211,8 @@ class TestCliModelPoolApi:
 
             models = (await client.get("/api/model-pool")).json()["models"]
             got = next(m for m in models if m["id"] == entry_id)
-            assert got["cli_config_dir"] == "C:/codex-accounts/acc-be"
+            assert "cli_config_dir" not in got
+            assert got["cli_configured"] is True
             assert got["model_id"] == "gpt-5.5"
         finally:
             await client.delete(f"/api/model-pool/{entry_id}")
