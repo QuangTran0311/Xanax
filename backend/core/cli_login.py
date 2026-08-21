@@ -425,21 +425,34 @@ async def _codex_auth_status(entry: dict) -> dict[str, Any]:
         [_resolve_bin("codex", _CODEX_FALLBACK), "app-server"], env, use_pty=False,
     )
     next_id = 1
+    read_buffer = ""
+    buffered_responses: dict[int, dict[str, Any]] = {}
 
     async def request(method: str, params: dict) -> dict:
-        nonlocal next_id
+        nonlocal next_id, read_buffer
         request_id = next_id
         next_id += 1
         payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
         await process.write((json.dumps(payload, separators=(",", ":")) + "\n").encode())
         while True:
+            if request_id in buffered_responses:
+                return buffered_responses.pop(request_id)
             raw = await process.read()
             if not raw:
+                if read_buffer.strip():
+                    message = parse_jsonrpc_line(read_buffer)
+                    read_buffer = ""
+                    if message and isinstance(message.get("id"), int):
+                        buffered_responses[message["id"]] = message
+                    if request_id in buffered_responses:
+                        return buffered_responses.pop(request_id)
                 raise LoginSessionError("Codex app-server exited while checking authentication")
-            for line in raw.decode("utf-8", errors="replace").splitlines():
+            read_buffer += raw.decode("utf-8", errors="replace")
+            while "\n" in read_buffer:
+                line, read_buffer = read_buffer.split("\n", 1)
                 message = parse_jsonrpc_line(line)
-                if message and message.get("id") == request_id:
-                    return message
+                if message and isinstance(message.get("id"), int):
+                    buffered_responses[message["id"]] = message
 
     await process.start()
     try:
@@ -450,16 +463,26 @@ async def _codex_auth_status(entry: dict) -> dict[str, Any]:
         if initialized.get("error"):
             raise LoginSessionError("Codex app-server initialization failed")
         await process.write(b'{"jsonrpc":"2.0","method":"initialized","params":{}}\n')
-        response = await asyncio.wait_for(request("getAuthStatus", {}), STATUS_TIMEOUT_SECONDS)
-        if response.get("error"):
-            response = await asyncio.wait_for(request("account/read", {}), STATUS_TIMEOUT_SECONDS)
-        if response.get("error"):
-            raise LoginSessionError("Codex app-server could not read authentication status")
-        result = response.get("result") or {}
-        auth_status = result.get("authStatus")
-        account = result.get("account")
-        logged_in = bool(account) or auth_status not in (None, "notLoggedIn", "loggedOut", "none")
-        return {"api_style": "codex_cli", "logged_in": logged_in, "status": "logged_in" if logged_in else "logged_out"}
+        account_response = await asyncio.wait_for(request("account/read", {}), STATUS_TIMEOUT_SECONDS)
+        account_result = account_response.get("result") or {}
+        account = account_result.get("account") if isinstance(account_result, dict) else None
+        if not account_response.get("error") and isinstance(account, dict) and account:
+            logged_in = True
+        else:
+            auth_response = await asyncio.wait_for(request("getAuthStatus", {}), STATUS_TIMEOUT_SECONDS)
+            if auth_response.get("error"):
+                raise LoginSessionError("Codex app-server could not read authentication status")
+            auth_result = auth_response.get("result") or {}
+            auth_method = auth_result.get("authMethod") if isinstance(auth_result, dict) else None
+            logged_in = (
+                isinstance(auth_method, str)
+                and bool(auth_method.strip())
+                and auth_method.strip().lower() not in {"none", "notloggedin"}
+            )
+        return {
+            "api_style": "codex_cli", "logged_in": logged_in,
+            "status": "logged_in" if logged_in else "logged_out",
+        }
     finally:
         await process.terminate()
 
@@ -468,15 +491,25 @@ async def _claude_auth_status(entry: dict) -> dict[str, Any]:
     config_dir = str(entry.get("cli_config_dir") or "").strip()
     env = build_clean_env({"CLAUDE_CONFIG_DIR": config_dir} if config_dir else None)
     command = [_resolve_bin("claude", _CLAUDE_FALLBACK), "auth", "status"]
-    parsed: dict[str, Any] | None = None
+    stdout_parts: list[str] = []
     async for tag, data in stream_proc(command, env=env, timeout=STATUS_TIMEOUT_SECONDS):
         if tag == "stdout":
-            try:
-                candidate = json.loads(data)
-                if isinstance(candidate, dict):
-                    parsed = candidate
-            except json.JSONDecodeError:
-                continue
+            stdout_parts.append(data)
+    stdout = "\n".join(stdout_parts).strip()
+    parsed: dict[str, Any] | None = None
+    candidates = [stdout]
+    first_brace = stdout.find("{")
+    last_brace = stdout.rfind("}")
+    if first_brace >= 0 and last_brace > first_brace:
+        candidates.append(stdout[first_brace:last_brace + 1])
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            parsed = value
+            break
     if parsed is None:
         raise LoginSessionError("Claude CLI did not return authentication status")
     logged_in = parsed.get("loggedIn") is True
